@@ -1,0 +1,1455 @@
+/* ──────── RPA 模块专业化/IDE 主题 (模仿影刀风格) ──────── */
+
+/* 全局与变量定义 */
+:root {
+  --rpa-primary: var(--ds-color-23346634366535);
+  --rpa-primary-hover: #4338ca;
+  --rpa-primary-soft: var(--ds-color-726762612837392c);
+  --rpa-bg-layout: #f4f7fb;
+  --rpa-bg-panel: #ffffff;
+  --rpa-border: rgba(20, 32, 56, 0.1);
+  --rpa-text-main: #172033;
+  --rpa-text-muted: #6b778c;
+  --rpa-danger: #f53f3f;
+  --rpa-success: #10b981;
+  --rpa-warn: var(--ds-color-23663539653062);
+  --rpa-desktop: var(--ds-color-23303662366434);
+  --rpa-browser: var(--ds-color-23376333616564);
+  
+  --rpa-radius-sm: 8px;
+  --rpa-radius-md: 14px;
+  --rpa-radius-lg: 24px;
+  --rpa-shadow: 0 18px 50px rgba(20, 32, 56, 0.08);
+}
+
+.dark {
+  --rpa-bg-layout: #111827;
+  --rpa-bg-panel: #172033;
+  --rpa-border: rgba(255, 255, 255, 0.1);
+  --rpa-text-main: #eef2ff;
+  --rpa-text-muted: #9ca3af;
+  --rpa-primary-soft: rgba(129, 140, 248, 0.14);
+}
+
+/* 基础容器 */
+.rpa-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background:
+    radial-gradient(circle at 12% 0%, var(--ds-color-7267626128313234), transparent 28%),
+    radial-gradient(circle at 92% 12%, var(--ds-color-7267626128362c20), transparent 26%),
+    linear-gradient(180deg, #f7faff 0%, var(--rpa-bg-layout) 42%, #eef3f9 100%);
+  color: var(--rpa-text-main);
+  font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  font-size: 13px; /* 提升信息密度 */
+}
+
+/* 通用面板/卡片取代 glass-panel */
+.glass-panel {
+  background: var(--rpa-bg-panel);
+  border: 1px solid var(--rpa-border);
+  border-radius: var(--rpa-radius-md);
+  box-shadow: var(--rpa-shadow);
+  transition: all 0.2s;
+}
+
+/* ──────── 1. RPA 任务列表视图 ──────── */
+.rpa-list-view {
+  flex: 1;
+  padding: 22px clamp(18px, 3vw, 34px) 30px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+}
+
+.rpa-list-view::before {
+  content: "";
+  position: fixed;
+  inset: 106px 26px 24px;
+  pointer-events: none;
+  opacity: 0.42;
+  background: radial-gradient(circle at 50% 0%, var(--ds-color-726762612837392c), transparent 42%);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+}
+
+.rpa-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rpa-list-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--rpa-text-main);
+}
+
+.rpa-command-hero {
+  position: relative;
+  z-index: 1;
+  min-height: 132px;
+  padding: 20px 22px;
+  border: 1px solid var(--ds-color-726762612837392c);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 255, 0.82)),
+    radial-gradient(circle at 88% 18%, var(--ds-color-726762612837392c), transparent 34%),
+    radial-gradient(circle at 76% 86%, var(--ds-color-7267626128362c20), transparent 28%);
+  box-shadow: 0 24px 70px var(--ds-color-726762612833312c);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 24px;
+  overflow: hidden;
+}
+
+.rpa-command-hero::after {
+  content: "";
+  position: absolute;
+  right: 34px;
+  bottom: 20px;
+  width: min(360px, 38vw);
+  height: 34px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, var(--rpa-browser) 0 5px, transparent 6px),
+    linear-gradient(90deg, transparent 0 7%, var(--ds-color-7267626128313234) 7% 44%, rgba(6, 182, 212, 0.3) 44% 88%, transparent 88%);
+  box-shadow: 0 0 0 1px var(--ds-color-726762612837392c) inset;
+  opacity: 0.85;
+}
+
+.rpa-hero-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+}
+
+.rpa-kicker {
+  margin-bottom: 7px;
+  color: var(--rpa-primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.rpa-hero-copy h1 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(24px, 3.2vw, 34px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.rpa-hero-copy p {
+  margin: 9px 0 0;
+  max-width: 560px;
+  color: var(--rpa-text-muted);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.rpa-hero-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rpa-hero-metric {
+  min-width: 96px;
+  padding: 11px 14px;
+  border: 1px solid var(--ds-color-726762612837392c);
+  border-radius:  16px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.8);
+  text-align: right;
+}
+
+.rpa-hero-metric strong {
+  display: block;
+  color: #111827;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.rpa-hero-metric span {
+  color: var(--rpa-text-muted);
+  font-size: 11px;
+}
+
+/* 按钮样式重塑为纯色/细框扁平化 */
+.btn-primary {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, var(--rpa-primary), var(--ds-color-23323536336562));
+  color: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 14px 30px var(--ds-color-726762612837392c);
+}
+
+.btn-primary:hover {
+  background: var(--rpa-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 36px var(--ds-color-726762612837392c);
+}
+.btn-primary:disabled {
+  background: var(--ds-color-23393462666666);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.rpa-create-primary {
+  min-height: 38px;
+  padding-inline: 16px;
+  white-space: nowrap;
+}
+
+.rpa-create-primary span {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.rpa-task-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 18px;
+}
+
+.rpa-task-card {
+  min-height: 126px;
+  padding: 13px 16px 15px 54px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.88)),
+    radial-gradient(circle at 100% 0%, var(--ds-color-726762612837392c), transparent 38%);
+  box-shadow: 0 18px 46px rgba(20, 32, 56, 0.08);
+}
+
+.rpa-task-card:hover {
+  border-color: var(--ds-color-726762612837392c);
+  transform: translateY(-3px);
+  box-shadow: 0 26px 70px rgba(20, 32, 56, 0.14);
+}
+
+.rpa-card-rail {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  bottom: 18px;
+  width: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rpa-card-rail-line {
+  flex: 1;
+  width: 2px;
+  margin: 8px 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ds-color-7267626128313234), var(--ds-color-7267626128362c20));
+}
+
+.rpa-card-rail-node {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: white;
+  border: 3px solid var(--rpa-browser);
+  box-shadow: 0 0 0 5px var(--ds-color-7267626128313234);
+}
+
+.rpa-card-rail-node.desktop {
+  border-color: var(--rpa-desktop);
+  box-shadow: 0 0 0 5px var(--ds-color-7267626128362c20);
+}
+
+.rpa-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 26px;
+}
+
+.rpa-card-date {
+  color: var(--rpa-text-muted);
+  font-size: 11.5px;
+}
+
+.rpa-card-name {
+  margin-top: 10px;
+  color: var(--rpa-text-main);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.rpa-card-desc {
+  margin-top: 6px;
+  min-height: 0;
+  font-size: 12.5px;
+  color: var(--rpa-text-muted);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rpa-task-policy {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  color: var(--rpa-text-muted);
+  font-size: 11px;
+}
+
+.rpa-task-state {
+  min-width: 42px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rpa-task-state.on { color: #087f5b; border-color: rgba(16,185,129,.25); background: rgba(16,185,129,.09); }
+.rpa-task-state.off { color: #64748b; border-color: rgba(100,116,139,.2); background: var(--ds-color-7267626128313438); }
+.rpa-task-state.error { color: var(--ds-color-23633234313431); border-color: rgba(245,63,63,.24); background: rgba(245,63,63,.08); }
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+  background: var(--ds-color-7267626128313438);
+  border: 1px solid var(--rpa-border);
+}
+
+.rpa-card-topline .status-badge {
+  padding: 3px 7px;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.status-badge.running { color: var(--rpa-primary); border-color: var(--ds-color-726762612837392c); background: var(--ds-color-726762612837392c); }
+.status-badge.success { color: var(--rpa-success); border-color: rgba(16,185,129,0.24); background: rgba(16,185,129,0.08); }
+.status-badge.failed { color: var(--rpa-danger); border-color: rgba(245,63,63,0.26); background: rgba(245,63,63,0.08); }
+.status-badge.paused { color: var(--rpa-warn); border-color: var(--ds-color-7267626128323435); background: var(--ds-color-7267626128323435); }
+
+/* 卡片操作按钮（改为方形更干练） */
+.rpa-card-actions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.rpa-task-card:hover .rpa-card-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.btn-card-action {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--rpa-border);
+  color: var(--rpa-text-muted);
+  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-card-action:hover {
+  color: var(--rpa-danger);
+  border-color: var(--rpa-danger);
+  background: var(--ds-color-7267626128323534);
+}
+
+.rpa-empty-state {
+  grid-column: 1 / -1;
+  min-height: 360px;
+  padding: 54px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px dashed var(--ds-color-726762612837392c);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(14px);
+  color: var(--rpa-text-muted);
+}
+
+.rpa-empty-state h3 {
+  margin: 18px 0 8px;
+  color: var(--rpa-text-main);
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.rpa-empty-state p {
+  max-width: 420px;
+  margin: 0 0 22px;
+  line-height: 1.7;
+}
+
+.rpa-empty-orbit {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--ds-color-726762612837392c), transparent 66%);
+}
+
+.rpa-empty-orbit span {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--rpa-primary);
+  box-shadow: 0 0 0 8px var(--ds-color-726762612837392c);
+}
+
+.rpa-empty-orbit span:nth-child(1) { left: 12px; top: 18px; }
+.rpa-empty-orbit span:nth-child(2) { right: 12px; top: 32px; background: var(--rpa-desktop); }
+.rpa-empty-orbit span:nth-child(3) { left: 38px; bottom: 10px; background: var(--rpa-success); }
+
+@media (max-width: 900px) {
+  .rpa-command-hero {
+    flex-direction: column;
+  }
+
+  .rpa-hero-actions {
+    align-items: stretch;
+  }
+
+}
+
+/* Keep the RPA workspace on the same dark blue canvas as the host window. */
+.agent-window-container.dark .rpa-container {
+  --rpa-bg-layout: #0b1220;
+  --rpa-bg-panel: #111c2e;
+  --rpa-border: rgba(148, 181, 219, 0.18);
+  --rpa-text-main: #e7effa;
+  --rpa-text-muted: #92a5bf;
+  --rpa-primary: var(--ds-color-23373339666630);
+  --rpa-primary-hover: #88aff3;
+  background: #0b1220;
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-list-view {
+  background: #0b1220;
+}
+
+.agent-window-container.dark .rpa-command-hero {
+  border-color: var(--ds-color-7267626128313135);
+  background: linear-gradient(135deg, rgba(18, 32, 55, 0.98), rgba(16, 28, 48, 0.9));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.agent-window-container.dark .rpa-hero-copy h1,
+.agent-window-container.dark .rpa-hero-metric strong {
+  color: #e7effa;
+}
+
+.agent-window-container.dark .rpa-hero-metric {
+  border-color: var(--ds-color-7267626128313135);
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.agent-window-container.dark .rpa-task-card {
+  border-color: var(--rpa-border);
+  background: linear-gradient(180deg, rgba(18, 31, 53, 0.98), rgba(15, 27, 47, 0.94));
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22);
+}
+
+.agent-window-container.dark .rpa-task-card:hover {
+  border-color: var(--ds-color-7267626128313135);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.32);
+}
+
+.agent-window-container.dark .rpa-card-rail-node {
+  background: var(--rpa-bg-panel);
+}
+
+.agent-window-container.dark .btn-card-action {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.agent-window-container.dark .btn-card-action:hover {
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.agent-window-container.dark .rpa-empty-state {
+  border-color: var(--ds-color-7267626128313135);
+  background: rgba(17, 28, 46, 0.7);
+}
+
+.agent-window-container.dark .rpa-detail-header,
+.agent-window-container.dark .rpa-canvas-toolbar,
+.agent-window-container.dark .rpa-panel-container,
+.agent-window-container.dark .rpa-panel-tabs,
+.agent-window-container.dark .rpa-panel-tab.active {
+  background: var(--rpa-bg-panel);
+}
+
+.agent-window-container.dark .rpa-canvas-container {
+  background: var(--rpa-bg-layout);
+}
+
+.agent-window-container.dark .rpa-canvas-toolbar {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.agent-window-container.dark .react-flow__controls {
+  border-color: var(--rpa-border);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+
+.agent-window-container.dark .react-flow__controls-button {
+  border-bottom-color: var(--rpa-border);
+  background: var(--rpa-bg-panel);
+  fill: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .react-flow__controls-button:hover {
+  background: var(--ds-color-7267626128313135);
+}
+
+.agent-window-container.dark .react-flow__handle {
+  background-color: var(--ds-color-23316433353533);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-card,
+.agent-window-container.dark .rpa-picker-card {
+  border-color: var(--rpa-border);
+  background: #111c2e;
+  color: var(--rpa-text-main);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.46);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head,
+.agent-window-container.dark .rpa-recorder-setup-footer {
+  border-color: var(--rpa-border);
+  background: #101a2b;
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head h3,
+.agent-window-container.dark .rpa-picker-card h3 {
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-kicker,
+.agent-window-container.dark .rpa-recorder-section > p,
+.agent-window-container.dark .rpa-recorder-setup-footer > span,
+.agent-window-container.dark .rpa-picker-card p {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs button {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs button.active {
+  background: var(--ds-color-7267626128313135);
+  color: var(--ds-color-23643865376662);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--ds-color-7267626128313135);
+}
+
+.agent-window-container.dark .rpa-recorder-section > label,
+.agent-window-container.dark .rpa-recorder-field-head label {
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-section > input,
+.agent-window-container.dark .rpa-recorder-section > select,
+.agent-window-container.dark .rpa-picker-card input,
+.agent-window-container.dark .rpa-picker-card button {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-error {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--ds-color-23666563616361);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-footer .secondary {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--rpa-text-main);
+}
+
+@media (max-width: 620px) {
+  .rpa-task-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+/* ──────── 2. RPA 任务详情页 ──────── */
+.rpa-detail-header {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--rpa-bg-panel);
+  border-bottom: 1px solid var(--rpa-border);
+}
+
+.rpa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rpa-schedule-editor { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.rpa-schedule-select, .rpa-schedule-time { height: 28px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 8px; font-size: 11px; }
+.rpa-schedule-value { display: flex; align-items: center; gap: 5px; color: var(--rpa-text-muted); font-size: 11px; }
+.rpa-schedule-value input { width: 54px; height: 26px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 7px; }
+
+.btn-back {
+  background: transparent;
+  border: 1px solid var(--rpa-border);
+  color: var(--rpa-text-main);
+  padding: 4px 10px;
+  border-radius: var(--rpa-radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background: var(--rpa-bg-layout);
+  border-color: var(--rpa-primary);
+  color: var(--rpa-primary);
+}
+
+.rpa-detail-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* 画布与顶部 Toolbar */
+.rpa-canvas-container {
+  flex: 7;
+  position: relative;
+  background: var(--rpa-bg-layout);
+  display: flex;
+  flex-direction: column;
+}
+
+.rpa-canvas-toolbar {
+  height: 40px;
+  background: var(--rpa-bg-panel);
+  border-bottom: 1px solid var(--rpa-border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.rpa-canvas-toolbar .btn-back {
+  border-style: dashed;
+  color: var(--rpa-text-muted);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.rpa-canvas-toolbar .btn-back:hover {
+  border-style: solid;
+}
+
+.rpa-toolbar-primary, .rpa-toolbar-action, .rpa-toolbar-icon {
+  height: 30px;
+  border: 1px solid var(--rpa-border);
+  border-radius: 8px;
+  background: var(--rpa-bg-panel);
+  color: var(--rpa-text-main);
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.rpa-toolbar-primary { padding: 0 14px; border-color: #ef4444; background: #ef4444; color: white; box-shadow: 0 7px 18px rgba(239,68,68,.2); }
+.rpa-toolbar-primary:disabled { opacity: .55; cursor: wait; }
+.rpa-record-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(255,255,255,.18); }
+.rpa-toolbar-action { padding: 0 11px; }
+.rpa-toolbar-action:hover, .rpa-toolbar-action.active, .rpa-toolbar-icon:hover, .rpa-toolbar-icon.active { border-color: var(--rpa-primary); color: var(--rpa-primary); background: var(--rpa-primary-soft); }
+.rpa-toolbar-action.run { color: #087f5b; }
+.rpa-toolbar-action.danger { color: var(--rpa-danger); }
+.rpa-toolbar-icon { width: 30px; padding: 0; font-size: 14px; }
+.rpa-toolbar-icon:disabled { opacity: .35; cursor: not-allowed; }
+.rpa-toolbar-spacer { flex: 1; }
+.rpa-recorder-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--ds-color-726762612832362c);
+  backdrop-filter: blur(8px);
+}
+
+.rpa-recorder-setup-card {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--ds-color-23643964396434);
+  border-radius: 18px;
+  background: #f9f9f7;
+  color: var(--ds-color-23323532353233);
+  box-shadow: 0 28px 90px var(--ds-color-726762612832342c);
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.rpa-recorder-setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--ds-color-23653565356530);
+}
+.rpa-recorder-kicker { display: block; margin-bottom: 5px; color: var(--ds-color-23376137613734); font: 650 9px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.rpa-recorder-setup-head h3 { margin: 0; color: var(--ds-color-23323032303165); font-size: 20px; font-weight: 650; letter-spacing: -.035em; }
+.rpa-recorder-setup-head > button { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--ds-color-23373737373732); font-size: 20px; cursor: pointer; }
+.rpa-recorder-setup-head > button:hover { background: var(--ds-color-23656365636538); color: var(--ds-color-23323032303165); }
+
+.rpa-recorder-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin: 18px 24px 0;
+  padding: 4px;
+  border: 1px solid var(--ds-color-23646664666461);
+  border-radius: 11px;
+  background: var(--ds-color-23656665666562);
+}
+.rpa-recorder-mode-tabs button { padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ds-color-23373737373732); cursor: pointer; text-align: left; }
+.rpa-recorder-mode-tabs button.active { background: #fff; color: var(--ds-color-23323032303165); box-shadow: 0 1px 2px var(--ds-color-726762612832342c), 0 0 0 1px rgba(24,24,22,.04); }
+.rpa-recorder-mode-tabs strong, .rpa-recorder-mode-tabs small { display: block; }
+.rpa-recorder-mode-tabs strong { font-size: 12px; font-weight: 650; }
+.rpa-recorder-mode-tabs small { margin-top: 3px; color: var(--ds-color-23386238623835); font-size: 9.5px; }
+
+.rpa-recorder-section { margin: 18px 24px 0; }
+.rpa-recorder-section > label, .rpa-recorder-field-head label { display: block; margin-bottom: 8px; color: var(--ds-color-23346534653439); font-size: 11px; font-weight: 650; }
+.rpa-recorder-section > input, .rpa-recorder-section > select {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--ds-color-23643864386433);
+  border-radius: 9px;
+  outline: 0;
+  background: #fff;
+  color: var(--ds-color-23323032303165);
+  font-size: 12px;
+}
+.rpa-recorder-section > input:focus, .rpa-recorder-section > select:focus { border-color: var(--ds-color-23373737373732); box-shadow: 0 0 0 3px var(--ds-color-726762612833322c); }
+.rpa-recorder-section > p { margin: 7px 1px 0; color: var(--ds-color-23383838383832); font-size: 10px; line-height: 1.5; }
+.rpa-recorder-field-head { display: flex; align-items: center; justify-content: space-between; }
+.rpa-recorder-field-head label { margin: 0 0 8px; }
+.rpa-recorder-field-head button { margin-bottom: 6px; border: 0; background: transparent; color: var(--ds-color-23363936393633); font-size: 10px; cursor: pointer; }
+.rpa-recorder-field-head button:hover { color: var(--ds-color-23323032303165); text-decoration: underline; }
+
+
+.rpa-recorder-error { margin: 14px 24px 0; padding: 9px 11px; border: 1px solid var(--ds-color-23663063376338); border-radius: 8px; background: var(--ds-color-23666666326632); color: var(--ds-color-23613933363361); font-size: 10.5px; }
+.rpa-recorder-setup-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; padding: 16px 24px; border-top: 1px solid var(--ds-color-23653565356530); background: #fff; }
+.rpa-recorder-setup-footer > span { color: var(--ds-color-23383838383832); font-size: 9.5px; }
+.rpa-recorder-setup-footer > div { display: flex; gap: 8px; }
+.rpa-recorder-setup-footer button { height: 34px; padding: 0 14px; border-radius: 8px; font-size: 11px; font-weight: 620; cursor: pointer; }
+.rpa-recorder-setup-footer .secondary { border: 1px solid var(--ds-color-23643964396434); background: #fff; color: var(--ds-color-23346634663461); }
+.rpa-recorder-setup-footer .primary { border: 1px solid var(--ds-color-23323032303165); background: var(--ds-color-23323032303165); color: #fff; }
+.rpa-recorder-setup-footer .primary:hover { background: #000; }
+
+.rpa-picker-card { width: min(430px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--ds-color-23643964396434); border-radius: 16px; background: #fff; box-shadow: 0 28px 90px var(--ds-color-726762612832342c); }
+.rpa-picker-card h3 { margin: 0 0 8px; font-size: 16px; }.rpa-picker-card p { margin: 0 0 16px; color: var(--ds-color-23373737373732); font-size: 11px; }.rpa-picker-card input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--ds-color-23643964396434); border-radius: 8px; }.rpa-picker-card footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }.rpa-picker-card button { min-height: 34px; padding: 0 13px; border: 1px solid var(--ds-color-23643964396434); border-radius: 8px; background: #fff; cursor: pointer; }.rpa-picker-card button:last-child { border-color: var(--ds-color-23323032303165); background: var(--ds-color-23323032303165); color: #fff; }
+
+@media (max-width: 620px) {
+  .rpa-recorder-mode-tabs { grid-template-columns: 1fr; }
+  .rpa-recorder-setup-footer { align-items: flex-start; flex-direction: column; }
+  .rpa-recorder-setup-footer > div { width: 100%; justify-content: flex-end; }
+}
+
+.rpa-node-config-card {
+  position: fixed;
+  z-index: 1200;
+  width: 320px;
+  max-height: min(68vh, 540px);
+  overflow: hidden;
+  border: 1px solid var(--rpa-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rpa-bg-panel) 97%, transparent);
+  box-shadow: 0 20px 52px rgba(23,32,51,.2);
+  backdrop-filter: blur(14px);
+}
+.rpa-node-config-head, .rpa-panel-simple-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--rpa-border); }
+.rpa-node-config-head div, .rpa-panel-simple-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rpa-node-config-head small, .rpa-panel-simple-head small { color: var(--rpa-text-muted); font-size:  11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.rpa-node-config-head strong, .rpa-panel-simple-head strong { overflow: hidden; color: var(--rpa-text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.rpa-node-config-head button, .rpa-panel-simple-head button { width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--rpa-text-muted); cursor: pointer; font-size: 18px; }
+.rpa-node-config-head button:hover, .rpa-panel-simple-head button:hover { background: var(--rpa-bg-layout); color: var(--rpa-text-main); }
+.rpa-node-config-body { max-height: calc(min(68vh, 540px) - 58px); overflow-y: auto; padding: 14px; }
+.rpa-node-config-fields > .attr-group:first-child { margin-top: 0; }
+
+/* 右侧抽屉 / IDE Sidebar */
+.rpa-panel-container {
+  flex: 3;
+  min-width: 300px;
+  max-width: 400px;
+  border-left: 1px solid var(--rpa-border);
+  background: var(--rpa-bg-panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.rpa-panel-tabs {
+  display: flex;
+  background: var(--rpa-bg-layout);
+  border-bottom: 1px solid var(--rpa-border);
+}
+
+.rpa-panel-tab {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--rpa-text-muted);
+  border-top: 2px solid transparent;
+  background: transparent;
+  transition: all 0.2s;
+}
+
+.rpa-panel-tab.active {
+  color: var(--rpa-primary);
+  border-top-color: var(--rpa-primary);
+  background: var(--rpa-bg-panel);
+  font-weight: 600;
+}
+
+.rpa-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* ──────── 3. 运行控制与日志区 ──────── */
+.rpa-control-section {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.btn-ctrl {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: var(--rpa-radius-sm);
+  border: 1px solid transparent;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-ctrl.run { background: var(--rpa-success); color: white; }
+.btn-ctrl.run:hover { background: var(--ds-color-23303039613232); }
+.btn-ctrl.stop { background: var(--rpa-danger); color: white; }
+.btn-ctrl.stop:hover { background: var(--ds-color-23643933363336); }
+
+.rpa-log-box {
+  background: var(--ds-color-23316531653165); /* 保持黑底绿/白字以维持极客感 */
+  color: var(--ds-color-23643464346434);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 12px;
+  border-radius: var(--rpa-radius-sm);
+  height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-top: 8px;
+  border: 1px solid var(--rpa-border);
+}
+
+.log-item { margin-bottom: 4px; line-height: 1.4; word-break: break-all; }
+.log-item.info { color: var(--ds-color-23643464346434); }
+.log-item.warn { color: var(--ds-color-23643762613764); }
+.log-item.error { color: var(--ds-color-23663134633463); }
+
+.variable-tag {
+  background: var(--rpa-bg-layout);
+  padding: 4px 8px;
+  border-radius: var(--rpa-radius-sm);
+  font-size: 12px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid var(--rpa-border);
+}
+
+/* ──────── 4. 属性编辑器 (精简表单) ──────── */
+.attr-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--rpa-text-main);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rpa-border);
+}
+
+.attr-group {
+  margin-bottom: 12px;
+}
+
+.attr-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: var(--rpa-text-main);
+}
+
+.attr-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--rpa-radius-sm);
+  border: 1px solid var(--rpa-border);
+  background: transparent;
+  color: var(--rpa-text-main);
+  font-size: 12px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.attr-input:focus {
+  border-color: var(--rpa-primary);
+  box-shadow: 0 0 0 2px var(--ds-color-726762612832322c);
+}
+
+/* ──────── 5. React Flow 节点 (影刀指令块风格) ──────── */
+.rpa-node-block {
+  background: var(--rpa-bg-panel);
+  border: 1px solid var(--rpa-border);
+  border-radius: var(--rpa-radius-sm);
+  color: var(--rpa-text-main);
+  font-size: 12px;
+  min-width: 180px;
+  box-shadow: var(--rpa-shadow);
+  display: flex;
+  overflow: hidden; /* 为了让左侧边条生效 */
+  transition: all 0.2s;
+}
+
+/* 指令块被选中时的样式 */
+.rpa-node-block:hover, .rpa-node-block.selected {
+  border-color: var(--rpa-primary);
+  box-shadow: 0 4px 12px var(--ds-color-726762612832322c);
+}
+
+/* 左侧颜色状态条 */
+.rpa-node-strip {
+  width: 4px;
+  background: #cbd5e1; /* 默认灰色 */
+  flex-shrink: 0;
+}
+
+/* 按类别定义颜色带 */
+.rpa-node-block[data-kind="web"] .rpa-node-strip { background: var(--rpa-primary); }
+.rpa-node-block[data-kind="mouse"] .rpa-node-strip { background: var(--ds-color-23313363326332); }
+.rpa-node-block[data-kind="keyboard"] .rpa-node-strip { background: var(--ds-color-23373232656431); }
+.rpa-node-block[data-kind="data"] .rpa-node-strip { background: var(--ds-color-23656232663936); }
+.rpa-node-block[data-kind="control"] .rpa-node-strip { background: var(--rpa-warn); }
+.rpa-node-block[data-kind="ai"] .rpa-node-strip { background: var(--ds-color-23326635346562); }
+
+/* 节点内部内容区 */
+.rpa-node-content {
+  padding: 8px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.rpa-node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.rpa-node-icon {
+  font-size: 14px;
+}
+
+.rpa-node-desc {
+  font-size: 11px;
+  color: var(--rpa-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 执行状态的克制动画 (不再发大全屏光，而是边框变化和带脉冲) */
+.node-state-running {
+  border-color: var(--rpa-success) !important;
+}
+.node-state-running .rpa-node-strip {
+  background: var(--rpa-success) !important;
+  animation: pulseBar 1s infinite alternate;
+}
+
+.node-state-paused {
+  border-color: var(--rpa-warn) !important;
+}
+.node-state-paused .rpa-node-strip {
+  background: var(--rpa-warn) !important;
+  animation: pulseBar 1s infinite alternate;
+}
+
+.node-state-success {
+  border-color: var(--ds-color-7267626128302c31) !important;
+}
+
+.node-state-failed {
+  border-color: var(--rpa-danger) !important;
+}
+.node-state-failed .rpa-node-strip {
+  background: var(--rpa-danger) !important;
+}
+
+@keyframes pulseBar {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* AI 辅助生成栏 (修改为紧凑表单) */
+.rpa-ai-generator-wrapper {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  width: 320px;
+}
+
+.rpa-ai-input {
+  flex: 1;
+  border-radius: var(--rpa-radius-sm);
+  border: 1px solid var(--rpa-border);
+  padding: 4px 10px;
+  font-size: 12px;
+  outline: none;
+  background: var(--rpa-bg-panel);
+  color: var(--rpa-text-main);
+}
+.rpa-ai-input:focus {
+  border-color: var(--ds-color-23326635346562);
+}
+
+/* 放大 React Flow 连线控制点 */
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  background-color: #ffffff;
+  border-color: var(--rpa-primary);
+  transition: all 0.2s;
+  cursor: crosshair;
+}
+
+.react-flow__handle:hover {
+  background-color: var(--rpa-primary);
+  transform: scale(1.3);
+}
+
+/* 缩略图美化 */
+.react-flow__minimap {
+  background-color: var(--rpa-bg-panel) !important;
+  border: 1px solid var(--rpa-border) !important;
+  border-radius: var(--rpa-radius-md) !important;
+  box-shadow: var(--rpa-shadow) !important;
+  transition: all 0.2s;
+}
+
+/* 工具栏切换按钮激活状态 */
+.btn-back.active-toggle {
+  background: var(--ds-color-726762612832322c) !important;
+  border-color: var(--rpa-primary) !important;
+  color: var(--rpa-primary) !important;
+  border-style: solid !important;
+}
+
+/* ──────── 6. 右键菜单 ──────── */
+.rpa-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--rpa-bg-panel, #ffffff);
+  border: 1px solid var(--rpa-border, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 120px;
+}
+
+.rpa-context-menu-item {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s;
+}
+
+.rpa-context-menu-item:hover {
+  background-color: var(--rpa-bg-layout, #f3f4f6);
+}
+
+@keyframes pulseBadge {
+  0% { transform: scale(0.95); opacity: 0.85; }
+  100% { transform: scale(1.05); opacity: 1; }
+}
+
+/* 2026 automation console */
+.rpa-container {
+  --rpa-primary: #4f5fd7;
+  --rpa-primary-hover: #3f4fc2;
+  --rpa-browser: #5869e8;
+  --rpa-desktop: #d78a2d;
+  --rpa-success: #15947c;
+  --rpa-warn: #c7791b;
+  --rpa-danger: #d45050;
+  --rpa-bg-layout: #edf0f5;
+  --rpa-bg-panel: #fbfcfe;
+  --rpa-border: #d8dde7;
+  --rpa-text-main: #172033;
+  --rpa-text-muted: #697386;
+  font-family: "Segoe UI Variable", "Microsoft YaHei UI", sans-serif;
+}
+
+.dark .rpa-container {
+  --rpa-bg-layout: var(--ds-color-23313531393233);
+  --rpa-bg-panel: #1d2330;
+  --rpa-border: #343c4c;
+  --rpa-text-main: #eef1f7;
+  --rpa-text-muted: #9aa4b7;
+}
+
+.rpa-detail-header {
+  min-height: 58px;
+  padding: 0 18px;
+  background: color-mix(in srgb, var(--rpa-bg-panel) 94%, transparent);
+  border-bottom: 1px solid var(--rpa-border);
+  box-shadow: 0 1px 0 rgba(23, 32, 51, .03);
+}
+
+.rpa-header-left { gap: 14px; }
+
+.rpa-canvas-toolbar {
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  width: auto;
+  padding: 7px;
+  border: 1px solid var(--rpa-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--rpa-bg-panel) 95%, transparent);
+  box-shadow: 0 8px 24px rgba(23, 32, 51, .09);
+  backdrop-filter: blur(12px);
+}
+.rpa-toolbar-divider { width: 1px; height: 22px; background: var(--rpa-border); margin: 0 4px; }
+.btn-back.desktop-action { color: var(--ds-color-23613836323136); border-color: color-mix(in srgb, var(--rpa-desktop) 35%, var(--rpa-border)); }
+.btn-back.desktop-action:hover { background: color-mix(in srgb, var(--rpa-desktop) 11%, transparent); border-color: var(--rpa-desktop); }
+
+.rpa-panel-container { width: 390px; border-left: 1px solid var(--rpa-border); box-shadow: -10px 0 30px rgba(23, 32, 51, .06); }
+.rpa-panel-tabs { min-height: 46px; background: var(--rpa-bg-panel); }
+.rpa-panel-tab { padding: 0 10px; font-size: 11px; }
+.rpa-panel-tab.active { color: var(--rpa-primary); box-shadow: inset 0 -2px var(--rpa-primary); }
+
+.rpa-node-block {
+  min-width: 190px;
+  border-radius: 8px;
+  box-shadow: 0 5px 16px rgba(23, 32, 51, .08);
+}
+.rpa-node-block[data-kind="desktop"] { border-color: color-mix(in srgb, var(--rpa-desktop) 35%, var(--rpa-border)); }
+.rpa-node-block[data-kind="desktop"] .rpa-node-strip { background: var(--rpa-desktop); }
+.rpa-node-desktop:hover { border-color: var(--rpa-desktop); box-shadow: 0 7px 20px var(--ds-color-7267626128323135); }
+
+.rpa-surface-note {
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--rpa-desktop) 35%, var(--rpa-border));
+  background: color-mix(in srgb, var(--rpa-desktop) 7%, var(--rpa-bg-panel));
+  color: var(--rpa-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  border-radius: 7px;
+}
+.rpa-surface-note span { width: 3px; flex: none; border-radius:  4px; background: var(--rpa-desktop); }
+.rpa-coordinate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rpa-pick-desktop { width: 100%; justify-content: center; margin: 0 0 12px; background: var(--rpa-desktop); }
+.rpa-pick-desktop:hover { background: var(--ds-color-23626437343231); }
+
+.rpa-panel-hint { color: var(--rpa-text-muted); font-size: 11px; line-height: 1.55; }
+.rpa-credential-list { display: grid; gap: 7px; margin: 14px 0 18px; }
+.rpa-credential-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); }
+.rpa-credential-row strong { display: block; font-size: 12px; }
+.rpa-credential-row code { display: block; margin-top: 4px; color: var(--rpa-primary); font-size: 10px; }
+.rpa-credential-create { padding-top: 16px; border-top: 1px solid var(--rpa-border); }
+.rpa-credential-bindings { display: grid; gap: 6px; margin: 12px 0 16px; padding: 10px; border: 1px solid var(--rpa-border); border-radius: 9px; background: var(--rpa-bg-layout); }
+.rpa-credential-bindings > strong { margin-bottom: 2px; font-size: 11px; }
+.rpa-credential-bindings > div:not(.rpa-empty-compact) { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
+.rpa-credential-bindings code { color: var(--rpa-primary); }
+.rpa-credential-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.rpa-secret-edit { border: 0; background: transparent; color: var(--rpa-primary); font-size: 10.5px; cursor: pointer; }
+.rpa-secret-update { grid-column: 1 / -1; display: flex; gap: 7px; }
+.rpa-secret-update .attr-input { flex: 1; }
+.rpa-secret-update .btn-primary { min-height: 32px; padding: 0 12px; box-shadow: none; }
+.rpa-empty-compact { padding: 18px; text-align: center; border: 1px dashed var(--rpa-border); border-radius: 7px; color: var(--rpa-text-muted); font-size: 11px; }
+
+.rpa-log-box { background: #121722; border-radius: 7px; font-family: "Cascadia Mono", Consolas, monospace; }
+.attr-input:focus-visible, .btn-back:focus-visible, .btn-primary:focus-visible, .rpa-panel-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--rpa-primary) 60%, white); outline-offset: 2px; }
+
+@media (max-width: 1080px) {
+  .rpa-panel-container { width: 340px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rpa-container *, .rpa-container *::before, .rpa-container *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* Layout correction: keep the editor and inspector readable at app-window widths. */
+.rpa-detail-body { width: 100%; overflow: hidden; }
+.rpa-canvas-container { flex: 1 1 auto; min-width: 0; }
+.rpa-panel-container {
+  flex: 0 0 clamp(340px, 27vw, 410px);
+  width: auto;
+  min-width: 340px;
+  max-width: 410px;
+  overflow: hidden;
+}
+
+.rpa-panel-tabs {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  min-height: 48px;
+  overflow: hidden;
+}
+.rpa-panel-tabs > div:first-child {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
+.rpa-panel-tab {
+  min-width: 0;
+  height: 48px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 1;
+  font-size: 0;
+  border-top: 0;
+  border-bottom: 2px solid transparent;
+}
+.rpa-panel-tab::after { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
+.rpa-panel-tab:nth-child(1)::after { content: "运行"; }
+.rpa-panel-tab:nth-child(2)::after { content: "配置"; }
+.rpa-panel-tab:nth-child(3)::after { content: "AI"; }
+.rpa-panel-tab:nth-child(4)::after { content: "凭据"; }
+.rpa-panel-tab.active {
+  border-top-color: transparent;
+  border-bottom-color: var(--rpa-primary);
+  box-shadow: none;
+}
+.rpa-panel-tabs > button {
+  flex: 0 0 42px;
+  width: 42px;
+  padding: 0 !important;
+  border-left: 1px solid var(--rpa-border) !important;
+}
+
+.rpa-canvas-toolbar {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+@media (max-width: 900px) {
+  .rpa-panel-container { flex-basis: 320px; min-width: 320px; }
+  .rpa-detail-header { padding-inline: 10px; }
+}
+
+/* Final dark-theme pass: these recorder rules are declared late in this file,
+   so their light defaults must be overridden after them. */
+.agent-window-container.dark .rpa-container {
+  background-color: var(--ds-color-23313531393233);
+}
+
+.agent-window-container.dark .rpa-recorder-backdrop {
+  background: var(--ds-color-7267626128322c20);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-card,
+.agent-window-container.dark .rpa-picker-card {
+  border-color: var(--rpa-border);
+  background: var(--rpa-bg-panel);
+  color: var(--rpa-text-main);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .46);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head,
+.agent-window-container.dark .rpa-recorder-setup-footer {
+  border-color: var(--rpa-border);
+  background: #172033;
+}
+
+.agent-window-container.dark .rpa-recorder-kicker,
+.agent-window-container.dark .rpa-recorder-section > p,
+.agent-window-container.dark .rpa-recorder-setup-footer > span,
+.agent-window-container.dark .rpa-picker-card p {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head h3,
+.agent-window-container.dark .rpa-picker-card h3,
+.agent-window-container.dark .rpa-recorder-section > label,
+.agent-window-container.dark .rpa-recorder-field-head label {
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head > button,
+.agent-window-container.dark .rpa-recorder-field-head button {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-head > button:hover {
+  background: rgba(255, 255, 255, .07);
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, .045);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs button {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-mode-tabs button.active {
+  background: var(--ds-color-7267626128313135);
+  color: var(--ds-color-23643865376662);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .22), 0 0 0 1px var(--ds-color-7267626128313135);
+}
+
+.agent-window-container.dark .rpa-recorder-section > input,
+.agent-window-container.dark .rpa-recorder-section > select,
+.agent-window-container.dark .rpa-picker-card input,
+.agent-window-container.dark .rpa-picker-card button,
+.agent-window-container.dark .rpa-recorder-setup-footer .secondary {
+  border-color: var(--rpa-border);
+  background: rgba(255, 255, 255, .045);
+  color: var(--rpa-text-main);
+}
+
+.agent-window-container.dark .rpa-recorder-section > input::placeholder,
+.agent-window-container.dark .rpa-picker-card input::placeholder {
+  color: var(--rpa-text-muted);
+}
+
+.agent-window-container.dark .rpa-recorder-error {
+  border-color: rgba(248, 113, 113, .3);
+  background: rgba(248, 113, 113, .1);
+  color: var(--ds-color-23666563616361);
+}
+
+.agent-window-container.dark .rpa-recorder-setup-footer .primary,
+.agent-window-container.dark .rpa-picker-card button:last-child {
+  border-color: var(--ds-color-23373339666630);
+  background: #517fce;
+  color: #f8fbff;
+}

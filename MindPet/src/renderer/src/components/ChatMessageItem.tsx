@@ -1,0 +1,1691 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-function-return-type, no-useless-escape, react-refresh/only-export-components, react-hooks/set-state-in-effect, react-hooks/rules-of-hooks */
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react'
+import { setInternalClipboard } from '../hooks/useAppStore'
+import iconSvg from '../assets/icon_from_image.svg'
+import { ClarificationCard } from './ClarificationCard'
+import { PaddleOcrCredentialCard } from './PaddleOcrCredentialCard'
+import { OfficeRuntimeInstallCard } from './OfficeRuntimeInstallCard'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github-dark.css'
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Brain,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clipboard,
+  Copy,
+  Download,
+  FileText,
+  Hourglass,
+  LoaderCircle,
+  Orbit,
+  Search,
+  Volume2,
+} from 'lucide-react'
+import { normalizeSearchCitations } from '../utils/helpers'
+
+// 计算文本的 token 数（使用降级策略的估算方式：字符数 × 0.5）
+export function estimateTokens(text: string): number {
+  if (!text) return 0
+  return Math.max(1, Math.round(text.length * 0.5))
+}
+
+// 格式化 token 数显示
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return `${tokens} tokens`
+  if (tokens < 1000000) return `${(tokens / 1000).toFixed(1)}K tokens`
+  return `${(tokens / 1000000).toFixed(2)}M tokens`
+}
+
+// ── 语法高亮渲染器 ─────────────────────────────────
+function highlightCode(code: string, lang: string): string {
+  if (!code) return ''
+  const l = (lang || '').toLowerCase()
+  try {
+    if (l && hljs.getLanguage(l)) {
+      return hljs.highlight(code, { language: l }).value
+    }
+    return hljs.highlightAuto(code).value
+  } catch {
+    return escapeHtml(code)
+  }
+}
+
+// ── 复制代码块的高级代码面板组件 ─────────────────────────────────
+export function CodeBlock({ code, lang }: { code: string; lang: string }) {
+  const [copied, setCopied] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  const handleCopy = () => {
+    if (window.api && typeof window.api.copyText === 'function') {
+      window.api.copyText(code)
+    } else {
+      navigator.clipboard.writeText(code)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const htmlContent = useMemo(() => {
+    return highlightCode(code, lang)
+  }, [code, lang])
+
+  return (
+    <div
+      className="modern-code-container"
+      style={{
+        border: '1px solid var(--border-color, var(--ds-color-7267626128313238))',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        margin: '12px 0',
+        backgroundColor: 'var(--bg-card, #ffffff)',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+      }}
+    >
+      <div
+        className="code-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 16px',
+          background: 'var(--bg-card-sub, #f8fafc)',
+          borderBottom: isCollapsed ? 'none' : '1px solid var(--border-color, var(--ds-color-7267626128313238))',
+          userSelect: 'none'
+        }}
+      >
+        <span
+          className="code-lang"
+          style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'var(--text-muted, #64748b)',
+            fontFamily: 'monospace',
+            textTransform: 'lowercase'
+          }}
+        >
+          {lang || 'code'}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="code-copy-btn"
+            onClick={handleCopy}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted, #64748b)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              padding: '4px 6px',
+              borderRadius: '4px',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--text-primary, #0f172a)'
+              e.currentTarget.style.backgroundColor = 'var(--bg-menu-hover, var(--ds-color-7267626128313238))'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-muted, #64748b)'
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
+          >
+            {copied ? (
+              <>
+                <Check size={13} strokeWidth={2.5} style={{ marginRight: '4px', color: '#10b981' }} aria-hidden="true" />
+                <span style={{ color: '#10b981' }}>已复制</span>
+              </>
+            ) : (
+              <>
+                <Copy size={13} strokeWidth={2} style={{ marginRight: '4px' }} aria-hidden="true" />
+                <span>复制</span>
+              </>
+            )}
+          </button>
+
+          <div style={{ width: '1px', height: '12px', backgroundColor: 'var(--border-color, var(--ds-color-7267626128313238))' }} />
+
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted, #64748b)',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--text-primary, #0f172a)'
+              e.currentTarget.style.backgroundColor = 'var(--bg-menu-hover, var(--ds-color-7267626128313238))'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-muted, #64748b)'
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
+            title={isCollapsed ? '展开代码' : '折叠代码'}
+          >
+            <ChevronDown
+              size={13}
+              strokeWidth={2}
+              aria-hidden="true"
+              style={{
+                transition: 'transform 0.2s ease',
+                transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'
+              }}
+            />
+          </button>
+        </div>
+      </div>
+      <pre
+        className="code-body"
+        style={{
+          maxHeight: isCollapsed ? '0' : '2000px',
+          padding: isCollapsed ? '0' : '14px 16px',
+          margin: 0,
+          overflow: 'auto',
+          transition: 'all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1)',
+          background: 'var(--bg-code, #fdfdfd)',
+          borderTop: 'none'
+        }}
+      >
+        <code
+          style={{
+            fontFamily: "Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace",
+            fontSize: '12.5px',
+            lineHeight: '1.6',
+            color: 'var(--text-secondary, var(--ds-color-23333334313535))',
+            display: 'block',
+            whiteSpace: 'pre',
+            wordBreak: 'normal',
+            tabSize: 2
+          }}
+          dangerouslySetInnerHTML={{ __html: htmlContent }}
+        />
+      </pre>
+    </div>
+  )
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+
+function parseInlineMarkdown(text: string): string {
+  let html = escapeHtml(text)
+  // 1. 粗体 **text**
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+  // 2. 内联代码 `code`
+  html = html.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>')
+  // 3. 图片 ![alt](url)
+  html = html.replace(/!\[(.*?)\]\(((?:[^()]+|\([^()]*\))*)\)/g, '<img src="$2" alt="$1" class="chat-inline-image" style="max-width:100%;max-height:200px;border-radius:8px;margin:4px 0;display:block;cursor:zoom-in" onerror="this.outerHTML=\'<div class=\\\'image-error-tip\\\' style=\\\'color:var(--ds-color-23383838);font-size:12px;border:1px dashed var(--ds-color-23636363);padding:8px;border-radius:6px;margin:4px 0;display:inline-block;background-color:rgba(0,0,0,0.02)\\\'>已被删除 (\'+this.alt+\')</div>\'" />')
+  // 4. 链接 [text](url)
+  html = html.replace(/\[S(\d+)\]\(((?:[^()]+|\([^()]*\))*)\)/g, '<a href="$2" target="_blank" class="markdown-link local-link web-citation">【S$1】</a>')
+  html = html.replace(/(?<!!)\[(.*?)\]\(((?:[^()]+|\([^()]*\))*)\)/g, '<a href="$2" target="_blank" class="markdown-link local-link">$1</a>')
+  // 联网回答中的可验证来源角标（实际链接由消息底部的「来源」卡片提供）
+  html = html.replace(/\[S(\d+)\]/g, '<span class="web-citation">【S$1】</span>')
+  return html
+}
+
+function normalizeLocalFileUrl(value: string): string {
+  if (value.startsWith('file:///')) return value.replace('file:///', 'local-file:///')
+  if (/^[A-Za-z]:[/\\]/.test(value)) return `local-file:///${value.replace(/\\/g, '/')}`
+  return value
+}
+
+function localFileDisplayName(value: string): string {
+  const withoutScheme = decodeURIComponent(
+    value.replace(/^local-file:\/\/\/?/i, '').replace(/^file:\/\/\/?/i, '')
+  )
+  return withoutScheme.replace(/\\/g, '/').split('/').filter(Boolean).pop() || value
+}
+
+function localFileSystemPath(value: string): string {
+  let path = decodeURIComponent(value.trim())
+  path = path.replace(/^local-file:\/\/\/?/i, '').replace(/^file:\/\/\/?/i, '')
+  if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1)
+  return path.replace(/\//g, '\\')
+}
+
+type PreviewFileHandler = (file: { name: string; path: string; size: number }) => void
+type PreviewImageHandler = (src: string) => void
+
+function isStandaloneLocalFilePath(value: string): boolean {
+  const trimmed = value.trim()
+  return (
+    (/^[A-Za-z]:[\\/].+\.[A-Za-z0-9]{1,12}$/s.test(trimmed) ||
+      /^local-file:\/\/\/.+\.[A-Za-z0-9]{1,12}$/is.test(trimmed) ||
+      /^file:\/\/\/.+\.[A-Za-z0-9]{1,12}$/is.test(trimmed)) &&
+    !trimmed.includes('\n')
+  )
+}
+
+function LocalFileButton({
+  path,
+  onPreviewFile
+}: {
+  path: string
+  onPreviewFile?: PreviewFileHandler
+}): React.JSX.Element {
+  const normalizedPath = normalizeLocalFileUrl(path.trim())
+  const fileName = localFileDisplayName(normalizedPath)
+  const [opening, setOpening] = useState(false)
+
+  const handleOpen = async (): Promise<void> => {
+    if (opening) return
+    if (onPreviewFile) {
+      onPreviewFile({ name: fileName, path: localFileSystemPath(normalizedPath), size: 0 })
+      return
+    }
+    if (!window.api?.openLocalFile) return
+    setOpening(true)
+    try {
+      const result = await window.api.openLocalFile(normalizedPath)
+      if (result && !result.success) alert(result.error || '无法打开此文件')
+    } finally {
+      setOpening(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="chat-local-file-button"
+      title={path.trim()}
+      onClick={() => void handleOpen()}
+    >
+      <FileText size={18} strokeWidth={2} aria-hidden="true" />
+      <span>{fileName}</span>
+      <span className="chat-local-file-action">
+        {opening ? '打开中…' : onPreviewFile ? '点击预览' : '点击打开'}
+      </span>
+    </button>
+  )
+}
+
+function AudioFilePlayer({ file }: { file: any }): React.JSX.Element {
+  const path = String(file?.path || '').trim()
+  const fileName = localFileDisplayName(path)
+  const source = /^(https?:|local-file:|file:)/i.test(path)
+    ? path
+    : `local-file:///${path.replace(/\\/g, '/')}`
+
+  return (
+    <div className="chat-audio-artifact">
+      <div className="chat-audio-artifact-title" title={path}>
+        <Volume2 size={18} strokeWidth={2} aria-hidden="true" />
+        <span>{fileName}</span>
+      </div>
+      <audio controls preload="metadata" src={source} aria-label={`播放语音文件 ${fileName}`} />
+      <button
+        type="button"
+        className="chat-audio-artifact-open"
+        title="用系统播放器打开"
+        aria-label={`用系统播放器打开 ${fileName}`}
+        onClick={() => void window.api?.openLocalFile?.(path)}
+      >
+        <Download size={16} strokeWidth={2} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+function parseMarkdownToHtml(markdown: string): string {
+  if (!markdown) return ''
+  // 移除 HTML 注释（包括多行），防止被 escapeHtml 转义后作为纯文本显示
+  markdown = markdown.replace(/<!--[\s\S]*?-->/g, '')
+  // Citations use a compact [S12] form; their link targets are shown in the source card.
+  // This also normalizes malformed provider output such as [S12]()(newsDetail_forward_*).
+  markdown = normalizeSearchCitations(markdown)
+  const lines = markdown.split('\n')
+  let html = ''
+
+  let inUl = false
+  let inOl = false
+  let inTable = false
+  let inP = false
+  let pContent = ''
+
+  const closePending = () => {
+    if (inUl) {
+      html += '</ul>'
+      inUl = false
+    }
+    if (inOl) {
+      html += '</ol>'
+      inOl = false
+    }
+    if (inTable) {
+      html += '</tbody></table>'
+      inTable = false
+    }
+    if (inP) {
+      html += `<p>${pContent}</p>`
+      inP = false
+      pContent = ''
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // 1. 空行
+    if (trimmed === '') {
+      closePending()
+      continue
+    }
+
+    // 2. 分割线
+    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+      closePending()
+      html += '<hr />'
+      continue
+    }
+
+    // 3. 标题 (# Header)
+    const headerMatch = line.match(/^(#{1,6})\s+(.*)$/)
+    if (headerMatch) {
+      closePending()
+      const level = headerMatch[1].length
+      const titleContent = headerMatch[2]
+      html += `<h${level}>${parseInlineMarkdown(titleContent)}</h${level}>`
+      continue
+    }
+
+    // 4. 表格行 (| col1 | col2 |)
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const isSeparator = /^\|[\s-|-|:|.]+$/.test(trimmed)
+      if (isSeparator) {
+        continue
+      }
+
+      const cells = line
+        .split('|')
+        .map(s => s.trim())
+        .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+
+      if (!inTable) {
+        closePending()
+        inTable = true
+        html += '<table class="markdown-table"><thead><tr>'
+        html += cells.map(c => `<th>${parseInlineMarkdown(c)}</th>`).join('')
+        html += '</tr></thead><tbody>'
+      } else {
+        html += '<tr>'
+        html += cells.map(c => `<td>${parseInlineMarkdown(c)}</td>`).join('')
+        html += '</tr>'
+      }
+      continue
+    }
+
+    // 5. 无序列表 (- item)
+    const ulMatch = line.match(/^([-\*])\s+(.*)$/)
+    if (ulMatch) {
+      if (!inUl) {
+        closePending()
+        inUl = true
+        html += '<ul class="markdown-list">'
+      }
+      html += `<li>${parseInlineMarkdown(ulMatch[2])}</li>`
+      continue
+    }
+
+    // 6. 有序列表 (1. item)
+    const olMatch = line.match(/^(\d+)\.\s+(.*)$/)
+    if (olMatch) {
+      if (!inOl) {
+        closePending()
+        inOl = true
+        html += '<ol class="markdown-list">'
+      }
+      html += `<li>${parseInlineMarkdown(olMatch[2])}</li>`
+      continue
+    }
+
+    // 7. 普通文本行
+    if (inTable || inUl || inOl) {
+      closePending()
+    }
+
+    if (!inP) {
+      inP = true
+      pContent = parseInlineMarkdown(line)
+    } else {
+      pContent += '<br />' + parseInlineMarkdown(line)
+    }
+  }
+
+  closePending()
+  return html
+}
+
+// 渲染包含图片和链接的普通文本部分
+export function renderPlainOrImageText(
+  text: string,
+  keyIdxStart: { val: number },
+  onPreviewFile?: PreviewFileHandler,
+  onPreviewImage?: PreviewImageHandler
+): React.ReactNode[] {
+  const linkOrImgRegex = /(!?\[[^\]\n]*\]\((?:[^()\n]|\([^()\n]*\))*\))|((?:https?:\/\/|file:\/\/\/|local-file:\/\/)[^\s\])<>"'`*，。！？；：（）]+)|([a-zA-Z]:[\\\/](?:[^<>:"|?*\s，。！？；：、\[\]()]*[^<>:"|?*\s，。！？；：、\[\]().,!?;'"`])?)/g
+  let match
+  let lastIndex = 0
+
+  const isImageSrc = (url: string) => {
+    if (!url) return false
+    const lowerUrl = url.toLowerCase()
+    if (lowerUrl.startsWith('data:image/')) return true
+    const cleanUrl = lowerUrl.split('?')[0].split('#')[0]
+    const isCommonImageExt = cleanUrl.endsWith('.png') || cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg') || cleanUrl.endsWith('.gif') || cleanUrl.endsWith('.webp') || cleanUrl.endsWith('.bmp') || cleanUrl.endsWith('.svg') || cleanUrl.endsWith('.jfif') || cleanUrl.endsWith('.tiff')
+    if (isCommonImageExt) return true
+    if (lowerUrl.startsWith('local-file://') || lowerUrl.startsWith('wechat-file://')) {
+      if (isCommonImageExt) return true
+      if (lowerUrl.startsWith('wechat-file://')) {
+        const lastSegment = cleanUrl.split('/').pop() || ''
+        const hasKnownExt = lastSegment.includes('.') && lastSegment.split('.').pop()!.length <= 5
+        if (!hasKnownExt) return true
+      }
+    }
+    if (lowerUrl.includes('alipayobjects.com') || lowerUrl.includes('/afts/img/') || (lowerUrl.includes('original') && (lowerUrl.includes('img') || lowerUrl.includes('image') || lowerUrl.includes('chart')))) return true
+    return false
+  }
+
+  let processedText = ''
+  while ((match = linkOrImgRegex.exec(text)) !== null) {
+    processedText += text.substring(lastIndex, match.index)
+
+    if (match[1]) {
+      const mdMatch = match[1].match(/^(!?)\[(.*?)\]\(((?:[^()]+|\([^()]*\))*)\)$/)
+      if (mdMatch) {
+        const isExplicitImg = mdMatch[1] === '!'
+        const alt = mdMatch[2]
+        const rawSrc = mdMatch[3]
+        const src = normalizeLocalFileUrl(rawSrc)
+        const shouldRenderAsImg = isExplicitImg || (isImageSrc(src) && !src.startsWith('local-file://'))
+        if (shouldRenderAsImg) {
+          processedText += `![${alt}](${src})`
+        } else {
+          processedText += `[${alt}](${src})`
+        }
+      } else {
+        processedText += match[1]
+      }
+    } else if (match[2] || match[3]) {
+      const rawUrl = match[2] || match[3]
+      const src = normalizeLocalFileUrl(rawUrl)
+      const shouldRenderAsImg = isImageSrc(src) && !src.startsWith('local-file://')
+      if (shouldRenderAsImg) {
+        processedText += `![image](${src})`
+      } else {
+        processedText += `[${localFileDisplayName(rawUrl)}](${src})`
+      }
+    }
+
+    lastIndex = linkOrImgRegex.lastIndex
+  }
+
+  processedText += text.substring(lastIndex)
+
+  if (processedText.trim()) {
+    return [
+      <MarkdownText
+        key={`text-${keyIdxStart.val++}`}
+        rawText={processedText}
+        onPreviewFile={onPreviewFile}
+        onPreviewImage={onPreviewImage}
+      />
+    ]
+  }
+  return []
+}
+
+export function MarkdownText({
+  rawText,
+  onPreviewFile,
+  onPreviewImage
+}: {
+  rawText: string
+  onPreviewFile?: PreviewFileHandler
+  onPreviewImage?: PreviewImageHandler
+}): React.JSX.Element {
+  const html = React.useMemo(() => parseMarkdownToHtml(rawText), [rawText])
+
+  const handleClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest('a.local-link')
+    if (a) {
+      const href = a.getAttribute('href')
+      if (href && (href.startsWith('local-file://') || href.startsWith('wechat-file://'))) {
+        e.preventDefault()
+        if (onPreviewFile && href.startsWith('local-file://')) {
+          onPreviewFile({
+            name: localFileDisplayName(href),
+            path: localFileSystemPath(href),
+            size: 0
+          })
+          return
+        }
+        if (window.api && typeof window.api.openLocalFile === 'function') {
+          window.api.openLocalFile(href).then((res: any) => {
+            if (res && !res.success) alert(res.error || '无法打开此本地文件')
+          })
+        } else {
+          alert('当前环境不支持直接打开本地文件')
+        }
+      }
+      return
+    }
+
+    const img = (e.target as HTMLElement).closest('img.chat-inline-image')
+    if (img) {
+      const src = img.getAttribute('src')
+      if (src) onPreviewImage?.(src)
+    }
+  }
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const img = (e.target as HTMLElement).closest('img.chat-inline-image')
+    if (img) {
+      const src = img.getAttribute('src')
+      if (src && window.api && typeof window.api.showImageContextMenu === 'function') {
+        e.preventDefault()
+        e.stopPropagation()
+        window.api.showImageContextMenu(src)
+      }
+    }
+  }
+
+  return (
+    <>
+      <div
+        className="markdown-body"
+        dangerouslySetInnerHTML={{ __html: html }}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+      />
+    </>
+  )
+}
+
+export function renderAdvancedMessage(
+  text: string,
+  onPreviewFile?: PreviewFileHandler,
+  onPreviewImage?: PreviewImageHandler
+): React.ReactNode {
+  if (!text) return ''
+  const parts: React.ReactNode[] = []
+  const keyIdx = { val: 0 }
+
+  const codeRegex = /```(\w*)\n([\s\S]*?)```/g
+  let match
+  let lastIndex = 0
+
+  while ((match = codeRegex.exec(text)) !== null) {
+    const textBefore = text.substring(lastIndex, match.index)
+    if (textBefore.trim()) {
+        parts.push(...renderPlainOrImageText(textBefore, keyIdx, onPreviewFile, onPreviewImage))
+    }
+
+    const lang = match[1] || 'code'
+    const codeContent = match[2]
+    parts.push(
+      isStandaloneLocalFilePath(codeContent)
+        ? <LocalFileButton key={`file-${keyIdx.val++}`} path={codeContent} onPreviewFile={onPreviewFile} />
+        : <CodeBlock key={`code-${keyIdx.val++}`} code={codeContent} lang={lang} />
+    )
+
+    lastIndex = codeRegex.lastIndex
+  }
+
+  const textAfter = text.substring(lastIndex)
+  if (textAfter.trim()) {
+    parts.push(...renderPlainOrImageText(textAfter, keyIdx, onPreviewFile, onPreviewImage))
+  }
+
+  return parts.length > 0
+    ? <>{parts}</>
+    : <>{renderPlainOrImageText(text, keyIdx, onPreviewFile, onPreviewImage)}</>
+}
+
+// ── 可独立折叠的工具调用子组件 ─────────────────────────────────
+export function ToolCallItem({ step, isThinking, isWaiting }: { step: any; isThinking: boolean; isWaiting?: boolean }) {
+  const [isItemCollapsed, setIsItemCollapsed] = useState(true)
+
+  useEffect(() => {
+    if (!isThinking) setIsItemCollapsed(true)
+  }, [isThinking])
+
+  const displayCmd = typeof step.detail === 'object' && step.detail !== null
+    ? (step.detail.command || JSON.stringify(step.detail))
+    : String(step.detail)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+        onClick={() => setIsItemCollapsed(!isItemCollapsed)}
+        title="点击展开/收起详情"
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: isWaiting ? 'var(--ds-color-23363061356661)' : '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}>
+          {isWaiting ? (
+            <LoaderCircle size={12} strokeWidth={2.5} className="icon-spin" aria-hidden="true" />
+          ) : <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
+        </span>
+        <span>调用系统工具: {step.name}</span>
+        <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
+      </div>
+      {!isItemCollapsed && (
+        <div style={{ paddingLeft: '28px' }}>
+          <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', border: '1px solid var(--ds-color-7267626128313238)' }}>
+            {displayCmd}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 深度思考过程展示子组件 ─────────────────────────────────
+export function ToolThinkItem({ step, isThinking }: { step: any; isThinking: boolean }) {
+  const [isItemCollapsed, setIsItemCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (!isThinking) setIsItemCollapsed(true)
+  }, [isThinking])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+        onClick={() => setIsItemCollapsed(!isItemCollapsed)}
+        title="点击展开/收起思考详情"
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}>
+          <Brain size={13} strokeWidth={2} aria-hidden="true" />
+        </span>
+        <span>已深度思考</span>
+        <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
+      </div>
+      {!isItemCollapsed && (
+        <div style={{ paddingLeft: '28px' }}>
+          <div style={{ padding: '8px 12px', background: 'rgba(128,128,128,0.04)', borderLeft: '1px solid var(--ds-color-7267626128313238)', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+            {step.detail}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContextCompactionItem({ step }: { step: any }) {
+  const running = step.status === 'started'
+  const failed = step.status === 'failed'
+  const label = running
+    ? '正在自动压缩上下文'
+    : failed
+      ? '自动压缩上下文失败'
+      : '已自动压缩上下文'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: failed ? '#ef4444' : running ? 'var(--ds-color-23363061356661)' : '#10b981', backgroundColor: 'var(--bg-card)' }}>
+        {running ? <LoaderCircle size={12} strokeWidth={2.5} className="icon-spin" aria-hidden="true" /> : <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
+      </span>
+      <span>{label}</span>
+      {!running && !failed && Number.isFinite(Number(step.beforeTokens)) && Number.isFinite(Number(step.afterTokens)) && (
+        <span style={{ fontSize: '10.5px', opacity: 0.65 }}>
+          {formatTokens(Number(step.beforeTokens))} → {formatTokens(Number(step.afterTokens))}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── 可独立折叠的工具具体执行结果子组件 ─────────────────────────────────
+export function ToolResultItem({ step, isThinking }: { step: any; isThinking: boolean }) {
+  const [isItemCollapsed, setIsItemCollapsed] = useState(true)
+
+  useEffect(() => {
+    if (!isThinking) setIsItemCollapsed(true)
+  }, [isThinking])
+
+  const displayResult = typeof step.detail === 'string'
+    ? step.detail
+    : JSON.stringify(step.detail, null, 2)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+        onClick={() => setIsItemCollapsed(!isItemCollapsed)}
+        title="点击展开/收起详情"
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
+        <span>工具返回结果: {step.name}</span>
+        <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
+      </div>
+      {!isItemCollapsed && (
+        <div style={{ paddingLeft: '28px' }}>
+          <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ds-color-7267626128313238)' }}>
+            {displayResult}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 统一排版与折叠日志状态的消息项组件 ──────────────────────────────
+// 绘制召回的 SVG 拓扑图
+export function renderSvgGraph(debug: any) {
+  if (!debug) {
+    return (
+      <div style={{ textAlign: 'center', padding: '30px 20px', color: 'var(--color-text-muted, var(--ds-color-23393939))', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '8px', border: '1px dashed rgba(0,0,0,0.1)' }}>
+        <div style={{ fontSize: '24px', marginBottom: '8px' }}><Orbit size={24} strokeWidth={1.8} aria-hidden="true" /></div>
+        <div style={{ fontSize: '12px' }}>未触发避坑经验库的检索召回（如闲聊、问候等）</div>
+      </div>
+    )
+  }
+
+  const firstOrder = debug.firstOrderActive || []
+  const secondOrder = debug.secondOrderActive || []
+  const recalledFacts = (debug.allScored || []).filter((c: any, idx: number) => idx < 2 && c.score > 0.4)
+
+  if (firstOrder.length === 0 && secondOrder.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '30px 20px', color: 'var(--color-text-muted, var(--ds-color-23393939))', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '8px', border: '1px dashed rgba(0,0,0,0.1)' }}>
+        <div style={{ fontSize: '24px', marginBottom: '8px' }}><Search size={24} strokeWidth={1.8} aria-hidden="true" /></div>
+        <div style={{ fontSize: '12px' }}>当前输入未提取到匹配的图谱实体词，未触发实体联想。</div>
+      </div>
+    )
+  }
+
+  // 限制绘制数量防重叠
+  const drawFirst = firstOrder.slice(0, 3)
+  const drawSecond = secondOrder.slice(0, 3)
+
+  const w = 700
+  const h = 180
+
+  // 计算坐标
+  const centerNode = { x: 55, y: h / 2 }
+
+  const firstNodes = drawFirst.map((name: string, i: number) => ({
+    name,
+    x: 180,
+    y: drawFirst.length === 1 ? h / 2 : 30 + (i * (h - 60)) / (drawFirst.length - 1)
+  }))
+
+  const secondNodes = drawSecond.map((name: string, i: number) => ({
+    name,
+    x: 340,
+    y: drawSecond.length === 1 ? h / 2 : 30 + (i * (h - 60)) / (drawSecond.length - 1)
+  }))
+
+  const factNodes = recalledFacts.map((c: any, i: number) => ({
+    fact: c.fact.length > 25 ? c.fact.substring(0, 25) + '...' : c.fact,
+    fullFact: c.fact,
+    x: 480,
+    y: recalledFacts.length === 1 ? h / 2 : 40 + (i * (h - 80)) / (recalledFacts.length - 1)
+  }))
+
+  return (
+    <div style={{ position: 'relative', width: '100%', overflowX: 'auto', backgroundColor: 'var(--ds-color-23316531623239)', borderRadius: '10px', padding: '12px 10px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)', marginBottom: '16px' }}>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        @keyframes dash {
+          to {
+            stroke-dashoffset: -20;
+          }
+        }
+        .flowing-line {
+          stroke-dasharray: 6, 4;
+          animation: dash 1.2s linear infinite;
+        }
+        .node-glow-purple { filter: drop-shadow(0 0 6px var(--ds-color-23386235636636)); }
+        .node-glow-green { filter: drop-shadow(0 0 6px #10b981); }
+        .node-glow-blue { filter: drop-shadow(0 0 6px var(--ds-color-23336238326636)); }
+      `}} />
+      <svg width={w} height={h} style={{ display: 'block', margin: '0 auto' }}>
+        {/* 绘制连线 */}
+        {/* 中心 -> 一阶 */}
+        {firstNodes.map((fn, idx) => (
+          <line
+            key={`line-c-f-${idx}`}
+            x1={centerNode.x}
+            y1={centerNode.y}
+            x2={fn.x}
+            y2={fn.y}
+            stroke="var(--ds-color-23386235636636)"
+            strokeWidth="1.5"
+            className="flowing-line"
+            opacity="0.7"
+          />
+        ))}
+
+        {/* 一阶 -> 二阶 (全连或者配对连) */}
+        {firstNodes.flatMap((fn, fidx) =>
+          secondNodes.map((sn, sidx) => (
+            <line
+              key={`line-f-s-${fidx}-${sidx}`}
+              x1={fn.x}
+              y1={fn.y}
+              x2={sn.x}
+              y2={sn.y}
+              stroke="#10b981"
+              strokeWidth="1.2"
+              strokeDasharray="4,4"
+              opacity="0.5"
+            />
+          ))
+        )}
+
+        {/* 二阶 -> 事实 */}
+        {secondNodes.flatMap((sn, sidx) =>
+          factNodes.map((fact, fidx) => (
+            <line
+              key={`line-s-fact-${sidx}-${fidx}`}
+              x1={sn.x}
+              y1={sn.y}
+              x2={fact.x}
+              y2={fact.y}
+              stroke="var(--ds-color-23336238326636)"
+              strokeWidth="1.2"
+              className="flowing-line"
+              opacity="0.6"
+            />
+          ))
+        )}
+
+        {/* 绘制节点 */}
+        {/* 中心节点 */}
+        <circle cx={centerNode.x} cy={centerNode.y} r="18" fill="var(--ds-color-23386235636636)" className="node-glow-purple" />
+        <text x={centerNode.x} y={centerNode.y + 4} fill="#fff" fontSize="10" textAnchor="middle" fontWeight="bold">提问</text>
+
+        {/* 一阶节点 */}
+        {firstNodes.map((fn, idx) => (
+          <g key={`gn-first-${idx}`}>
+            <circle cx={fn.x} cy={fn.y} r="14" fill="#10b981" className="node-glow-green" />
+            <text x={fn.x} y={fn.y + 4} fill="#fff" fontSize="9" textAnchor="middle" fontWeight="bold">一阶</text>
+            <rect x={fn.x - 45} y={fn.y - 30} width="90" height="14" rx="3" fill="rgba(16,185,129,0.95)" />
+            <text x={fn.x} y={fn.y - 20} fill="#fff" fontSize="9" textAnchor="middle">
+              <title>{fn.name}</title>
+              {fn.name.length > 8 ? fn.name.substring(0, 7) + '..' : fn.name}
+            </text>
+          </g>
+        ))}
+
+        {/* 二阶节点 */}
+        {secondNodes.map((sn, idx) => (
+          <g key={`gn-second-${idx}`}>
+            <circle cx={sn.x} cy={sn.y} r="14" fill="var(--ds-color-23336238326636)" className="node-glow-blue" />
+            <text x={sn.x} y={sn.y + 4} fill="#fff" fontSize="9" textAnchor="middle" fontWeight="bold">二阶</text>
+            <rect x={sn.x - 45} y={sn.y - 30} width="90" height="14" rx="3" fill="rgba(59,130,246,0.95)" />
+            <text x={sn.x} y={sn.y - 20} fill="#fff" fontSize="9" textAnchor="middle">
+              <title>{sn.name}</title>
+              {sn.name.length > 8 ? sn.name.substring(0, 7) + '..' : sn.name}
+            </text>
+          </g>
+        ))}
+
+        {/* 事实卡片 */}
+        {factNodes.map((fn, idx) => (
+          <g key={`gn-fact-${idx}`}>
+            <rect x={fn.x} y={fn.y - 18} width="200" height="36" rx="6" fill="#2d2a45" stroke="var(--ds-color-23386235636636)" strokeWidth="1" className="node-glow-purple" />
+            <text x={fn.x + 8} y={fn.y - 4} fill="#10b981" fontSize="9" fontWeight="bold">[已召回避坑事实]</text>
+            <text x={fn.x + 8} y={fn.y + 10} fill="#ddd" fontSize="9">
+              <title>{fn.fullFact}</title>
+              {fn.fact}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+function translateToolName(name: string): string {
+  const map: Record<string, string> = {
+    'run_terminal_command': '运行了命令',
+    'get_system_status': '获取了系统状态',
+    'manage_cron_task': '管理了定时任务',
+    'get_location': '获取了地理位置',
+    'generate_file': '生成了文件',
+    'modify_docx_file': '修改了 Word 文档',
+    'modify_xlsx_file': '修改了 Excel 表格',
+    'read_file': '读取了文件内容',
+    'search_web': '搜索了网络',
+    'read_url_content': '获取了网页',
+    'ask_question': '提问了用户',
+    'get-current-date': '获取了当前日期',
+    'get-station-code-of-citys': '获取了车站代码',
+    'get-tickets': '查询了车票',
+    'list_dir': '列出了目录',
+    'view_file': '查看了文件',
+    'write_to_file': '写入了新文件',
+    'replace_file_content': '修改了文件',
+    'multi_replace_file_content': '批量修改了文件',
+  }
+
+  if (map[name]) return map[name]
+
+  const cleanName = name.replace(/[_-]/g, ' ')
+  if (name.startsWith('get_') || name.startsWith('get-')) {
+    return `获取了${cleanName.substring(4)}`
+  }
+  if (name.startsWith('list_') || name.startsWith('list-')) {
+    return `列出了${cleanName.substring(5)}`
+  }
+  if (name.startsWith('run_') || name.startsWith('run-')) {
+    return `运行了${cleanName.substring(4)}`
+  }
+  if (name.startsWith('search_') || name.startsWith('search-')) {
+    return `搜索了${cleanName.substring(7)}`
+  }
+
+  return `启用了工具 ${name}`
+}
+
+function combineToolSteps(toolSteps: any[], isThinking: boolean): any[] {
+  const combined: any[] = []
+
+  toolSteps.forEach((step: any) => {
+    if (step.type === 'think') {
+      combined.push({
+        id: step.id,
+        type: 'think',
+        name: step.name,
+        detail: step.detail
+      })
+    } else if (step.type === 'compaction') {
+      combined.push(step)
+    } else if (step.type === 'call') {
+      combined.push({
+        id: step.id,
+        type: 'tool',
+        name: step.name,
+        callDetail: step.detail,
+        liveDetail: step.liveDetail,
+        isWaiting: false
+      })
+    } else if (step.type === 'result') {
+      let matched = false
+      for (let i = combined.length - 1; i >= 0; i--) {
+        const item = combined[i]
+        if (item.type === 'tool' && item.name === step.name && !item.resultDetail) {
+          item.resultDetail = step.detail
+          matched = true
+          break
+        }
+      }
+      if (!matched) {
+        combined.push({
+          id: step.id,
+          type: 'tool',
+          name: step.name,
+          resultDetail: step.detail,
+          isWaiting: false
+        })
+      }
+    }
+  })
+
+  combined.forEach((item) => {
+    if (item.type === 'tool' && !item.resultDetail && isThinking) {
+      item.isWaiting = true
+    }
+  })
+
+  return combined
+}
+
+export function ToolStepItem({ step, isThinking }: { step: any; isThinking: boolean }) {
+  const [isItemCollapsed, setIsItemCollapsed] = useState(true)
+  const [isReqCollapsed, setIsReqCollapsed] = useState(true)
+
+  useEffect(() => {
+    if (!isThinking) {
+      setIsItemCollapsed(true)
+      setIsReqCollapsed(true)
+    }
+  }, [isThinking])
+
+  useEffect(() => {
+    if (isThinking && step.liveDetail) setIsItemCollapsed(false)
+  }, [isThinking, step.liveDetail])
+
+  const toolDisplayName = translateToolName(step.name || '')
+
+  const displayCmd = typeof step.callDetail === 'object' && step.callDetail !== null
+    ? (step.callDetail.command || JSON.stringify(step.callDetail, null, 2))
+    : String(step.callDetail)
+
+  const displayResult = typeof step.resultDetail === 'string'
+    ? step.resultDetail
+    : JSON.stringify(step.resultDetail, null, 2)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+        onClick={() => setIsItemCollapsed(!isItemCollapsed)}
+        title="点击展开/收起详情"
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: step.isWaiting ? 'var(--ds-color-23363061356661)' : '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}>
+          {step.isWaiting ? (
+            <LoaderCircle size={12} strokeWidth={2.5} className="icon-spin" aria-hidden="true" />
+          ) : <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
+        </span>
+        <span>调用 {toolDisplayName} 工具</span>
+        <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
+      </div>
+      {!isItemCollapsed && (
+        <div style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {step.callDetail && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, userSelect: 'none' }}
+                onClick={() => setIsReqCollapsed(!isReqCollapsed)}
+                title="点击展开/折叠参数"
+              >
+                <ArrowDownToLine size={13} strokeWidth={2} aria-hidden="true" />
+                <span>请求参数 / 命令:</span>
+                <span style={{ fontSize: ' 11px', opacity: 0.7 }}>{isReqCollapsed ? <ChevronRight size={12} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />}</span>
+              </div>
+              {!isReqCollapsed && (
+                <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', border: '1px solid var(--ds-color-7267626128313238)' }}>
+                  {displayCmd}
+                </div>
+              )}
+            </div>
+          )}
+          {step.resultDetail && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}><ArrowUpFromLine size={13} strokeWidth={2} aria-hidden="true" />返回结果:</div>
+              <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--ds-color-7267626128313238)' }}>
+                {displayResult}
+              </div>
+            </div>
+          )}
+          {step.liveDetail && !step.resultDetail && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--ds-color-23363061356661)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}><LoaderCircle size={13} strokeWidth={2} className="icon-spin" aria-hidden="true" />实时输出:</div>
+              <div style={{ padding: '8px 12px', background: 'var(--ds-color-726762612835392c)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--ds-color-726762612835392c)' }}>
+                {step.liveDetail}
+              </div>
+            </div>
+          )}
+          {step.isWaiting && (
+            <div style={{ fontSize: '11px', color: 'var(--ds-color-23363061356661)', fontStyle: 'italic', paddingLeft: '4px', display: 'flex', alignItems: 'center' }}>
+              <Hourglass size={13} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+              正在等待工具返回结果...
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface MessageItemProps {
+  msg: any
+  currentAvatarName: string
+  requestMessage?: any
+  highlightedMessageId?: number | null
+  onPreviewFile?: (file: { name: string; path: string; size: number }) => void
+  onPreviewImage?: PreviewImageHandler
+}
+
+function areMessageItemPropsEqual(previous: MessageItemProps, next: MessageItemProps): boolean {
+  if (previous.msg !== next.msg || previous.currentAvatarName !== next.currentAvatarName || previous.requestMessage !== next.requestMessage || previous.onPreviewFile !== next.onPreviewFile || previous.onPreviewImage !== next.onPreviewImage) {
+    return false
+  }
+  if (previous.highlightedMessageId === next.highlightedMessageId) return true
+  // Changing the highlighted id used to rerender every visible virtualized row.
+  // Only the previously highlighted message and the newly highlighted message need
+  // to update their CSS class.
+  const wasAffected = previous.highlightedMessageId === previous.msg.id
+  const isAffected = next.highlightedMessageId === next.msg.id
+  return !wasAffected && !isAffected
+}
+
+function getToolStepTimestamp(step: any): number | null {
+  const explicitTimestamp = Number(step?.timestamp)
+  if (Number.isFinite(explicitTimestamp) && explicitTimestamp > 0) return explicitTimestamp
+  const match = String(step?.id || '').match(/step-(\d+)-/)
+  return match ? Number(match[1]) : null
+}
+
+function buildToolTrace(msg: any, requestMessage: any): any {
+  const rawSteps = Array.isArray(msg.toolSteps) ? msg.toolSteps : []
+  const calls: any[] = []
+  const pendingByName = new Map<string, any[]>()
+  const timeline = rawSteps.map((step: any, index: number) => {
+    const timestamp = getToolStepTimestamp(step)
+    const normalized: any = {
+      sequence: step.sequence || index + 1,
+      type: step.type,
+      name: step.name || null,
+      timestamp,
+      time: timestamp ? new Date(timestamp).toISOString() : null,
+      detail: step.detail ?? null
+    }
+
+    if (step.type === 'call') {
+      const call = {
+        sequence: normalized.sequence,
+        tool: step.name || 'unknown',
+        startedAt: normalized.time,
+        arguments: step.detail ?? null,
+        result: null,
+        finishedAt: null,
+        durationMs: null
+      }
+      calls.push(call)
+      const queue = pendingByName.get(call.tool) || []
+      queue.push(call)
+      pendingByName.set(call.tool, queue)
+    } else if (step.type === 'result') {
+      const queue = pendingByName.get(step.name || 'unknown') || []
+      const call = queue.shift()
+      if (call) {
+        call.result = step.detail ?? null
+        call.finishedAt = normalized.time
+        if (timestamp && call.startedAt) call.durationMs = Math.max(0, timestamp - Date.parse(call.startedAt))
+      } else {
+        calls.push({
+          sequence: normalized.sequence,
+          tool: step.name || 'unknown',
+          startedAt: null,
+          arguments: null,
+          result: step.detail ?? null,
+          finishedAt: normalized.time,
+          durationMs: null,
+          unmatchedResult: true
+        })
+      }
+    }
+    return normalized
+  })
+
+  return {
+    request: {
+      text: requestMessage?.text || '',
+      model: requestMessage?.promptInfo?.model || null,
+      systemPrompt: requestMessage?.promptInfo?.systemPrompt || '',
+      chatMessages: requestMessage?.promptInfo?.chatMessages || [],
+      toolsDefinition: requestMessage?.promptInfo?.toolsDefinition || []
+    },
+    toolCalls: calls,
+    timeline
+  }
+}
+
+export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, currentAvatarName, requestMessage, highlightedMessageId = null, onPreviewFile, onPreviewImage }: MessageItemProps) {
+  // 处理系统提示与分割消息
+  if (msg.sender === 'system') {
+    return (
+      <div id={`msg-${msg.id}`} className="system-message-divider">
+        <span className="system-message-badge">
+          {msg.text}
+        </span>
+      </div>
+    )
+  }
+
+  // 使用 userCollapsed 状态，绝对且强制在思考状态变化时更新折叠展示
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [traceExportState, setTraceExportState] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+
+  // 缓存消息文本渲染结果，避免重渲染导致 DOM 替换丢失选区
+  const deferredStreamingText = useDeferredValue(msg.isThinking ? msg.text : null)
+  const textForRender = msg.isThinking ? deferredStreamingText : msg.text
+
+  const renderedText = useMemo(() => {
+    if (!textForRender) return null
+    let displayText = textForRender === '__WELCOME_MSG__'
+      ? `欢迎来到 agentself 终端！我是您的智能助理 ${currentAvatarName}。有什么我可以帮您的吗？`
+      : textForRender === '__SYSTEM_INIT_MSG__'
+        ? `系统：已成功加载 ${currentAvatarName} 神经网络内核 V2.1.0。内核状态 [正常]。`
+        : textForRender
+    // Resolve source IDs emitted by the model (for example [新浪新闻 S32])
+    // to the URL retained in the corresponding web_sources tool event.
+    displayText = normalizeSearchCitations(displayText)
+    const sourceById = new Map(
+      (msg.toolSteps || [])
+        .filter((step: any) => step.type === 'sources' && Array.isArray(step.detail))
+        .flatMap((step: any) => step.detail)
+        .filter((source: any) => source?.id && source?.url)
+        .map((source: any) => [source.id, source])
+    )
+    displayText = displayText.replace(/\[([^\]\n]*?\bS\d+)\](?!\()/g, (citation, label) => {
+      const sourceId = label.match(/\b(S\d+)\b/)?.[1]
+      const source = sourceId ? sourceById.get(sourceId) as any : undefined
+      return source ? `[${sourceId}](${source.url})` : citation
+    })
+    return renderAdvancedMessage(displayText, onPreviewFile, onPreviewImage)
+  }, [textForRender, currentAvatarName, msg.toolSteps, onPreviewFile, onPreviewImage])
+  const handleImageContextMenu = (e: React.MouseEvent, imgSrc: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (window.api && typeof window.api.showImageContextMenu === 'function') {
+      window.api.showImageContextMenu(imgSrc)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!msg.text && !msg.fileInfo && !msg.fileInfos) return
+    const textToCopy = msg.text === '__WELCOME_MSG__'
+      ? `欢迎来到 agentself 终端！我是您的智能助理 ${currentAvatarName}。有什么我可以帮您的吗？`
+      : msg.text === '__SYSTEM_INIT_MSG__'
+        ? `系统：已成功加载 ${currentAvatarName} 神经网络内核 V2.1.0。内核状态 [正常]。`
+        : (msg.text || '')
+    // 收集文件信息
+    const files: { name: string; path: string; content?: string }[] = []
+    if (msg.fileInfos && Array.isArray(msg.fileInfos)) {
+      for (const f of msg.fileInfos) {
+        if (f.path) files.push({ name: f.name, path: f.path, content: f.content })
+      }
+    } else if (msg.fileInfo?.path) {
+      files.push({ name: msg.fileInfo.name, path: msg.fileInfo.path, content: msg.fileInfo.content })
+    }
+    if (files.length > 0) {
+      // 存入内部剪贴板（粘贴到输入框时可作为附件 + 文本）
+      setInternalClipboard(files, textToCopy)
+      // 同时写入系统剪贴板（支持粘贴到资源管理器和文本框）
+      const filePaths = files.map(f => f.path)
+      if (window.api && typeof window.api.copyFiles === 'function') {
+        await window.api.copyFiles(filePaths, textToCopy)
+      } else {
+        if (window.api && typeof window.api.copyText === 'function') {
+          window.api.copyText(textToCopy)
+        } else {
+          navigator.clipboard.writeText(textToCopy)
+        }
+      }
+    } else {
+      // 无文件，纯文本复制
+      if (window.api && typeof window.api.copyText === 'function') {
+        window.api.copyText(textToCopy)
+      } else {
+        navigator.clipboard.writeText(textToCopy)
+      }
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleExportToolTrace = async () => {
+    if (!window.api?.exportToolTrace || traceExportState === 'saving') return
+    setTraceExportState('saving')
+    const datePart = new Date(Number(msg.id) || Date.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    try {
+      const result = await window.api.exportToolTrace({
+        defaultFileName: `mindpet-tool-trace-${datePart}.json`,
+        trace: buildToolTrace(msg, requestMessage)
+      })
+      setTraceExportState(result.success ? 'success' : result.error ? 'error' : 'idle')
+      if (result.success) setTimeout(() => setTraceExportState('idle'), 2000)
+    } catch (error) {
+      console.error('导出调用过程失败', error)
+      setTraceExportState('error')
+    }
+  }
+
+  useEffect(() => {
+    if (!msg.isThinking) {
+      setUserCollapsed(true) // 思考结束，强制收拢
+    } else {
+      setUserCollapsed(false) // 正在思考，强制展开
+    }
+  }, [msg.isThinking])
+
+  const currentCollapsed = userCollapsed !== null ? userCollapsed : !msg.isThinking
+
+  const toolSteps = msg.toolSteps || []
+  const clarificationSteps = toolSteps.filter((step: any) => step.type === 'clarification')
+  const credentialSteps = toolSteps.filter((step: any) => step.type === 'credential')
+  const officeRuntimeSteps = toolSteps.filter((step: any) => step.type === 'officeRuntime')
+  const generatedToolFiles = toolSteps
+    .filter((step: any) => step.type === 'generatedFiles' && Array.isArray(step.files))
+    .flatMap((step: any) => step.files)
+  const citedSourceIds = new Set(Array.from(String(msg.text || '').matchAll(/\bS(\d+)\b/g), match => `S${match[1]}`))
+  const webSources = Array.from(new Map(
+    toolSteps
+      .filter((step: any) => step.type === 'sources' && Array.isArray(step.detail))
+      .flatMap((step: any) => step.detail)
+      .filter((source: any) => source?.id && source?.url && citedSourceIds.has(source.id))
+      .map((source: any) => [source.id, source])
+  ).values()) as any[]
+  const toolStepsScrollRef = useRef<HTMLDivElement>(null)
+
+  // 当工具调用步骤改变时，自动将步骤框滚动到底部
+  useEffect(() => {
+    if (toolStepsScrollRef.current) {
+      toolStepsScrollRef.current.scrollTop = toolStepsScrollRef.current.scrollHeight
+    }
+  }, [toolSteps.length])
+  const hasThink = toolSteps.some((s: any) => s.type === 'think' && s.detail?.trim())
+  const shouldShowToolSteps = toolSteps.some((s: any) => s.type === 'call' || s.type === 'result' || s.type === 'compaction' || (s.type === 'think' && s.detail?.trim()))
+
+  const callSteps = toolSteps.filter((s: any) => s.type === 'call')
+  let summaryText = ''
+  if (callSteps.length > 0) {
+    const names = Array.from(new Set(callSteps.map((s: any) => translateToolName(s.name))))
+    summaryText = names.join(', ')
+  } else if (hasThink) {
+    summaryText = '已深度思考'
+  } else {
+    summaryText = '运行过程'
+  }
+
+  let timeSuffix = ''
+  if (!msg.isThinking) {
+    const timestamps = toolSteps
+      .map((s: any) => {
+        const match = String(s.id || '').match(/step-(\d+)-/)
+        return match ? parseInt(match[1], 10) : null
+      })
+      .filter((t: any) => t !== null) as number[]
+    const lastTime = timestamps.length > 0 ? Math.max(...timestamps) : msg.id
+    const durationMs = lastTime - msg.id
+    const durationSec = Math.max(1, Math.round(durationMs / 1000))
+    if (durationSec > 0) {
+      if (durationSec >= 60) {
+        const mins = Math.floor(durationSec / 60)
+        const secs = durationSec % 60
+        timeSuffix = secs > 0 ? ` ${mins}m ${secs}s` : ` ${mins}m`
+      } else {
+        timeSuffix = ` ${durationSec}s`
+      }
+    }
+  }
+
+  const headerText = `${summaryText}${timeSuffix}`
+  const collapseText = `${summaryText}`
+
+  const senderName = msg.sender === 'user' ? '我' : currentAvatarName
+  console.log('[ChatMsg] sender=', msg.sender, 'text=', (msg.text || '').slice(0, 30), 'isThinking=', msg.isThinking)
+
+  return (
+    <div id={`msg-${msg.id}`} className={`message-row ${msg.sender} ${highlightedMessageId === msg.id ? 'highlight-pulse' : ''}`}>
+      <div className="message-header-row">
+        {msg.sender !== 'user' && (
+          <span className="msg-sender-avatar">
+            <img src={iconSvg} alt="avatar" className="msg-sender-avatar-img" />
+          </span>
+        )}
+        <span className="msg-sender-name">{senderName}</span>
+        <span className="msg-send-time">{msg.time}</span>
+      </div>
+
+      <div className="message-bubble" style={{ maxWidth: msg.isThinking ? '100%' : undefined }}>
+        {msg.fileInfo && !msg.fileInfos && (() => {
+          const f = msg.fileInfo
+          const isImage = f.name && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+          return isImage ? (
+            <div className="message-file-badges" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              <img
+                src={f.path ? `local-file:///${f.path.replace(/\\/g, '/')}` : (f.objectUrl || '')}
+                alt={f.name}
+                style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px', cursor: 'zoom-in', border: '1px solid var(--color-border)' }}
+                onClick={(e) => onPreviewImage?.((e.target as HTMLImageElement).src)}
+                onContextMenu={(e) => handleImageContextMenu(e, (e.target as HTMLImageElement).src)}
+                onError={(e) => {
+                  // 最终底座：如果 local-file 协议失败，尝试 objectUrl（当环会话天生效）
+                  if (f.objectUrl) {
+                    const target = e.target as HTMLImageElement
+                    if (target.src !== f.objectUrl) {
+                      target.src = f.objectUrl
+                    }
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              className="message-file-badge"
+              style={{ marginBottom: '8px', cursor: f.path ? 'pointer' : 'default' }}
+              onClick={() => {
+                if (f.path && onPreviewFile) {
+                  onPreviewFile({ name: f.name, path: f.path, size: f.size || 0 })
+                }
+              }}
+            >
+              <span className="file-badge-icon"><FileText size={17} strokeWidth={2} aria-hidden="true" /></span>
+              <div className="file-badge-info">
+                <span className="file-badge-name" title={f.name}>{f.name}</span>
+              </div>
+            </div>
+          )
+        })()}
+
+        {msg.fileInfos && msg.fileInfos.length > 0 && (
+          <div className="message-file-badges" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            {msg.fileInfos.map((f: any, i: number) => {
+              const isImage = f.name && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+              return isImage ? (
+                <img
+                  key={i}
+                  src={f.path ? `local-file:///${f.path.replace(/\\/g, '/')}` : (f.objectUrl || '')}
+                  alt={f.name}
+                  style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px', cursor: 'zoom-in', border: '1px solid var(--color-border)' }}
+                  onClick={(e) => onPreviewImage?.((e.target as HTMLImageElement).src)}
+                  onContextMenu={(e) => handleImageContextMenu(e, (e.target as HTMLImageElement).src)}
+                  onError={(e) => {
+                    // 最终底座：如果 local-file 协议失败，尝试 objectUrl（当环会话生效）
+                    if (f.objectUrl) {
+                      const target = e.target as HTMLImageElement
+                      if (target.src !== f.objectUrl) {
+                        target.src = f.objectUrl
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <div
+                  key={i}
+                  className="message-file-badge"
+                  style={{ margin: 0, backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', cursor: f.path ? 'pointer' : 'default' }}
+                  onClick={() => {
+                    if (f.path && onPreviewFile) {
+                      onPreviewFile({ name: f.name, path: f.path, size: f.size || 0 })
+                    }
+                  }}
+                >
+                  <span className="file-badge-icon"><FileText size={17} strokeWidth={2} aria-hidden="true" /></span>
+                  <div className="file-badge-info">
+                    <span className="file-badge-name" title={f.name}>{f.name}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 工具调用流（现代内联样式） */}
+        {clarificationSteps.map((step: any) => (
+          <ClarificationCard key={step.id} step={step} />
+        ))}
+        {credentialSteps.map((step: any) => (
+          <PaddleOcrCredentialCard key={step.id} step={step} />
+        ))}
+        {officeRuntimeSteps.map((step: any) => (
+          <OfficeRuntimeInstallCard key={step.id} step={step} />
+        ))}
+        {generatedToolFiles.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            {generatedToolFiles.map((file: any) => {
+              const path = String(file?.path || '')
+              const isAudio = String(file?.mimeType || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(path)
+              return isAudio
+                ? <AudioFilePlayer key={path} file={file} />
+                : <LocalFileButton key={path} path={path} onPreviewFile={onPreviewFile} />
+            })}
+          </div>
+        )}
+
+        {shouldShowToolSteps && (
+          <div className="modern-tool-steps-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+            {currentCollapsed ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  fontSize: '12.5px',
+                  userSelect: 'none',
+                  backgroundColor: 'rgba(128, 128, 128, 0.05)',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+                onClick={() => setUserCollapsed(false)}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
+                <span style={{ flex: 1 }}>{headerText}</span>
+                <span style={{ fontSize: '10px', opacity: 0.7 }}><ChevronRight size={13} strokeWidth={2} aria-hidden="true" /></span>
+              </div>
+            ) : (
+              <>
+                {!msg.isThinking && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      fontSize: '12.5px',
+                      userSelect: 'none',
+                      backgroundColor: 'rgba(128, 128, 128, 0.05)',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      marginBottom: '4px'
+                    }}
+                    onClick={() => setUserCollapsed(true)}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
+                    <span style={{ flex: 1 }}>{collapseText}</span>
+                    <span style={{ fontSize: '10px', opacity: 0.7 }}><ChevronDown size={13} strokeWidth={2} aria-hidden="true" /></span>
+                  </div>
+                )}
+                <div
+                  ref={toolStepsScrollRef}
+                  className="tool-steps-scroll-area"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    maxHeight: '60vh',
+                    overflowY: 'auto',
+                    paddingLeft: '12px',
+                    paddingRight: '6px'
+                  }}
+                >
+                  {combineToolSteps(toolSteps, msg.isThinking).map((step: any) => {
+                    if (step.type === 'tool') {
+                      return (
+                        <ToolStepItem key={step.id} step={step} isThinking={msg.isThinking} />
+                      )
+                    } else if (step.type === 'compaction') {
+                      return <ContextCompactionItem key={step.id} step={step} />
+                    } else {
+                      return (
+                        <ToolThinkItem key={step.id} step={step} isThinking={msg.isThinking} />
+                      )
+                    }
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 思考中 Loading 跳起小点动画 */}
+        {msg.isThinking && msg.text === '' && (
+          <div className="thinking-loading-wave">
+            <span className="loading-dot"></span>
+            <span className="loading-dot"></span>
+            <span className="loading-dot"></span>
+          </div>
+        )}
+
+        {/* 最终大模型回复文本渲染 */}
+        {renderedText && (
+          <div
+            className="message-text"
+            onContextMenu={(e) => {
+              const selection = window.getSelection()
+              const selectedText = selection?.toString().trim()
+              if (selectedText && window.api?.showTextContextMenu) {
+                e.preventDefault()
+                window.api.showTextContextMenu(selectedText)
+              }
+            }}
+          >
+            {renderedText}
+          </div>
+        )}
+
+        {webSources.length > 0 && !msg.isThinking && (
+          <details style={{ marginTop: '12px', border: '1px solid var(--ds-color-726762612835392c)', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.04)', padding: '8px 12px' }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--ds-color-23323536336562)', fontSize: '12px', fontWeight: 600 }}>
+              来源 ({webSources.length})
+            </summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+              {webSources.map((source: any) => (
+                <a key={source.id} href={source.url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none', padding: '8px', borderRadius: '6px', background: 'var(--bg-card, #fff)' }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                    <span className="web-citation">{source.id}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</span>
+                  </div>
+                  {source.snippet && <div style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)', marginTop: '4px', lineHeight: 1.45 }}>{source.snippet}</div>}
+                  <div style={{ fontSize: '10px', color: 'var(--ds-color-23323536336562)', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.url}</div>
+                </a>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+
+      {(msg.text || msg.fileInfo || msg.fileInfos) && !msg.isThinking && (
+        <div className="message-action-row">
+          <button className="msg-copy-btn" onClick={handleCopy} title="复制消息内容">
+            {copied
+              ? <Check size={14} strokeWidth={2.5} aria-hidden="true" />
+              : <Clipboard size={14} strokeWidth={2} aria-hidden="true" />}
+          </button>
+          {msg.sender === 'agent' && !msg.isThinking && toolSteps.some((step: any) => step.type === 'call' || step.type === 'result') && (
+            <button
+              className="msg-export-trace-btn"
+              onClick={handleExportToolTrace}
+              disabled={traceExportState === 'saving'}
+              title="原样导出本轮模型回复的全部工具调用参数和返回结果"
+            >
+              {traceExportState === 'saving' ? '导出中…' : traceExportState === 'success' ? '已导出' : traceExportState === 'error' ? '导出失败' : <><Download size={14} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />导出调用过程</>}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}, areMessageItemPropsEqual)

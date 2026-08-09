@@ -1,0 +1,101 @@
+llm:
+  api:
+    key: <your-ark-api-key>
+    url: https://ark.cn-beijing.volces.com/api/v3/chat/completions
+  model: <your-model-id>
+
+weather:
+  api:
+    base-url: https://wttr.in/
+    lang: zh
+
+tencent:
+  map:
+    api-key: <tencent-map-api-key>
+
+baidu:
+  ai:
+    api-key: <your-baidu-ai-api-key>
+    secret-key: <your-baidu-ai-secret-key>
+  speech:
+    api:
+      key: <baidu-asr-tts-key>
+      secret: <baidu-asr-tts-secret>
+    tts:
+      speed: 5
+      pitch: 5
+      volume: 5
+      person: 0
+
+logging:
+  level:
+    root: INFO
+    com.zaxxer.hikari.pool.HikariPool: ERROR
+    com.zaxxer.hikari: ERROR
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
+  main:
+    web-application-type: servlet
+  ai:
+    openai:
+      api-key: <your-ark-api-key>
+      base-url: https://ark.cn-beijing.volces.com/api/v3
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: <your-model-id>
+          temperature: 0.8
+          # Ask OpenAI-compatible streaming providers (including Doubao) to
+          # return the final usage chunk.
+          stream-usage: true
+      connect-timeout: 30s
+      read-timeout: 120s
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 1000
+        max-interval: 5000
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mindpet
+    username: postgres
+    password: <your-postgres-password>
+    driver-class-name: org.postgresql.Driver
+
+app:
+  chart:
+    # Remote HTTP rendering only; no local Python or chart server is started.
+    api-url: https://quickchart.io/chart
+  memory:
+    redis:
+      enabled: true
+  food:
+    howtocook:
+      mcp-url: http://127.0.0.1:3000/mcp
+    delivery:
+      command: mcp-taobao-server
+  embedding:
+    # true: Ollama/BGE-M3; false: Doubao embedding
+    use-ollama: true
+    ollama:
+      endpoint: http://127.0.0.1:11434/api/embed
+      model: bge-m3
+      keep-alive: 30m
+    doubao:
+      endpoint: https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal
+      model: doubao-embedding-vision-251215
+      api-key: ${llm.api.key}
+
+reimbursement:
+  excel:
+    path: ./reimbursement_records.xlsx

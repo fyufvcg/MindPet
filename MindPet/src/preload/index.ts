@@ -1,0 +1,564 @@
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { electronAPI } from '@electron-toolkit/preload'
+
+type SessionMutation =
+  | { type: 'session-upsert'; session: any }
+  | { type: 'session-update'; sessionId: string; updates: any }
+  | { type: 'session-delete'; sessionId: string }
+  | { type: 'message-upsert'; sessionId: string; message: any; sessionTime?: string }
+  | { type: 'messages-upsert'; messages: any[] }
+  | { type: 'message-delete'; messageId: string }
+  | { type: 'refresh'; sessionId?: string }
+
+// Custom APIs for renderer
+const api = {
+  moveWindow: (dx: number, dy: number): void => {
+    ipcRenderer.send('move-window', dx, dy)
+  },
+  setWindowSize: (width: number, height: number, anchor?: 'bottom' | 'top'): void => {
+    ipcRenderer.send('set-window-size', width, height, anchor)
+  },
+  endDrag: (): void => {
+    ipcRenderer.send('end-drag')
+  },
+  startDrag: (): void => {
+    ipcRenderer.send('start-drag')
+  },
+  hoverEnter: (): void => {
+    ipcRenderer.send('hover-enter')
+  },
+  hoverLeave: (): void => {
+    ipcRenderer.send('hover-leave')
+  },
+  setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }): void => {
+    ipcRenderer.send('set-ignore-mouse-events', ignore, options)
+  },
+  openAgentWindow: (): void => {
+    ipcRenderer.send('open-agent-window')
+  },
+  hideWindow: (): void => {
+    ipcRenderer.send('hide-window')
+  },
+  openInputWindow: (): void => {
+    ipcRenderer.send('open-input-window')
+  },
+  closeInputWindow: (): void => {
+    ipcRenderer.send('close-input-window')
+  },
+  sendChatToPet: (text: string, isNewSession?: boolean, imagePath?: string): void => {
+    ipcRenderer.send('send-chat-to-pet', text, isNewSession, imagePath)
+  },
+  getSystemInfo: (): Promise<any> => ipcRenderer.invoke('api:get-system-info'),
+  getSkillsPath: (): Promise<string> => ipcRenderer.invoke('api:get-skills-path'),
+  openSkillsFolder: (): Promise<void> => ipcRenderer.invoke('api:open-skills-folder'),
+  uploadSkillPack: (): Promise<any[]> => ipcRenderer.invoke('api:upload-skill-pack'),
+  getSkillsList: (): Promise<any[]> => ipcRenderer.invoke('api:get-skills-list'),
+  deleteSkill: (name: string): Promise<any[]> => ipcRenderer.invoke('api:delete-skill', name),
+  getActiveSkillsPrompt: (enabledSkillNames: string[]): Promise<string> =>
+    ipcRenderer.invoke('api:get-active-skills-prompt', enabledSkillNames),
+  callLLM: (config: any, messages: any[], workspacePath?: string): Promise<string> =>
+    ipcRenderer.invoke('api:call-llm', config, messages, workspacePath),
+  selectFile: (): Promise<{ name: string; path: string; content: string } | null> =>
+    ipcRenderer.invoke('api:select-file'),
+  selectAttachmentFiles: (): Promise<string[]> =>
+    ipcRenderer.invoke('api:select-attachment-files'),
+  parseFileContent: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('api:parse-file-content', filePath),
+  parseFileHtml: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('api:parse-file-html', filePath),
+  readFileBase64: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke('api:read-file-base64', filePath),
+  saveClipboardImage: (dataUrl: string): Promise<{ path: string; name: string } | null> =>
+    ipcRenderer.invoke('api:save-clipboard-image', dataUrl),
+  getGeneratedFiles: (): Promise<{ name: string; path: string; size: number; time: string }[]> =>
+    ipcRenderer.invoke('api:get-generated-files'),
+  saveGeneratedFileAs: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:save-generated-file-as', filePath),
+  exportToolTrace: (payload: { defaultFileName?: string; trace: any }): Promise<{ success: boolean; filePath?: string; error?: string }> =>
+    ipcRenderer.invoke('api:export-tool-trace', payload),
+  showGeneratedFileInFolder: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:show-generated-file-in-folder', filePath),
+  deleteGeneratedFile: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:delete-generated-file', filePath),
+  onGeneratedFileUpdated: (callback: () => void): (() => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('api:generated-file-updated', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:generated-file-updated', subscription)
+    }
+  },
+  onOfficePreviewRequest: (callback: (request: any) => void): (() => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, request: any) => callback(request)
+    ipcRenderer.on('api:office-preview-request', subscription)
+    return () => ipcRenderer.removeListener('api:office-preview-request', subscription)
+  },
+  captureOfficePreviewFrame: (payload: {
+    requestId: string
+    index: number
+    total?: number
+    rect: { x: number; y: number; width: number; height: number }
+  }): Promise<{ success: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke('api:capture-office-preview-frame', payload),
+  completeOfficePreviewCapture: (payload: {
+    requestId: string
+    imagePaths?: string[]
+    truncated?: boolean
+    focusMatched?: boolean
+    pageCount?: number
+    capturedPages?: number[]
+    error?: string
+  }): void => ipcRenderer.send('api:complete-office-preview-capture', payload),
+  saveChatFile: (sessionId: string, fileName: string, arrayBuffer: ArrayBuffer): Promise<{ name: string; path: string; safeName: string }> =>
+    ipcRenderer.invoke('api:save-chat-file', sessionId, fileName, arrayBuffer),
+  updateMeetingSummary: (folderName: string, summary: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:update-meeting-summary', folderName, summary),
+  showMeetingArchive: (folderPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:show-meeting-archive', folderPath),
+  listMeetingArchives: (): Promise<any[]> => ipcRenderer.invoke('api:list-meeting-archives'),
+  getMeetingArchive: (folderName: string): Promise<any> => ipcRenderer.invoke('api:get-meeting-archive', folderName),
+  startLocalMeeting: (options?: { model?: string; deviceId?: number }): Promise<{ device: string; model: string }> =>
+    ipcRenderer.invoke('api:start-local-meeting', options),
+  getQwenAsrConfig: (): Promise<{ endpoint: string; hasToken: boolean }> =>
+    ipcRenderer.invoke('api:get-qwen-asr-config'),
+  saveQwenAsrConfig: (config: { endpoint?: string; token?: string; clearToken?: boolean }): Promise<{ endpoint: string; hasToken: boolean }> =>
+    ipcRenderer.invoke('api:save-qwen-asr-config', config),
+  listLocalMeetingDevices: (): Promise<Array<{ id: number; name: string; host: string; isDefault: boolean }>> =>
+    ipcRenderer.invoke('api:list-local-meeting-devices'),
+  startLocalMicrophoneTest: (deviceId?: number): Promise<boolean> =>
+    ipcRenderer.invoke('api:start-local-microphone-test', deviceId),
+  stopLocalMicrophoneTest: (): Promise<boolean> => ipcRenderer.invoke('api:stop-local-microphone-test'),
+  onLocalMicrophoneTestEvent: (callback: (event: any) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any): void => callback(data)
+    ipcRenderer.on('api:local-microphone-test-event', handler)
+    return (): void => { ipcRenderer.removeListener('api:local-microphone-test-event', handler) }
+  },
+  installLocalMeetingComponents: (): Promise<boolean> =>
+    ipcRenderer.invoke('api:install-local-meeting-components'),
+  pauseLocalMeeting: (): Promise<boolean> => ipcRenderer.invoke('api:pause-local-meeting'),
+  resumeLocalMeeting: (): Promise<boolean> => ipcRenderer.invoke('api:resume-local-meeting'),
+  stopLocalMeeting: (): Promise<{ audioPath: string; durationSeconds: number; transcript: string }> =>
+    ipcRenderer.invoke('api:stop-local-meeting'),
+  finalizeLocalMeeting: (audioPath: string): Promise<{ transcript: string; model: string }> =>
+    ipcRenderer.invoke('api:finalize-local-meeting', audioPath),
+  archiveLocalMeeting: (payload: { name: string; audioPath: string; transcript: string; durationSeconds: number; createdAt: string }): Promise<{ folderName: string; folderPath: string }> =>
+    ipcRenderer.invoke('api:archive-local-meeting', payload),
+  onLocalMeetingEvent: (callback: (event: any) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any): void => callback(data)
+    ipcRenderer.on('api:local-meeting-event', handler)
+    return (): void => { ipcRenderer.removeListener('api:local-meeting-event', handler) }
+  },
+  copyToChatFile: (sessionId: string, sourcePath: string): Promise<{ path: string; exists: boolean }> =>
+    ipcRenderer.invoke('api:copy-to-chat-file', sessionId, sourcePath),
+  attachFileFromPath: (filePath: string, sessionId: string): Promise<{ name: string; path: string; safeName: string; isImage: boolean; content?: string } | null> =>
+    ipcRenderer.invoke('api:attach-file-from-path', filePath, sessionId),
+  onToolEvent: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:llm-tool-event', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:llm-tool-event', subscription)
+    }
+  },
+  onAutomationProgress: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:automation-progress', subscription)
+    return () => ipcRenderer.removeListener('api:automation-progress', subscription)
+  },
+  onLlmTextDelta: (callback: (data: { content: string; sessionId?: string; messageId?: number }) => void): (() => void) => {
+    const subscription = (_event: any, data: { content: string; sessionId?: string; messageId?: number }) => callback(data)
+    ipcRenderer.on('api:llm-text-delta', subscription)
+    return () => ipcRenderer.removeListener('api:llm-text-delta', subscription)
+  },
+  onTokenUsage: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:llm-token-usage', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:llm-token-usage', subscription)
+    }
+  },
+  setStoragePath: (pathStr: string): Promise<string> => ipcRenderer.invoke('api:set-storage-path', pathStr),
+  getStoragePath: (): Promise<string> => ipcRenderer.invoke('api:get-storage-path'),
+  getToolCacheStats: (): Promise<{ fileCount: number; totalBytes: number }> => ipcRenderer.invoke('api:get-tool-cache-stats'),
+  clearToolCache: (): Promise<{ success: boolean; deletedDirectories: number }> => ipcRenderer.invoke('api:clear-tool-cache'),
+  selectDirectory: (options?: { title?: string }): Promise<string | null> =>
+    ipcRenderer.invoke('api:select-directory', options),
+  getCustomModel: (): Promise<{ customModelDir: string; customModelFile: string } | null> =>
+    ipcRenderer.invoke('api:get-custom-model'),
+  selectModelDir: (): Promise<{ customModelDir: string; customModelFile: string } | null> =>
+    ipcRenderer.invoke('api:select-model-dir'),
+  clearCustomModel: (): Promise<void> =>
+    ipcRenderer.invoke('api:clear-custom-model'),
+  getModelUrl: (): Promise<string> =>
+    ipcRenderer.invoke('api:get-model-url'),
+  getOllamaModels: (baseUrl: string): Promise<string[]> =>
+    ipcRenderer.invoke('api:get-ollama-models', baseUrl),
+  getModels: (config: any): Promise<string[]> =>
+    ipcRenderer.invoke('api:get-models', config),
+  getLocalSessions: (options?: { loadAll?: boolean; activeSessionId?: string; todayOnly?: boolean }): Promise<any[] | null> =>
+    ipcRenderer.invoke('api:get-local-sessions', options),
+  createSession: (session: any): Promise<boolean> =>
+    ipcRenderer.invoke('api:create-session', session),
+  updateSession: (sessionId: string, updates: any): Promise<boolean> =>
+    ipcRenderer.invoke('api:update-session', sessionId, updates),
+  deleteSession: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:delete-session', sessionId),
+  saveMessage: (message: any): Promise<boolean> =>
+    ipcRenderer.invoke('api:save-message', message),
+  saveMessages: (messages: any[]): Promise<boolean> =>
+    ipcRenderer.invoke('api:save-messages', messages),
+  deleteMessage: (messageId: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:delete-message', messageId),
+  onSessionsUpdated: (callback: (mutation?: SessionMutation) => void): (() => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, mutation?: SessionMutation) => callback(mutation)
+    ipcRenderer.on('api:sessions-updated', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:sessions-updated', subscription)
+    }
+  },
+  appendMemorySummary: (sessionId: string, text: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:append-memory-summary', sessionId, text),
+  writeMemoryProfile: (text: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:write-memory-profile', text),
+  purifyMemoryPipeline: (): Promise<{ success: boolean; count: number; insertCount?: number }> =>
+    ipcRenderer.invoke('api:purify-memory-pipeline'),
+  strengthenExperiences: (ids: string[]): Promise<boolean> =>
+    ipcRenderer.invoke('api:strengthen-experiences', ids),
+  getConversations: (): Promise<{ status: string; messages: any[] }> =>
+    ipcRenderer.invoke('api:get-conversations'),
+  exportMemories: (): Promise<{ status: string; text: string }> =>
+    ipcRenderer.invoke('api:export-memories'),
+  importMemories: (text: string): Promise<{ status: string; imported: number }> =>
+    ipcRenderer.invoke('api:import-memories', text),
+  // 记忆管理 API
+  fetchMemories: (query?: string): Promise<any> =>
+    ipcRenderer.invoke('api:fetch-memories', query),
+  deleteMemory: (id: string): Promise<any> =>
+    ipcRenderer.invoke('api:delete-memory', id),
+  fetchConversations: (): Promise<any> =>
+    ipcRenderer.invoke('api:fetch-conversations'),
+  purifyMemories: (): Promise<any> =>
+    ipcRenderer.invoke('api:purify-memories'),
+  exportMemoriesText: (): Promise<any> =>
+    ipcRenderer.invoke('api:export-memories-text'),
+  importMemoriesText: (text: string): Promise<any> =>
+    ipcRenderer.invoke('api:import-memories-text', text),
+  // 四表管理
+  memoryTables: (): Promise<{ status: string; tables: Record<string, number> }> =>
+    ipcRenderer.invoke('api:memory-tables'),
+  memoryTableList: (table: string, page?: number, limit?: number, search?: string): Promise<{ status: string; table: string; rows: any[]; count: number; total: number; page: number; limit: number; totalPages: number; message?: string }> =>
+    ipcRenderer.invoke('api:memory-table-list', table, page, limit, search),
+  memoryTableDelete: (table: string, id: string): Promise<{ status: string; deleted: number }> =>
+    ipcRenderer.invoke('api:memory-table-delete', table, id),
+  memoryTableCreate: (table: string, data: Record<string, string>): Promise<{ status: string; message?: string }> =>
+    ipcRenderer.invoke('api:memory-table-create', table, data),
+  memoryTableUpdate: (table: string, id: string, data: Record<string, string>): Promise<{ status: string; updated: number }> =>
+    ipcRenderer.invoke('api:memory-table-update', table, id, data),
+  memoryStats: (): Promise<{ status: string; longTermCount: number }> =>
+    ipcRenderer.invoke('api:memory-stats'),
+  getKnowledgeGraph: (query?: string, limit?: number): Promise<any> =>
+    ipcRenderer.invoke('api:get-knowledge-graph', query, limit),
+  getKnowledgeGraphEvidence: (entityId: string, limit?: number): Promise<any> =>
+    ipcRenderer.invoke('api:get-knowledge-graph-evidence', entityId, limit),
+  deleteKnowledgeGraphEntity: (entityId: string): Promise<{ status: string; deleted: boolean }> =>
+    ipcRenderer.invoke('api:delete-knowledge-graph-entity', entityId),
+  rebuildKnowledgeGraph: (sessionLimit?: number): Promise<{ status: string; scheduled: number }> =>
+    ipcRenderer.invoke('api:rebuild-knowledge-graph', sessionLimit),
+  getActiveMcpServers: (): Promise<any[]> =>
+    ipcRenderer.invoke('api:get-active-mcp-servers'),
+  getPaddleOcrTokenStatus: (): Promise<{ configured: boolean }> =>
+    ipcRenderer.invoke('api:get-paddleocr-token-status'),
+  setPaddleOcrToken: (token: string): Promise<{ configured: boolean }> =>
+    ipcRenderer.invoke('api:set-paddleocr-token', token),
+  clearPaddleOcrToken: (): Promise<{ configured: boolean }> =>
+    ipcRenderer.invoke('api:clear-paddleocr-token'),
+  getAvatarsList: (): Promise<any[]> =>
+    ipcRenderer.invoke('api:get-avatars-list'),
+  saveAvatarConfig: (params: { id: string; name: string; languageStyle: string; voice?: string; scale?: number; xOffset?: number; yOffset?: number }): Promise<boolean> =>
+    ipcRenderer.invoke('api:save-avatar-config', params),
+  synthesizeTts: (text: string, voice: string): Promise<ArrayBuffer | null> =>
+    ipcRenderer.invoke('api:synthesize-tts', { text, voice }),
+  playTtsAudio: (audioBuffer: ArrayBuffer): Promise<boolean> =>
+    ipcRenderer.invoke('api:play-tts-audio', audioBuffer),
+  onPlayTtsAudio: (callback: (audioBuffer: ArrayBuffer) => void): (() => void) => {
+    const subscription = (_event: any, audioBuffer: ArrayBuffer) => callback(audioBuffer)
+    ipcRenderer.on('play-tts-audio', subscription)
+    return () => {
+      ipcRenderer.removeListener('play-tts-audio', subscription)
+    }
+  },
+  switchAvatar: (params: { dir: string; configFile: string }): Promise<any> =>
+    ipcRenderer.invoke('api:switch-avatar', params),
+  deleteAvatar: (dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:delete-avatar', dirPath),
+  getSandboxMode: (): Promise<boolean> =>
+    ipcRenderer.invoke('api:get-sandbox-mode'),
+  setSandboxMode: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('api:set-sandbox-mode', enabled),
+  onRequestPermission: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:request-permission', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:request-permission', subscription)
+    }
+  },
+  respondPermission: (requestId: number, approved: boolean, scope: 'once' | 'turn' = 'once'): void => {
+    ipcRenderer.send('api:permission-response', { requestId, approved, scope })
+  },
+  respondClarification: (requestId: number, answers: Record<string, string>, cancelled = false): void => {
+    ipcRenderer.send('api:clarification-response', { requestId, answers, cancelled })
+  },
+  respondCredential: (requestId: number, token: string, cancelled = false): void => {
+    ipcRenderer.send('api:credential-response', { requestId, token, cancelled })
+  },
+  respondOfficeRuntimeInstall: (requestId: number, approved: boolean): void => {
+    ipcRenderer.send('api:office-runtime-response', { requestId, approved })
+  },
+  abortLlm: (sessionId?: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:abort-llm', sessionId),
+  getCronTasks: (): Promise<any[] | null> =>
+    ipcRenderer.invoke('api:get-cron-tasks'),
+  saveCronTasks: (tasks: any[]): Promise<boolean> =>
+    ipcRenderer.invoke('api:save-cron-tasks', tasks),
+  onCronUpdated: (callback: () => void): (() => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('api:cron-updated', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:cron-updated', subscription)
+    }
+  },
+  showNotification: (title: string, body: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:show-notification', title, body),
+  onShowBubble: (callback: (text: string, details?: string, taskId?: string, logId?: string) => void): (() => void) => {
+    const subscription = (_event: any, text: string, details?: string, taskId?: string, logId?: string) =>
+      callback(text, details, taskId, logId)
+    ipcRenderer.on('api:show-bubble', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:show-bubble', subscription)
+    }
+  },
+  showBubble: (text: string, details?: string, taskId?: string, logId?: string): void => {
+    ipcRenderer.send('api:trigger-bubble', text, details, taskId, logId)
+  },
+  openCronLogDetails: (taskId: string, logId: string): void => {
+    ipcRenderer.send('api:request-open-cron-log-details', taskId, logId)
+  },
+  onOpenCronLogDetails: (callback: (taskId: string, logId: string) => void): (() => void) => {
+    const subscription = (_event: any, taskId: string, logId: string) => callback(taskId, logId)
+    ipcRenderer.on('api:open-cron-log-details', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:open-cron-log-details', subscription)
+    }
+  },
+  wechatStartLogin: (): Promise<boolean> => ipcRenderer.invoke('api:wechat-start-login'),
+  wechatLogout: (): Promise<boolean> => ipcRenderer.invoke('api:wechat-logout'),
+  wechatGetStatus: (): Promise<any> => ipcRenderer.invoke('api:wechat-get-status'),
+  wechatSaveSettings: (settings: any): Promise<boolean> => ipcRenderer.invoke('api:wechat-save-settings', settings),
+  qqStartQrLogin: (): Promise<boolean> => ipcRenderer.invoke('api:qq-start-qr-login'),
+  qqConnectManual: (credentials: { appId: string; appSecret: string }): Promise<boolean> =>
+    ipcRenderer.invoke('api:qq-connect-manual', credentials),
+  qqReconnect: (): Promise<boolean> => ipcRenderer.invoke('api:qq-reconnect'),
+  qqDisconnect: (): Promise<boolean> => ipcRenderer.invoke('api:qq-disconnect'),
+  qqForgetCredentials: (): Promise<boolean> => ipcRenderer.invoke('api:qq-forget-credentials'),
+  qqGetStatus: (): Promise<any> => ipcRenderer.invoke('api:qq-get-status'),
+  getSystemLlmConfig: (): Promise<any> => ipcRenderer.invoke('api:get-system-llm-config'),
+  syncLlmConfig: (config: any): Promise<any> => ipcRenderer.invoke('api:sync-llm-config', config),
+  onWechatStatusUpdated: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:wechat-status-updated', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:wechat-status-updated', subscription)
+    }
+  },
+  onQqStatusUpdated: (callback: (data: any) => void): (() => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    ipcRenderer.on('api:qq-status-updated', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:qq-status-updated', subscription)
+    }
+  },
+  onWechatSessionUpdated: (callback: (sessionId?: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId?: string): void => callback(sessionId)
+    ipcRenderer.on('api:wechat-session-updated', handler)
+    return (): void => { ipcRenderer.removeListener('api:wechat-session-updated', handler) }
+  },
+  syncMcpConfig: (config: any): Promise<any> => ipcRenderer.invoke('api:sync-mcp-config', config),
+  testMcpServer: (config: any): Promise<any> => ipcRenderer.invoke('api:test-mcp-server', config),
+  getMcpConfig: (): Promise<any> => ipcRenderer.invoke('api:get-mcp-config'),
+  onRequestGeolocation: (callback: (data: { requestId: number }) => void): (() => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:request-geolocation', subscription)
+    return () => {
+      ipcRenderer.removeListener('api:request-geolocation', subscription)
+    }
+  },
+  respondGeolocation: (requestId: number, location: any, error?: string): void => {
+    ipcRenderer.send('api:geolocation-response', { requestId, location, error })
+  },
+  copyText: (text: string): void => {
+    ipcRenderer.send('api:copy-text', text)
+  },
+  copyImage: (imageUrl: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('api:copy-image', imageUrl),
+  copyFiles: (filePaths: string[], text?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('api:copy-files', { filePaths, text }),
+  readClipboardFiles: (): Promise<{ type: 'files'; paths: string[] } | { type: 'image'; path: string; name: string } | null> =>
+    ipcRenderer.invoke('api:read-clipboard-files'),
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  showImageContextMenu: (imageUrl: string): void => {
+    ipcRenderer.send('api:show-image-context-menu', imageUrl)
+  },
+  showTextContextMenu: (selectedText: string): void => {
+    ipcRenderer.send('api:show-text-context-menu', selectedText)
+  },
+  showPetContextMenu: (): void => {
+    ipcRenderer.send('api:show-pet-context-menu')
+  },
+  sendPetReplyToInput: (responseText: string): void => {
+    ipcRenderer.send('api:send-pet-reply-to-input', responseText)
+  },
+  onPetReplyResponse: (callback: (responseText: string) => void): (() => void) => {
+    const handler = (_event: any, text: string) => callback(text)
+    ipcRenderer.on('pet-reply-response', handler)
+    return () => {
+      ipcRenderer.removeListener('pet-reply-response', handler)
+    }
+  },
+  // 从快捷输入框向完整对话窗口传递待发送的文本（如粘贴文件后跳转）
+  // 使用 localStorage 传递大数据（base64 图片可达数 MB），IPC 仅做轻量通知
+  sendPendingInput: (text: string): void => {
+    localStorage.setItem('mindpet_pending_input', text)
+    ipcRenderer.send('api:send-pending-input')
+  },
+  onPendingInput: (callback: (text: string) => void): (() => void) => {
+    const handler = () => {
+      const text = localStorage.getItem('mindpet_pending_input') || ''
+      if (text) {
+        localStorage.removeItem('mindpet_pending_input')
+        callback(text)
+      }
+    }
+    ipcRenderer.on('pending-input', handler)
+    return () => {
+      ipcRenderer.removeListener('pending-input', handler)
+    }
+  },
+  getPendingInput: (): Promise<string> => {
+    return new Promise((resolve) => {
+      const text = localStorage.getItem('mindpet_pending_input') || ''
+      if (text) {
+        localStorage.removeItem('mindpet_pending_input')
+        resolve(text)
+      } else {
+        resolve('')
+      }
+    })
+  },
+  startScreenshot: (): void => {
+    ipcRenderer.send('api:start-screenshot')
+  },
+  getScreenshotByDisplayId: (displayId: string): Promise<string> =>
+    ipcRenderer.invoke('api:get-screenshot-by-display-id', displayId),
+  cancelScreenshot: (): void => {
+    ipcRenderer.send('api:cancel-screenshot')
+  },
+  completeScreenshot: (croppedBase64: string, bounds: { x: number; y: number; width: number; height: number }): void => {
+    ipcRenderer.send('api:complete-screenshot', croppedBase64, bounds)
+  },
+  onSetScreenshotImage: (callback: (data: { path: string; base64: string; width: number; height: number }) => void): (() => void) => {
+    const handler = (_event: any, data: { path: string; base64: string; width: number; height: number }) => callback(data)
+    ipcRenderer.on('api:set-screenshot-image', handler)
+    return () => {
+      ipcRenderer.removeListener('api:set-screenshot-image', handler)
+    }
+  },
+  openLocalFile: (url: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('api:open-local-file', url),
+  minimizeAgentWindow: (): void => {
+    ipcRenderer.send('minimize-agent-window')
+  },
+  maximizeAgentWindow: (): void => {
+    ipcRenderer.send('maximize-agent-window')
+  },
+  closeAgentWindow: (): void => {
+    ipcRenderer.send('close-agent-window')
+  },
+  isAgentWindowMaximized: (): Promise<boolean> =>
+    ipcRenderer.invoke('api:is-agent-window-maximized'),
+  ensureWechatSession: (sessionId: string, nickname: string): Promise<boolean> =>
+    ipcRenderer.invoke('api:ensure-wechat-session', sessionId, nickname),
+
+  // 工具管理 API
+  getToolsSummary: (): Promise<string> =>
+    ipcRenderer.invoke('api:get-tools-summary'),
+  getToolDocumentation: (toolName: string): Promise<string> =>
+    ipcRenderer.invoke('api:get-tool-documentation', toolName),
+  getAllToolsInfo: (): Promise<any> =>
+    ipcRenderer.invoke('api:get-all-tools-info'),
+  reloadTools: (): Promise<{ success: boolean; count?: number; error?: string }> =>
+    ipcRenderer.invoke('api:reload-tools'),
+  testSshConnection: (config: any): Promise<{ success: boolean; message?: string }> =>
+    ipcRenderer.invoke('api:test-ssh-connection', config),
+  connectSsh: (sessionId: string, config: any): Promise<{ success: boolean; message?: string }> =>
+    ipcRenderer.invoke('api:connect-ssh', sessionId, config),
+  disconnectSsh: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke('api:disconnect-ssh', sessionId),
+  getSshStatus: (sessionId: string): Promise<{ connected: boolean; host?: string; username?: string }> =>
+    ipcRenderer.invoke('api:get-ssh-status', sessionId),
+  setExecutionDevice: (sessionId: string, type: 'local' | 'ssh'): Promise<void> =>
+    ipcRenderer.invoke('api:set-execution-device', sessionId, type),
+  getExecutionDevice: (sessionId: string): Promise<'local' | 'ssh'> =>
+    ipcRenderer.invoke('api:get-execution-device', sessionId),
+
+  // RPA 任务可视化 API
+  getRpaManifest: (): Promise<any[]> => ipcRenderer.invoke('api:get-rpa-manifest'),
+  saveRpaManifest: (manifest: any[]): Promise<boolean> => ipcRenderer.invoke('api:save-rpa-manifest', manifest),
+  getRpaTaskFlow: (taskId: string): Promise<any> => ipcRenderer.invoke('api:get-rpa-task-flow', taskId),
+  saveRpaTaskFlow: (taskId: string, flowData: any): Promise<boolean> => ipcRenderer.invoke('api:save-rpa-task-flow', taskId, flowData),
+  runRpaTask: (taskId: string, flowData: any): Promise<boolean> => ipcRenderer.invoke('api:run-rpa-task', taskId, flowData),
+  pauseRpaTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('api:pause-rpa-task', taskId),
+  resumeRpaTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('api:resume-rpa-task', taskId),
+  stopRpaTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('api:stop-rpa-task', taskId),
+  respondRpaManualConfirm: (taskId: string, updates?: any): Promise<boolean> => ipcRenderer.invoke('api:respond-rpa-manual-confirm', taskId, updates),
+  onRpaLog: (callback: (data: { taskId: string; message: string; level: 'info' | 'warn' | 'error' }) => void): (() => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:rpa-log', handler)
+    return () => { ipcRenderer.removeListener('api:rpa-log', handler) }
+  },
+  onRpaStatusEvent: (callback: (data: { taskId: string; status: 'idle' | 'running' | 'paused' | 'success' | 'failed'; errorMsg?: string }) => void): (() => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:rpa-status-event', handler)
+    return () => { ipcRenderer.removeListener('api:rpa-status-event', handler) }
+  },
+  onRpaStepEvent: (callback: (data: { taskId: string; nodeId: string; state: 'idle' | 'running' | 'paused' | 'success' | 'failed'; data?: any; context?: any }) => void): (() => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('api:rpa-step-event', handler)
+    return () => { ipcRenderer.removeListener('api:rpa-step-event', handler) }
+  },
+  rpaPickElement: (url: string): Promise<string | null> => ipcRenderer.invoke('api:rpa-pick-element', url),
+  listRpaDesktopWindows: (): Promise<Array<{ processId: number; processName: string; windowTitle: string }>> => ipcRenderer.invoke('api:list-rpa-desktop-windows'),
+  completeRpaRecordingProcessing: (): Promise<boolean> => ipcRenderer.invoke('api:complete-rpa-recording-processing'),
+  rpaRecordActions: (input: string | { url?: string; mode?: 'browser' | 'desktop'; desktopTarget?: { processId: number; processName?: string; windowTitle?: string } }): Promise<any[]> => ipcRenderer.invoke('api:rpa-record-actions', input),
+  normalizeRpaRecordedActions: (actions: any[]): Promise<any[]> => ipcRenderer.invoke('api:normalize-rpa-recorded-actions', actions),
+  listRpaSecrets: (): Promise<any[]> => ipcRenderer.invoke('api:list-rpa-secrets'),
+  createRpaSecret: (input: any): Promise<any> => ipcRenderer.invoke('api:create-rpa-secret', input),
+  rotateRpaSecret: (ref: string, plaintext: string): Promise<any> => ipcRenderer.invoke('api:rotate-rpa-secret', ref, plaintext),
+  setRpaSecretStatus: (ref: string, status: 'active' | 'disabled'): Promise<any> => ipcRenderer.invoke('api:set-rpa-secret-status', ref, status),
+  deleteRpaSecret: (ref: string): Promise<boolean> => ipcRenderer.invoke('api:delete-rpa-secret', ref),
+  captureRpaDesktopTarget: (delayMs = 1500): Promise<any> => ipcRenderer.invoke('api:capture-rpa-desktop-target', delayMs)
+}
+
+// Use `contextBridge` APIs to expose Electron APIs to
+// renderer only if context isolation is enabled, otherwise
+// just add to the DOM global.
+if (process.contextIsolated) {
+  try {
+    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('api', api)
+  } catch (error) {
+    console.error(error)
+  }
+} else {
+  // @ts-ignore (define in dts)
+  window.electron = electronAPI
+  // @ts-ignore (define in dts)
+  window.api = api
+}

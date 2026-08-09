@@ -1,0 +1,349 @@
+:root {
+  --ds-color-23303039613232: #009a22;
+  --ds-color-23303539363639: #059669;
+  --ds-color-23303662366434: #06b6d4;
+  --ds-color-23306430653134: #0d0e14;
+  --ds-color-23313239366462: #1296db;
+  --ds-color-23313363326332: #13c2c2;
+  --ds-color-23313531393233: #151923;
+  --ds-color-23313631383232: #161822;
+  --ds-color-23313631623232: #161b22;
+  --ds-color-23313637376432: #1677d2;
+  --ds-color-23313661333461: #16a34a;
+  --ds-color-23313734623738: #174b78;
+  --ds-color-23313838643739: #188d79;
+  --ds-color-23316433353533: #1d3553;
+  --ds-color-23316433383562: #1d385b;
+  --ds-color-23316434656438: #1d4ed8;
+  --ds-color-23316531623239: #1e1b29;
+  --ds-color-23316531653165: #1e1e1e;
+  --ds-color-23316531653234: #1e1e24;
+  --ds-color-23316532393362: #1e293b;
+  --ds-color-23316533613861: #1e3a8a;
+  --ds-color-23316632393337: #1f2937;
+  --ds-color-23316639643638: #1f9d68;
+  --ds-color-23323032303165: #20201e;
+  --ds-color-23323161383735: #21a875;
+  --ds-color-23323261303662: #22a06b;
+  --ds-color-23323263353565: #22c55e;
+  --ds-color-23323432393266: #24292f;
+  --ds-color-23323435643965: #245d9e;
+  --ds-color-23323436666432: #246fd2;
+  --ds-color-23323532353233: #252523;
+  --ds-color-23323536336238: #2563b8;
+  --ds-color-23323536336562: #2563eb;
+  --ds-color-23323633373530: #263750;
+  --ds-color-23323633383465: #26384e;
+  --ds-color-23323637366463: #2676dc;
+  --ds-color-23323836386164: #2868ad;
+  --ds-color-23323934613733: #294a73;
+  --ds-color-23326237336431: #2b73d1;
+  --ds-color-23326333653530: #2c3e50;
+  --ds-color-23326336346539: #2c64e9;
+  --ds-color-23326436376562: #2d67eb;
+  --ds-color-23326562363965: #2eb69e;
+  --ds-color-23326635346562: #2f54eb;
+  --ds-color-23333033363364: #30363d;
+  --ds-color-23333333: #333;
+  --ds-color-23333334313535: #334155;
+  --ds-color-23333463356161: #34c5aa;
+  --ds-color-23333464333939: #34d399;
+  --ds-color-23333536666361: #356fca;
+  --ds-color-23333734313531: #374151;
+  --ds-color-23333862646638: #38bdf8;
+  --ds-color-23333937333966: #39739f;
+  --ds-color-23333937366433: #3976d3;
+  --ds-color-23333937626332: #397bc2;
+  --ds-color-23333937666365: #397fce;
+  --ds-color-23336238326636: #3b82f6;
+  --ds-color-23343136313766: #41617f;
+  --ds-color-23343735353639: #475569;
+  --ds-color-23343936353834: #496584;
+  --ds-color-23346235353633: #4b5563;
+  --ds-color-23346239316466: #4b91df;
+  --ds-color-23346337646563: #4c7dec;
+  --ds-color-23346438336661: #4d83fa;
+  --ds-color-23346439316466: #4d91df;
+  --ds-color-23346534653439: #4e4e49;
+  --ds-color-23346634366535: #4f46e5;
+  --ds-color-23346634663461: #4f4f4a;
+  --ds-color-23346638636666: #4f8cff;
+  --ds-color-23346638666463: #4f8fdc;
+  --ds-color-23353539396535: #5599e5;
+  --ds-color-23353638306234: #5680b4;
+  --ds-color-23353837313861: #58718a;
+  --ds-color-23356138636666: #5a8cff;
+  --ds-color-23356439626561: #5d9bea;
+  --ds-color-23356539656561: #5e9eea;
+  --ds-color-23363061356661: #60a5fa;
+  --ds-color-23363336366631: #6366f1;
+  --ds-color-23363437383932: #647892;
+  --ds-color-23363438303966: #64809f;
+  --ds-color-23363636: #666;
+  --ds-color-23363861386634: #68a8f4;
+  --ds-color-23363863396134: #68c9a4;
+  --ds-color-23363936393633: #696963;
+  --ds-color-23366237323830: #6b7280;
+  --ds-color-23366238646339: #6b8dc9;
+  --ds-color-23366461386562: #6da8eb;
+  --ds-color-23373232656431: #722ed1;
+  --ds-color-23373262396532: #72b9e2;
+  --ds-color-23373339666630: #739ff0;
+  --ds-color-23373539306164: #7590ad;
+  --ds-color-23373661386533: #76a8e3;
+  --ds-color-23373737: #777;
+  --ds-color-23373737373732: #777772;
+  --ds-color-23373833353066: #78350f;
+  --ds-color-23373838363961: #78869a;
+  --ds-color-23373861626539: #78abe9;
+  --ds-color-23373861626562: #78abeb;
+  --ds-color-23376137613734: #7a7a74;
+  --ds-color-23376238613965: #7b8a9e;
+  --ds-color-23376333616564: #7c3aed;
+  --ds-color-23376639626330: #7f9bc0;
+  --ds-color-23376662306565: #7fb0ee;
+  --ds-color-23383039306134: #8090a4;
+  --ds-color-23383261616666: #82aaff;
+  --ds-color-23383439316133: #8491a3;
+  --ds-color-23383539336135: #8593a5;
+  --ds-color-23383838: #888;
+  --ds-color-23383838383832: #888882;
+  --ds-color-23386235636636: #8b5cf6;
+  --ds-color-23386238623835: #8b8b85;
+  --ds-color-23386239343965: #8b949e;
+  --ds-color-23386262316666: #8bb1ff;
+  --ds-color-23386461386338: #8da8c8;
+  --ds-color-23393461336238: #94a3b8;
+  --ds-color-23393462666666: #94bfff;
+  --ds-color-23393939: #999;
+  --ds-color-23396162326366: #9ab2cf;
+  --ds-color-23396662306334: #9fb0c4;
+  --ds-color-23396663376566: #9fc7ef;
+  --ds-color-23613836323136: #a86216;
+  --ds-color-23613863396631: #a8c9f1;
+  --ds-color-23613933363361: #a9363a;
+  --ds-color-23613962646436: #a9bdd6;
+  --ds-color-23613963396566: #a9c9ef;
+  --ds-color-23616161: #aaa;
+  --ds-color-23616562666434: #aebfd4;
+  --ds-color-23623432333138: #b42318;
+  --ds-color-23623435333039: #b45309;
+  --ds-color-23623964366637: #b9d6f7;
+  --ds-color-23626437343231: #bd7421;
+  --ds-color-23626664386634: #bfd8f4;
+  --ds-color-23626664626665: #bfdbfe;
+  --ds-color-23633164636661: #c1dcfa;
+  --ds-color-23633234313431: #c24141;
+  --ds-color-23633564636637: #c5dcf7;
+  --ds-color-23633934663630: #c94f60;
+  --ds-color-23633964316439: #c9d1d9;
+  --ds-color-23633964666636: #c9dff6;
+  --ds-color-23636264636632: #cbdcf2;
+  --ds-color-23636363: #ccc;
+  --ds-color-23636665316637: #cfe1f7;
+  --ds-color-23643265346666: #d2e4ff;
+  --ds-color-23643464346434: #d4d4d4;
+  --ds-color-23643465366661: #d4e6fa;
+  --ds-color-23643762613764: #d7ba7d;
+  --ds-color-23643765386661: #d7e8fa;
+  --ds-color-23643765386666: #d7e8ff;
+  --ds-color-23643864386433: #d8d8d3;
+  --ds-color-23643865376662: #d8e7fb;
+  --ds-color-23643933363336: #d93636;
+  --ds-color-23643936623738: #d96b78;
+  --ds-color-23643937373036: #d97706;
+  --ds-color-23643964396434: #d9d9d4;
+  --ds-color-23646265616665: #dbeafe;
+  --ds-color-23646332363236: #dc2626;
+  --ds-color-23646365616661: #dceafa;
+  --ds-color-23646365636666: #dcecff;
+  --ds-color-23646664666461: #dfdfda;
+  --ds-color-23653035333363: #e0533c;
+  --ds-color-23653065306530: #e0e0e0;
+  --ds-color-23653234643464: #e24d4d;
+  --ds-color-23653565356530: #e5e5e0;
+  --ds-color-23653766386633: #e7f8f3;
+  --ds-color-23653965636566: #e9ecef;
+  --ds-color-23656232663936: #eb2f96;
+  --ds-color-23656365636538: #ecece8;
+  --ds-color-23656635373537: #ef5757;
+  --ds-color-23656665666562: #efefeb;
+  --ds-color-23663063376338: #f0c7c8;
+  --ds-color-23663134633463: #f14c4c;
+  --ds-color-23663437326236: #f472b6;
+  --ds-color-23663539653062: #f59e0b;
+  --ds-color-23666465363861: #fde68a;
+  --ds-color-23666563616361: #fecaca;
+  --ds-color-23666662363338: #ffb638;
+  --ds-color-23666666326632: #fff2f2;
+  --ds-color-23666666646635: #fffdf5;
+  --ds-color-7267626128302c31: rgba(0, 154, 34, 0.12);
+  --ds-color-7267626128313034: rgba(104, 201, 164, 0.12);
+  --ds-color-7267626128313037: rgba(107, 114, 128, 0.12);
+  --ds-color-7267626128313039: rgba(109, 168, 235, 0.12);
+  --ds-color-7267626128313134: rgba(114, 185, 226, 0.12);
+  --ds-color-7267626128313135: rgba(115, 159, 240, 0.12);
+  --ds-color-7267626128313137: rgba(117, 169, 229, 0.12);
+  --ds-color-7267626128313230: rgba(120, 171, 233, 0.12);
+  --ds-color-7267626128313234: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313235: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313236: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313237: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313238: rgba(128, 128, 128, 0.12);
+  --ds-color-7267626128313339: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612831342c: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313438: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313539: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128313733: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612831382c: rgba(18, 29, 47, 0.12);
+  --ds-color-7267626128313830: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128322c20: rgba(2, 7, 14, 0.12);
+  --ds-color-726762612832302c: rgba(20, 20, 22, 0.12);
+  --ds-color-7267626128323135: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323137: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612832322c: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323230: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612832332c: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323339: rgba(239, 87, 87, 0.12);
+  --ds-color-726762612832342c: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323434: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323435: rgba(245, 158, 11, 0.12);
+  --ds-color-7267626128323534: rgba(100, 116, 139, 0.12);
+  --ds-color-7267626128323535: rgba(255, 255, 255, 0.12);
+  --ds-color-726762612832362c: rgba(26, 66, 112, 0.12);
+  --ds-color-726762612833302c: rgba(30, 41, 59, 0.12);
+  --ds-color-726762612833312c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612833322c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612833352c: rgba(35, 76, 126, 0.12);
+  --ds-color-726762612833372c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612833382c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612833392c: rgba(39, 118, 246, 0.12);
+  --ds-color-726762612834322c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612834342c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612834352c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612834362c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612834372c: rgba(47, 105, 194, 0.12);
+  --ds-color-726762612834382c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612834392c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612835312c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612835332c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612835362c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612835372c: rgba(57, 118, 246, 0.12);
+  --ds-color-726762612835382c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612835392c: rgba(59, 130, 246, 0.12);
+  --ds-color-7267626128362c20: rgba(6, 182, 212, 0.12);
+  --ds-color-726762612836362c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612837342c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612837372c: rgba(77, 145, 223, 0.12);
+  --ds-color-726762612837382c: rgba(100, 116, 139, 0.12);
+  --ds-color-726762612837392c: rgba(79, 70, 229, 0.12);
+  --ds-color-726762612839362c: rgba(96, 165, 250, 0.12);
+  --ds-color-726762612839392c: rgba(100, 116, 139, 0.12);
+}
+
+:root {
+  --ev-c-white: #ffffff;
+  --ev-c-white-soft: #f8f8f8;
+  --ev-c-white-mute: #f2f2f2;
+
+  --ev-c-black: #1b1b1f;
+  --ev-c-black-soft: #222222;
+  --ev-c-black-mute: #282828;
+
+  --ev-c-gray-1: #515c67;
+  --ev-c-gray-2: #414853;
+  --ev-c-gray-3: #32363f;
+
+  --ev-c-text-1: rgba(255, 255, 245, 0.86);
+  --ev-c-text-2: rgba(235, 235, 245, 0.6);
+  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: var(--ev-c-text-1);
+  --ev-button-alt-bg: var(--ev-c-gray-3);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: var(--ev-c-text-1);
+  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+}
+
+:root {
+  --color-background: var(--ev-c-black);
+  --color-background-soft: var(--ev-c-black-soft);
+  --color-background-mute: var(--ev-c-black-mute);
+
+  --color-text: var(--ev-c-text-1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+ul {
+  list-style: none;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  line-height: 1.6;
+  font-family:
+    'Segoe UI Variable',
+    'PingFang SC',
+    'Microsoft YaHei',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body:has(.automation-overlay) {
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.automation-overlay {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  color: #253247;
+  background: #ffffff;
+  border: 1px solid #e5ebf1;
+  border-radius: 12px;
+  box-shadow: none;
+  font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', sans-serif;
+  user-select: none;
+}
+.automation-overlay__signal { align-self: stretch; display: grid; place-items: center; }
+.automation-overlay__signal span { width: 4px; height: 30px; border-radius: 999px; background: var(--ds-color-23333463356161); animation: automation-pulse 1.5s ease-in-out infinite; }
+.automation-overlay__body { min-width: 0; flex: 1; }
+.automation-overlay__eyebrow { color: var(--ds-color-23373838363961); font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+.automation-overlay__action { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: #1f2f43; font-size: 14px; font-weight: 650; white-space: nowrap; }
+.automation-overlay__icon { display: grid; place-items: center; width: 25px; height: 25px; color: var(--ds-color-23313838643739); background: var(--ds-color-23653766386633); border-radius: 8px; }
+.automation-overlay__icon.done { color: var(--ds-color-23313838643739); background: var(--ds-color-23653766386633); }
+.automation-overlay__spinner { margin-left: auto; color: var(--ds-color-23326562363965); animation: automation-spin 1s linear infinite; }
+.automation-overlay__count { align-self: center; color: #8a96a8; font-size: 11px; white-space: nowrap; }
+@keyframes automation-spin { to { transform: rotate(360deg); } }
+@keyframes automation-pulse { 50% { opacity: .42; transform: scaleY(.72); } }
+
+:where(button, a, input, select, textarea, [role="button"], [role="tab"], [tabindex]):focus-visible {
+  outline: 2px solid #3976f6;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .automation-overlay__signal span,
+  .automation-overlay__spinner {
+    animation: none;
+  }
+}

@@ -1,0 +1,126 @@
+# ============================================================
+# MindPet 配置文件示例
+# 复制此文件为 application.yml 并填入你自己的配置
+# cp application-example.yml application.yml
+# ============================================================
+
+llm:
+  api:
+    key: <你的LLM API Key>
+    url: https://ark.cn-beijing.volces.com/api/v3/chat/completions
+  model: deepseek-chat
+
+weather:
+  api:
+    base-url: https://wttr.in/
+    lang: zh
+
+tencent:
+  map:
+    api-key: <腾讯地图 API Key>
+
+baidu:
+  ai:
+    api-key: <百度AI API Key>
+    secret-key: <百度AI Secret Key>
+  speech:
+    api:
+      key: <百度语音 API Key>
+      secret: <百度语音 Secret Key>
+    tts:
+      speed: 5
+      pitch: 5
+      volume: 5
+      person: 0
+
+logging:
+  level:
+    root: INFO
+    com.zaxxer.hikari.pool.HikariPool: ERROR
+    com.zaxxer.hikari: ERROR
+    io.lettuce.core.protocol.ConnectionWatchdog: ERROR
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
+  main:
+    web-application-type: servlet
+  ai:
+    openai:
+      api-key: <DeepSeek API Key>
+      base-url: https://api.deepseek.com/v1
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: deepseek-chat
+          temperature: 0.4
+      connect-timeout: 30s
+      read-timeout: 120s
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 1000
+        max-interval: 5000
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  datasource:
+    # PostgreSQL 数据库连接 —— 请先创建数据库: CREATE DATABASE mindpet;
+    url: jdbc:postgresql://localhost:5432/mindpet
+    username: postgres
+    password: <你的PostgreSQL密码>
+    driver-class-name: org.postgresql.Driver
+
+app:
+  chart:
+    api-url: https://quickchart.io/chart
+  memory:
+    redis:
+      enabled: true
+  food:
+    howtocook:
+      mcp-url: http://127.0.0.1:3000/mcp
+    delivery:
+      command: mcp-taobao-server
+  embedding:
+    use-ollama: true
+    ollama:
+      endpoint: http://127.0.0.1:11434/api/embed
+      model: bge-m3
+      keep-alive: 30m
+    doubao:
+      endpoint: https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal
+      model: doubao-embedding-vision-251215
+      api-key: ${llm.api.key}
+  # 本地文件操作 —— 根据你的需求配置允许的目录
+  file:
+    allowed-roots: D:/, C:/Users/<你的用户名>/Desktop
+    whitelist: o9cq80wTJ5lQv3tLCMFZ5NBVFI-s@im.wechat, desktop-user
+
+# ==================== QQ邮箱 (IMAP收件 + SMTP发件) ====================
+email:
+  imap:
+    host: imap.qq.com
+    port: 993
+  smtp:
+    host: smtp.qq.com
+    port: 465
+  username: <你的QQ邮箱>
+  password: <QQ邮箱授权码>
+
+# ==================== 滴滴出行 MCP ====================
+didi:
+  mcp:
+    key: <滴滴MCP Key>        # 去 https://mcp.didichuxing.com/ 登录获取
+    sandbox: true              # 沙箱模式，不产生真实订单
+
+# ==================== 发票报销 ====================
+reimbursement:
+  excel:
+    path: <你的报销Excel文件路径>   # 例如: D:/报销记录.xlsx

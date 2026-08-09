@@ -1,0 +1,2124 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-function-return-type */
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
+import { createSessionId, DEFAULT_MODELS, formatDateTime } from '../utils/helpers'
+import { useChatStreamEvents } from './useChatStreamEvents'
+import { useChatToolEvents } from './useChatToolEvents'
+import { useChatReplyRuntime } from './useChatReplyRuntime'
+import { useChatSend } from './useChatSend'
+import { useChatSessionSummary } from './useChatSessionSummary'
+import { useCronScheduler } from './useCronScheduler'
+import { useSessionSyncRuntime } from './useSessionSyncRuntime'
+import { useTokenUsageRuntime } from './useTokenUsageRuntime'
+import {
+  estimateContextMessageTokens,
+  estimatePromptEnvelopeTokens,
+  getContextMessageSignature,
+  getPromptEnvelopeSignature,
+  selectContextMessages
+} from '../utils/contextBudget'
+import { isRemoteSessionId } from '../utils/sessionChannels'
+
+const MODEL_CACHE_PREFIX = 'mindpet_model_list:'
+
+function modelCacheKey(provider: string, baseUrl: string): string {
+  return `${MODEL_CACHE_PREFIX}${provider}:${encodeURIComponent(baseUrl || '')}`
+}
+
+function readCachedModels(provider: string, baseUrl: string): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(modelCacheKey(provider, baseUrl)) || '[]')
+    return Array.isArray(value) ? value.filter(item => typeof item === 'string' && item) : []
+  } catch {
+    return []
+  }
+}
+
+function modelFallbacks(provider: string, model?: string): string[] {
+  const known: Record<string, string[]> = {
+    deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+    openai: ['gpt-4o-mini'],
+    gemini: ['gemini-1.5-flash'],
+    ollama: []
+  }
+  return Array.from(new Set([model, ...(known[provider] || []), DEFAULT_MODELS[provider]].filter(Boolean) as string[]))
+}
+
+// ── 类型定义 ─────────────────────────────────────────────────
+export interface CronLog {
+  id: string
+  time: string
+  status: 'success' | 'failed' | 'running'
+  message: string
+  messages?: any[]
+}
+
+export interface CronTask {
+  id: string
+  name: string
+  interval: number
+  lastTriggered: string
+  triggerCount: number
+  isActive: boolean
+  action?: string
+  logs?: CronLog[]
+  isSystem?: boolean
+}
+
+export interface Session {
+  id: string
+  name: string
+  time: string
+  createdAt?: string
+  messages: any[]
+  pinned?: boolean
+  contextSummary?: string
+}
+
+const SESSION_ORDER_STORAGE_KEY = 'mindpet_session_order'
+
+function applyPersistedSessionOrder<T extends { id: string }>(sessions: T[]): T[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_ORDER_STORAGE_KEY) || '[]')
+    if (!Array.isArray(saved) || saved.length === 0) return sessions
+    const byId = new Map(sessions.map(session => [session.id, session]))
+    const ordered = saved
+      .filter((id): id is string => typeof id === 'string' && byId.has(id))
+      .map(id => byId.get(id) as T)
+    const orderedIds = new Set(ordered.map(session => session.id))
+    return [...ordered, ...sessions.filter(session => !orderedIds.has(session.id))]
+  } catch {
+    return sessions
+  }
+}
+
+export interface TokenLog {
+  id: string
+  model: string
+  provider: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  timestamp: number
+  sessionId?: string
+  messageId?: number
+  source?: 'desktop' | 'wechat' | 'qq'
+}
+
+export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa'
+export type AgentSubTab = 'skills' | 'memory' | 'knowledge' | 'cron' | 'mcp'
+export type SettingsSubTab = 'keys' | 'storage' | 'avatar'
+
+export interface AttachedFile {
+  name: string
+  path: string
+  content?: string
+  safeName?: string
+  objectUrl?: string
+}
+
+interface CachedContextMessage {
+  signature: string
+  tokens: number
+}
+
+interface SessionContextCache {
+  total: number
+  scopeSignature: string
+  messages: Map<string | number, CachedContextMessage>
+}
+
+const contextTokenCache = new Map<string, SessionContextCache>()
+
+function rebuildSessionContextTokens(session: Session, contextRounds: number): number {
+  const messages = new Map<string | number, CachedContextMessage>()
+  const scopeSignature = `${contextRounds}\u0000${getPromptEnvelopeSignature(session)}`
+  let total = estimatePromptEnvelopeTokens(session)
+  for (const message of selectContextMessages(session, contextRounds)) {
+    const signature = getContextMessageSignature(message)
+    const tokens = estimateContextMessageTokens(message)
+    messages.set(message.id, { signature, tokens })
+    total += tokens
+  }
+  contextTokenCache.set(session.id, { total, scopeSignature, messages })
+  return total
+}
+
+/**
+ * Streaming only replaces the final agent message. Keep the total in the store
+ * and update that one message in O(1); other message edits safely fall back to
+ * a full rebuild.
+ */
+function getSessionContextTokens(previous: Session | undefined, next: Session, contextRounds: number): number {
+  const cache = contextTokenCache.get(next.id)
+  const scopeSignature = `${contextRounds}\u0000${getPromptEnvelopeSignature(next)}`
+  const previousMessages = previous?.messages || []
+  const nextMessages = next.messages || []
+  const previousLast = previousMessages[previousMessages.length - 1]
+  const nextLast = nextMessages[nextMessages.length - 1]
+
+  if (
+    cache && cache.scopeSignature === scopeSignature && previousLast && nextLast &&
+    previousMessages.length === nextMessages.length &&
+    previousLast.id === nextLast.id && previousLast !== nextLast
+  ) {
+    const cached = cache.messages.get(nextLast.id)
+    const previousSignature = getContextMessageSignature(previousLast)
+    if (cached?.signature === previousSignature) {
+      const signature = getContextMessageSignature(nextLast)
+      const tokens = estimateContextMessageTokens(nextLast)
+      cache.messages.set(nextLast.id, { signature, tokens })
+      cache.total += tokens - cached.tokens
+      return cache.total
+    }
+  }
+  return rebuildSessionContextTokens(next, contextRounds)
+}
+
+function syncContextTokenUsage(previous: Session[], next: Session[], usage: Record<string, number>, contextRounds: number): Record<string, number> {
+  if (previous.length === next.length) {
+    let changedIndex = -1
+    let compatible = true
+    for (let index = 0; index < next.length; index++) {
+      if (previous[index]?.id !== next[index]?.id) {
+        compatible = false
+        break
+      }
+      if (previous[index] !== next[index]) {
+        if (changedIndex >= 0) {
+          compatible = false
+          break
+        }
+        changedIndex = index
+      }
+    }
+    if (compatible) {
+      if (changedIndex < 0) return usage
+      const session = next[changedIndex]
+      const tokens = getSessionContextTokens(previous[changedIndex], session, contextRounds)
+      return usage[session.id] === tokens ? usage : { ...usage, [session.id]: tokens }
+    }
+  }
+
+  const previousById = new Map(previous.map(session => [session.id, session]))
+  let changed = false
+  const nextUsage: Record<string, number> = {}
+  for (const session of next) {
+    const prior = previousById.get(session.id)
+    const tokens = prior?.messages === session.messages && usage[session.id] !== undefined
+      ? usage[session.id]
+      : getSessionContextTokens(prior, session, contextRounds)
+    nextUsage[session.id] = tokens
+    changed ||= usage[session.id] !== tokens
+  }
+  for (const id of Object.keys(usage)) {
+    if (!(id in nextUsage)) {
+      contextTokenCache.delete(id)
+      changed = true
+    }
+  }
+  return changed ? nextUsage : usage
+}
+
+// ── 内部剪贴板（用于消息间复制文件） ─────────────────────────
+let internalClipboard: { files: { name: string; path: string; content?: string }[]; text: string } | null = null
+let legacyLlmConfigForMigration: any = null
+let llmConfigHydrationPromise: Promise<any> | null = null
+let legacyMcpConfigForMigration: any = null
+let initialMcpConfigForSync: any = null
+let mcpConfigHydrationPromise: Promise<any> | null = null
+
+function sanitizeLlmConfigForRenderer(config: any, fallbackHasApiKey = false): any {
+  const rest = { ...(config || {}) }
+  delete rest.apiKey
+  delete rest.apiKeyRef
+  delete rest.secretMigrationPending
+  return {
+    ...rest,
+    apiKey: '',
+    hasApiKey: Boolean(config?.apiKey) || Boolean(config?.hasApiKey) || fallbackHasApiKey
+  }
+}
+
+function persistSanitizedLlmConfig(config: any): void {
+  if (legacyLlmConfigForMigration) return
+  const serialized = JSON.stringify(sanitizeLlmConfigForRenderer(config))
+  localStorage.setItem('mindpet_llm_config', serialized)
+  localStorage.setItem('agentself_llm_config', serialized)
+}
+
+function sanitizeMcpConfigForRenderer(config: any, fallbackConfig?: any): any {
+  const fallbackById = new Map((fallbackConfig?.servers || []).map((server: any) => [server.id, server]))
+  return {
+    ...(config || {}),
+    servers: (config?.servers || []).map((server: any) => {
+      const fallback = fallbackById.get(server.id) as any
+      const sanitized = { ...server }
+      delete sanitized.apiKeyRef
+      delete sanitized.clearApiKey
+      sanitized.hasApiKey = Boolean(server.apiKey) || Boolean(server.hasApiKey) || Boolean(fallback?.hasApiKey)
+      sanitized.apiKey = ''
+      return sanitized
+    })
+  }
+}
+
+function persistSanitizedMcpConfig(config: any): void {
+  if (legacyMcpConfigForMigration) return
+  localStorage.setItem('mindpet_mcp_config', JSON.stringify(sanitizeMcpConfigForRenderer(config)))
+}
+
+export function setInternalClipboard(files: { name: string; path: string; content?: string }[] | null, text?: string) {
+  if (files && files.length > 0) {
+    internalClipboard = { files, text: text || '' }
+  } else {
+    internalClipboard = null
+  }
+}
+
+export function getInternalClipboard() {
+  return internalClipboard
+}
+
+// ── Zustand Global Store ─────────────────────────────────────
+export const useAppStoreRaw = create<any>((set) => ({
+  activeTab: 'chat',
+  agentSubTab: 'skills',
+  settingsSubTab: 'keys',
+  isCollapsed: false,
+  showApiKey: false,
+  showApiKeyModal: false,
+  showModelDropdown: false,
+  isLoadingModels: false,
+  availableModels: [],
+  toast: null,
+  selectedTaskForLog: null,
+  selectedCronLogDetails: null,
+  pendingOpenTaskId: null,
+  pendingOpenLogId: null,
+  theme: localStorage.getItem('agentself_theme') || localStorage.getItem('mindpet_theme') || 'light',
+  sendingSessionIds: {},
+  llmConfig: (() => {
+    const saved = localStorage.getItem('agentself_llm_config') || localStorage.getItem('mindpet_llm_config')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && parsed.maxTokens === 2048) {
+          delete parsed.maxTokens
+        }
+        if (parsed?.apiKey) legacyLlmConfigForMigration = parsed
+        const sanitized = sanitizeLlmConfigForRenderer(parsed)
+        if (!parsed?.apiKey) persistSanitizedLlmConfig(sanitized)
+        return sanitized
+      } catch (e) { console.error(e) }
+    }
+    return { provider: 'gemini', apiKey: '', hasApiKey: false, baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: '', temperature: 0.7, maxTokens: undefined }
+  })(),
+  mcpConfig: (() => {
+    const saved = localStorage.getItem('mindpet_mcp_config') || localStorage.getItem('agentself_mcp_config')
+    let loadedFromLocalStorage = false
+    let currentConfig: any = null
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && Array.isArray(parsed.servers)) {
+          currentConfig = parsed
+          loadedFromLocalStorage = true
+        } else if (parsed && parsed.url) {
+          currentConfig = {
+            servers: [
+              {
+                id: 'legacy-default',
+                name: parsed.name || '默认外部服务',
+                url: parsed.url,
+                apiKey: parsed.apiKey || '',
+                enabled: parsed.enabled ?? false
+              }
+            ]
+          }
+          loadedFromLocalStorage = true
+        }
+      } catch (e) { console.error(e) }
+    }
+    if (!currentConfig || !currentConfig.servers) {
+      currentConfig = { servers: [] }
+    }
+    // Only migrate an actual localStorage value. An empty default must not
+    // overwrite a secure MCP configuration loaded by the main process.
+    initialMcpConfigForSync = loadedFromLocalStorage ? currentConfig : null
+    if (currentConfig.servers.some((server: any) => Boolean(server.apiKey))) {
+      legacyMcpConfigForMigration = currentConfig
+    }
+    const sanitized = sanitizeMcpConfigForRenderer(currentConfig)
+    if (!legacyMcpConfigForMigration) persistSanitizedMcpConfig(sanitized)
+    return sanitized
+  })(),
+  cronTasks: [],
+  sessions: [],
+  contextTokenUsageBySession: {},
+  activeSessionId: localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || 'agent:main:dashboard:default',
+  inputValue: '',
+  attachedFiles: [],
+  tokenLogs: (() => {
+    const saved = localStorage.getItem('mindpet_token_logs') || localStorage.getItem('agentself_token_logs')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        localStorage.removeItem('agentself_token_logs')
+        return Array.isArray(parsed) ? parsed.slice(-1000) : []
+      } catch (e) { console.error(e) }
+    }
+    return []
+  })(),
+  highlightedMessageId: null,
+  generatedFiles: [],
+  showFilePanel: false,
+  openTabs: [],
+  previewFile: null,
+  previewLoading: false,
+  officePreviewRequest: null,
+  skillsList: [],
+  skillsPath: '',
+  disabledSkillNames: (() => {
+    try {
+      const saved = localStorage.getItem('mindpet_disabled_skills') || localStorage.getItem('agentself_disabled_skills')
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })(),
+  activeMcpServers: [],
+  storageInputPath: '',
+  actualStoragePath: '',
+  storageSaveStatus: { type: 'idle', message: '' },
+  sandboxMode: true,
+  activePermissionRequest: null,
+  executionDevice: 'local',
+  sshConnected: false,
+  sshHost: '',
+  sshUsername: '',
+  customModelDir: '',
+  customModelFile: '',
+  avatarList: [],
+  ttsEnabled: localStorage.getItem('mindpet_tts_enabled') === 'true',
+  autoSaveHistory: (() => {
+    const val = localStorage.getItem('agentself_autosave') || localStorage.getItem('mindpet_autosave')
+    return val === null ? true : val === 'true'
+  })(),
+  contextRounds: Number(localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10'),
+  testStatus: 'idle',
+  isSessionSwitching: false,
+  isSessionsInitialized: false,
+
+  // Setters
+  setActiveTab: (val: any) => set({ activeTab: val }),
+  setAgentSubTab: (val: any) => set({ agentSubTab: val }),
+  setSettingsSubTab: (val: any) => set({ settingsSubTab: val }),
+  setIsCollapsed: (val: any) => set({ isCollapsed: val }),
+  setShowApiKey: (val: any) => set({ showApiKey: val }),
+  setShowApiKeyModal: (val: any) => set({ showApiKeyModal: val }),
+  setShowModelDropdown: (val: any) => set({ showModelDropdown: val }),
+  setIsLoadingModels: (val: any) => set({ isLoadingModels: val }),
+  setAvailableModels: (val: any) => set({ availableModels: val }),
+  setToast: (val: any) => set({ toast: val }),
+  setSelectedTaskForLog: (val: any) => set({ selectedTaskForLog: val }),
+  setSelectedCronLogDetails: (val: any) => set({ selectedCronLogDetails: val }),
+  setPendingOpenTaskId: (val: any) => set({ pendingOpenTaskId: val }),
+  setPendingOpenLogId: (val: any) => set({ pendingOpenLogId: val }),
+  setTheme: (val: any) => set({ theme: val }),
+  setSendingSessionIds: (val: any) => set((state: any) => ({
+    sendingSessionIds: typeof val === 'function' ? val(state.sendingSessionIds) : val
+  })),
+  setLlmConfig: (val: any) => set({ llmConfig: val }),
+  setMcpConfig: (val: any) => set({ mcpConfig: val }),
+  setCronTasks: (val: any) => set((state: any) => {
+    const cronTasks = typeof val === 'function' ? val(state.cronTasks) : val
+    return cronTasks === state.cronTasks ? state : { cronTasks }
+  }),
+  setSessions: (val: any) => set((state: any) => {
+    const sessions = typeof val === 'function' ? val(state.sessions) : val
+    if (sessions === state.sessions) return state
+    return {
+      sessions,
+      contextTokenUsageBySession: syncContextTokenUsage(
+        state.sessions,
+        sessions,
+        state.contextTokenUsageBySession,
+        state.contextRounds
+      )
+    }
+  }),
+  updateSessionMessages: (sessionId: string, updater: (messages: any[]) => any[]) => set((state: any) => {
+    const index = state.sessions.findIndex((session: Session) => session.id === sessionId)
+    if (index < 0) return state
+    const previousSession = state.sessions[index] as Session
+    const messages = updater(previousSession.messages || [])
+    if (messages === previousSession.messages) return state
+    const nextSession = { ...previousSession, messages }
+    const sessions = [...state.sessions]
+    sessions[index] = nextSession
+    const tokens = getSessionContextTokens(previousSession, nextSession, state.contextRounds)
+    const previousTokens = state.contextTokenUsageBySession[sessionId]
+    return {
+      sessions,
+      contextTokenUsageBySession: previousTokens === tokens
+        ? state.contextTokenUsageBySession
+        : { ...state.contextTokenUsageBySession, [sessionId]: tokens }
+    }
+  }),
+  setActiveSessionId: (val: any) => set((state: any) => {
+    const nextSessionId = typeof val === 'function' ? val(state.activeSessionId) : val
+    if (nextSessionId === state.activeSessionId) return { activeSessionId: nextSessionId }
+
+    // Blur the composer before React replaces the session history. Otherwise
+    // :focus-within can paint its blue border for one frame during navigation.
+    if (typeof document !== 'undefined') {
+      const activeElement = document.activeElement
+      if (activeElement instanceof HTMLElement && activeElement.closest('.chat-control-card')) {
+        activeElement.blur()
+      }
+    }
+
+    return {
+      activeSessionId: nextSessionId,
+      officePreviewRequest: null
+    }
+  }),
+  setInputValue: (val: any) => set((state: any) => ({
+    inputValue: typeof val === 'function' ? val(state.inputValue) : val
+  })),
+  setAttachedFiles: (val: any) => set((state: any) => ({
+    attachedFiles: typeof val === 'function' ? val(state.attachedFiles) : val
+  })),
+  setTokenLogs: (val: any) => set((state: any) => ({
+    tokenLogs: typeof val === 'function' ? val(state.tokenLogs) : val
+  })),
+  setHighlightedMessageId: (val: any) => set({ highlightedMessageId: val }),
+  setGeneratedFiles: (val: any) => set((state: any) => ({
+    generatedFiles: typeof val === 'function' ? val(state.generatedFiles) : val
+  })),
+  setShowFilePanel: (val: any) => set({ showFilePanel: val }),
+  setOpenTabs: (val: any) => set((state: any) => ({
+    openTabs: typeof val === 'function' ? val(state.openTabs) : val
+  })),
+  setPreviewFile: (val: any) => set({ previewFile: val }),
+  setPreviewLoading: (val: any) => set({ previewLoading: val }),
+  setOfficePreviewRequest: (val: any) => set({ officePreviewRequest: val }),
+  setSkillsList: (val: any) => set({ skillsList: val }),
+  setSkillsPath: (val: any) => set({ skillsPath: val }),
+  setDisabledSkillNames: (val: any) => set((state: any) => ({
+    disabledSkillNames: typeof val === 'function' ? val(state.disabledSkillNames) : val
+  })),
+  setActiveMcpServers: (val: any) => set({ activeMcpServers: val }),
+  setStorageInputPath: (val: any) => set({ storageInputPath: val }),
+  setActualStoragePath: (val: any) => set({ actualStoragePath: val }),
+  setStorageSaveStatus: (val: any) => set({ storageSaveStatus: val }),
+  setSandboxMode: (val: any) => set({ sandboxMode: val }),
+  setActivePermissionRequest: (val: any) => set({ activePermissionRequest: val }),
+  setExecutionDeviceState: (val: any) => set({ executionDevice: val }),
+  setSshConnected: (val: any) => set({ sshConnected: val }),
+  setSshHost: (val: any) => set({ sshHost: val }),
+  setSshUsername: (val: any) => set({ sshUsername: val }),
+  setCustomModelDir: (val: any) => set({ customModelDir: val }),
+  setCustomModelFile: (val: any) => set({ customModelFile: val }),
+  setAvatarList: (val: any) => set({ avatarList: val }),
+  setTtsEnabled: (val: any) => set({ ttsEnabled: val }),
+  setAutoSaveHistory: (val: any) => set({ autoSaveHistory: val }),
+  setContextRounds: (val: any) => set((state: any) => {
+    const contextRounds = Number(typeof val === 'function' ? val(state.contextRounds) : val) || 10
+    return {
+      contextRounds,
+      contextTokenUsageBySession: syncContextTokenUsage([], state.sessions, {}, contextRounds)
+    }
+  }),
+  setTestStatus: (val: any) => set({ testStatus: val }),
+  setIsSessionSwitching: (val: any) => set({ isSessionSwitching: val }),
+  setIsSessionsInitialized: (val: any) => set({ isSessionsInitialized: val }),
+}))
+
+// ── 选择器模式：按需订阅，避免无关状态变更触发重渲染 ──────────
+export function useAppSelector<T>(selector: (state: any) => T): T {
+  return useAppStoreRaw(selector)
+}
+
+// ── useAppStore hook ─────────────────────────────────────────
+export function useAppStore() {
+  // Message text and its derived token count are high-frequency fields. The
+  // aggregate compatibility hook must not execute for every streaming frame.
+  const store = useAppStoreRaw(useShallow((state: any) => {
+    const {
+      sessions: streamingSessions,
+      contextTokenUsageBySession: streamingTokenUsage,
+      ...stableState
+    } = state
+    void streamingSessions
+    void streamingTokenUsage
+    return stableState
+  }))
+
+  const {
+    activeTab, setActiveTab,
+    agentSubTab, setAgentSubTab,
+    settingsSubTab, setSettingsSubTab,
+    isCollapsed, setIsCollapsed,
+    showApiKey, setShowApiKey,
+    showApiKeyModal, setShowApiKeyModal,
+    showModelDropdown, setShowModelDropdown,
+    isLoadingModels, setIsLoadingModels,
+    availableModels, setAvailableModels,
+    toast, setToast,
+    selectedTaskForLog, setSelectedTaskForLog,
+    selectedCronLogDetails, setSelectedCronLogDetails,
+    pendingOpenTaskId, setPendingOpenTaskId,
+    pendingOpenLogId, setPendingOpenLogId,
+    theme, setTheme,
+    sendingSessionIds, setSendingSessionIds,
+    llmConfig, setLlmConfig,
+    mcpConfig, setMcpConfig,
+    cronTasks, setCronTasks,
+    setSessions, updateSessionMessages,
+    activeSessionId, setActiveSessionId,
+    inputValue, setInputValue,
+    attachedFiles, setAttachedFiles,
+    tokenLogs, setTokenLogs,
+    highlightedMessageId, setHighlightedMessageId,
+    generatedFiles, setGeneratedFiles,
+    showFilePanel, setShowFilePanel,
+    openTabs, setOpenTabs,
+    previewFile, setPreviewFile,
+    previewLoading, setPreviewLoading,
+    officePreviewRequest, setOfficePreviewRequest,
+    skillsList, setSkillsList,
+    skillsPath, setSkillsPath,
+    disabledSkillNames, setDisabledSkillNames,
+    activeMcpServers, setActiveMcpServers,
+    storageInputPath, setStorageInputPath,
+    actualStoragePath, setActualStoragePath,
+    storageSaveStatus, setStorageSaveStatus,
+    sandboxMode, setSandboxMode,
+    activePermissionRequest, setActivePermissionRequest,
+    executionDevice, setExecutionDeviceState,
+    sshConnected, setSshConnected,
+    sshHost, setSshHost,
+    sshUsername, setSshUsername,
+    customModelDir, setCustomModelDir,
+    customModelFile, setCustomModelFile,
+    avatarList, setAvatarList,
+    ttsEnabled, setTtsEnabled,
+    autoSaveHistory, setAutoSaveHistory,
+    contextRounds, setContextRounds,
+    testStatus, setTestStatus,
+    isSessionSwitching, setIsSessionSwitching,
+    isSessionsInitialized, setIsSessionsInitialized
+  } = store
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const cronRunningLogsRef = useRef<Record<string, CronLog>>({})
+  const activeSessionIdRef = useRef(activeSessionId)
+  const creatingSessionIdsRef = useRef<Set<string>>(new Set())
+  const refreshSessionsRequestRef = useRef(0)
+  const [pendingAutoSendTick, setPendingAutoSendTick] = useState(0)
+  const consumedAutoSendTickRef = useRef(0)
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
+
+  const activeAvatar = avatarList.find(a => (customModelDir ? a.dir === customModelDir : a.isDefault))
+  const currentAvatarName = activeAvatar ? activeAvatar.name : (customModelFile ? customModelFile.replace(/\.model3\.json$/i, '') : 'MindPet')
+  const currentAvatarStyle = activeAvatar?.languageStyle || 'normal'
+  const currentAvatarVoice = activeAvatar?.voice || 'zh-CN-XiaoxiaoNeural'
+
+  const saveLlmConfig = async (newConfig: any): Promise<boolean> => {
+    if (isSending) {
+      showToast('大模型正在思考中，无法修改配置', 'error')
+      return false
+    }
+    const prevModel = llmConfig.model
+    const newModel = newConfig.model
+    const sanitized = sanitizeLlmConfigForRenderer(newConfig, Boolean(llmConfig.hasApiKey))
+    setLlmConfig(sanitized)
+    persistSanitizedLlmConfig(sanitized)
+
+    try {
+      const saved = await window.api.syncLlmConfig(newConfig)
+      const serverConfig = sanitizeLlmConfigForRenderer(saved)
+      if (newConfig.apiKey) legacyLlmConfigForMigration = null
+      setLlmConfig(serverConfig)
+      persistSanitizedLlmConfig(serverConfig)
+    } catch (error) {
+      console.error('保存大模型配置失败', error)
+      setLlmConfig(llmConfig)
+      persistSanitizedLlmConfig(llmConfig)
+      showToast('大模型配置保存失败，密钥未写入明文存储', 'error')
+      return false
+    }
+
+    if (prevModel && newModel && prevModel !== newModel) {
+      const timeStr = formatDateTime()
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSessionId) {
+          return {
+            ...s,
+            messages: [...s.messages, {
+              id: `sys-${Date.now()}-${Math.random()}`,
+              sender: 'system',
+              text: `⚙️ 已将大模型切换为：**${newModel}**`,
+              time: timeStr
+            }]
+          }
+        }
+        return s
+      }))
+    }
+    return true
+  }
+
+  const saveMcpConfig = async (newConfig: any): Promise<boolean> => {
+    if (mcpConfigHydrationPromise) {
+      try {
+        await mcpConfigHydrationPromise
+      } catch {
+        showToast('MCP 凭据初始化失败，已阻止覆盖旧配置', 'error')
+        return false
+      }
+    }
+
+    const sanitized = sanitizeMcpConfigForRenderer(newConfig, mcpConfig)
+    setMcpConfig(sanitized)
+    persistSanitizedMcpConfig(sanitized)
+    try {
+      const saved = await window.api.syncMcpConfig(newConfig)
+      const serverConfig = sanitizeMcpConfigForRenderer(saved)
+      legacyMcpConfigForMigration = null
+      initialMcpConfigForSync = null
+      setMcpConfig(serverConfig)
+      persistSanitizedMcpConfig(serverConfig)
+      await refreshMcpServers()
+      return true
+    } catch (error) {
+      console.error('保存 MCP 配置失败', error)
+      setMcpConfig(mcpConfig)
+      persistSanitizedMcpConfig(mcpConfig)
+      showToast('MCP 配置保存失败，密钥未写入明文存储', 'error')
+      return false
+    }
+  }
+
+  const loadGeneratedFiles = useCallback(async () => {
+    if (window.api?.getGeneratedFiles) {
+      const files = await window.api.getGeneratedFiles()
+      setGeneratedFiles(files)
+    }
+  }, [])
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+  }, [setToast])
+
+  const handlePreviewFile = useCallback(async (f: { name: string; path: string; size: number }) => {
+    if (/[\\/]generated_files[\\/]/i.test(f.path)) {
+      setGeneratedFiles(previous =>
+        previous.some(item => item.path === f.path) ? previous : [...previous, f]
+      )
+      void loadGeneratedFiles()
+    }
+    setPreviewFile(f)
+    setOpenTabs(prev => {
+      if (prev.some(t => t.path === f.path)) return prev
+      const fullFile = generatedFiles.find(g => g.path === f.path)
+      return [...prev, fullFile || { ...f, time: '' }]
+    })
+  }, [generatedFiles, loadGeneratedFiles, setGeneratedFiles, setPreviewFile, setOpenTabs])
+
+  const handleDeleteFile = useCallback(async (f: { path: string }) => {
+    try {
+      const deleted = await window.api.deleteGeneratedFile(f.path)
+      if (!deleted) {
+        showToast('删除文件失败，文件可能已不存在或没有权限。', 'error')
+        return
+      }
+      await loadGeneratedFiles()
+      const remaining = openTabs.filter(t => t.path !== f.path)
+      setOpenTabs(remaining)
+      if (previewFile?.path === f.path) {
+        if (remaining.length === 0) {
+          setPreviewFile(null)
+        } else {
+          const next = remaining[remaining.length - 1]
+          handlePreviewFile(next)
+        }
+      }
+      showToast('文件已直接删除，未放入回收站。', 'success')
+    } catch (error) {
+      console.error('删除生成文件失败', error)
+      showToast('删除文件失败，请稍后重试。', 'error')
+    }
+  }, [openTabs, previewFile, loadGeneratedFiles, handlePreviewFile, setOpenTabs, setPreviewFile, showToast])
+
+  const handleOpenGeneratedFileFolder = useCallback(async (f: { path: string }) => {
+    try {
+      const opened = await window.api.showGeneratedFileInFolder(f.path)
+      if (!opened) showToast('打开文件所在文件夹失败，文件可能已不存在。', 'error')
+    } catch (error) {
+      console.error('打开生成文件所在文件夹失败', error)
+      showToast('打开文件所在文件夹失败，请稍后重试。', 'error')
+    }
+  }, [showToast])
+
+  useEffect(() => {
+    void loadGeneratedFiles()
+  }, [loadGeneratedFiles])
+
+  useEffect(() => {
+    const disposeGeneratedFiles = window.api.onGeneratedFileUpdated(() => {
+      void loadGeneratedFiles()
+    })
+    const disposeOfficePreview = window.api.onOfficePreviewRequest(async request => {
+      if (!request?.requestId || !request.file?.path) return
+      if (request.sessionId && request.sessionId !== activeSessionId) {
+        window.api.completeOfficePreviewCapture({
+          requestId: request.requestId,
+          error: 'The document was generated for a chat that is not currently visible'
+        })
+        return
+      }
+
+      try {
+        const files = await window.api.getGeneratedFiles()
+        setGeneratedFiles(files)
+        const file = files.find(item => item.path === request.file.path) || request.file
+        setOfficePreviewRequest(request)
+        setActiveTab('chat')
+        setShowFilePanel(true)
+        setPreviewFile(file)
+        setOpenTabs((tabs: any[]) =>
+          tabs.some(tab => tab.path === file.path) ? tabs : [...tabs, file]
+        )
+      } catch (error) {
+        window.api.completeOfficePreviewCapture({
+          requestId: request.requestId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    })
+    return () => {
+      disposeGeneratedFiles()
+      disposeOfficePreview()
+    }
+  }, [activeSessionId, loadGeneratedFiles, setActiveTab, setGeneratedFiles, setOfficePreviewRequest, setOpenTabs, setPreviewFile, setShowFilePanel])
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000)
+      return () => clearTimeout(timer)
+    }
+    return () => {}
+  }, [toast])
+
+  const handleThemeToggle = (): void => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    localStorage.setItem('agentself_theme', nextTheme)
+    localStorage.setItem('mindpet_theme', nextTheme)
+  }
+
+  const isSending = !!sendingSessionIds[activeSessionId]
+
+  // ── Effects ──────────────────────────────────────────────────
+
+  // 应用启动或配置更改时自动获取最新可用模型列表
+  useEffect(() => {
+    let cancelled = false
+    const isOllama = llmConfig.provider === 'ollama'
+    const hasKey = isOllama || !!llmConfig.apiKey || !!llmConfig.hasApiKey
+    const cached = readCachedModels(llmConfig.provider, llmConfig.baseUrl)
+    const fallback = Array.from(new Set([...modelFallbacks(llmConfig.provider, llmConfig.model), ...cached]))
+    if (fallback.length) setAvailableModels(fallback)
+    if (hasKey) {
+      const autoFetch = async () => {
+        setIsLoadingModels(true)
+        try {
+          const list = await window.api.getModels({ 
+            provider: llmConfig.provider, 
+            apiKey: llmConfig.apiKey, 
+            baseUrl: llmConfig.baseUrl 
+          })
+          if (cancelled) return
+          if (list && list.length > 0) {
+            const merged = Array.from(new Set([llmConfig.model, ...list].filter(Boolean))) as string[]
+            setAvailableModels(merged)
+            localStorage.setItem(modelCacheKey(llmConfig.provider, llmConfig.baseUrl), JSON.stringify(merged))
+          }
+        } catch (e) {
+          if (!cancelled) console.warn('自动加载模型列表失败，使用缓存模型', e)
+        } finally {
+          if (!cancelled) setIsLoadingModels(false)
+        }
+      }
+      autoFetch()
+    }
+    return () => { cancelled = true }
+  }, [llmConfig.provider, llmConfig.apiKey, llmConfig.hasApiKey, llmConfig.baseUrl])
+
+  // 校验 API Key 初始化，如果没有有效的 key，就弹出需要配置 key
+  useEffect(() => {
+    const isOllama = llmConfig.provider === 'ollama'
+    const hasKey = isOllama || !!llmConfig.apiKey || !!llmConfig.hasApiKey
+    if (!hasKey) {
+      setShowApiKeyModal(true)
+    }
+  }, [llmConfig.provider, llmConfig.apiKey, llmConfig.hasApiKey])
+
+  // Click outside to close model dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Load skills & storage path
+  const refreshSkillsAndStorage = async (): Promise<void> => {
+    try {
+      const [list, path, customPath] = await Promise.all([
+        window.api.getSkillsList(),
+        window.api.getSkillsPath(),
+        window.api.getStoragePath()
+      ])
+      setSkillsList(list)
+      setSkillsPath(path)
+      setActualStoragePath(customPath || path.replace(/[\\/]skills$/, ''))
+      setStorageInputPath(customPath)
+    } catch (e) { console.error(e) }
+  }
+
+  const refreshMcpServers = async (): Promise<void> => {
+    try {
+      const servers = await window.api.getActiveMcpServers()
+      setActiveMcpServers(servers)
+    } catch (e) {
+      console.error('获取可用 MCP 服务列表失败:', e)
+    }
+  }
+
+  const toggleSkillEnable = (name: string): void => {
+    setDisabledSkillNames(prev => {
+      const next = prev.includes(name)
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+      localStorage.setItem('mindpet_disabled_skills', JSON.stringify(next))
+      return next
+    })
+  }
+
+  const refreshAvatarsList = async (): Promise<void> => {
+    try {
+      const list = await window.api.getAvatarsList()
+      setAvatarList(list)
+    } catch (e) { console.error(e) }
+  }
+
+  useEffect(() => {
+    refreshSkillsAndStorage()
+    refreshMcpServers()
+    const loadCustomModelInfo = async (): Promise<void> => {
+      try {
+        const info = await window.api.getCustomModel()
+        if (info) {
+          setCustomModelDir(info.customModelDir || '')
+          setCustomModelFile(info.customModelFile || '')
+        }
+      } catch (e) { console.error(e) }
+    }
+    const loadSandboxMode = async (): Promise<void> => {
+      try {
+        const enabled = await window.api.getSandboxMode()
+        setSandboxMode(enabled)
+      } catch (e) { console.error(e) }
+    }
+    loadSandboxMode()
+    loadCustomModelInfo()
+    refreshAvatarsList()
+  }, [])
+
+  // 加载本地及主进程定时任务
+  useEffect(() => {
+    const loadCronTasks = async () => {
+      try {
+        const tasks = await window.api.getCronTasks()
+        if (tasks && tasks.length > 0) {
+          setCronTasks(tasks)
+        } else {
+          // 兼容并迁移旧版 localStorage 里的定时任务
+          const saved = localStorage.getItem('mindpet_cron_tasks') || localStorage.getItem('agentself_cron_tasks')
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved)
+              setCronTasks(parsed)
+              await window.api.saveCronTasks(parsed)
+            } catch (e) {
+              console.error(e)
+            }
+          }
+        }
+      } catch (e) {
+        console.error('加载定时任务失败', e)
+      }
+    }
+    loadCronTasks()
+  }, [])
+
+  // 监听并执行详情自动定位弹窗
+  useEffect(() => {
+    if (!pendingOpenTaskId || cronTasks.length === 0) return
+    const task = cronTasks.find(t => t.id === pendingOpenTaskId)
+    if (task) {
+      setSelectedTaskForLog(task)
+      if (pendingOpenLogId && task.logs) {
+        const log = task.logs.find(l => l.id === pendingOpenLogId)
+        if (log) {
+          setSelectedCronLogDetails(log)
+        }
+      }
+    }
+    setPendingOpenTaskId(null)
+    setPendingOpenLogId(null)
+  }, [pendingOpenTaskId, pendingOpenLogId, cronTasks])
+
+  // 监听主窗口 IPC 定位指令
+  useEffect(() => {
+    if (!window.api.onOpenCronLogDetails) return
+    const unsubscribe = window.api.onOpenCronLogDetails((taskId: string, logId: string) => {
+      setActiveTab('agent')
+      setAgentSubTab('cron')
+      setPendingOpenTaskId(taskId)
+      setPendingOpenLogId(logId)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // 挂载时解析 URL 传入的定位参数
+  useEffect(() => {
+    try {
+      const href = window.location.href
+      const taskMatch = href.match(/[?&]openTaskId=([^&?#]+)/)
+      const logMatch = href.match(/[?&]openLogId=([^&?#]+)/)
+      if (taskMatch && taskMatch[1]) {
+        setActiveTab('agent')
+        setAgentSubTab('cron')
+        setPendingOpenTaskId(decodeURIComponent(taskMatch[1]))
+      }
+      if (logMatch && logMatch[1]) {
+        setPendingOpenLogId(decodeURIComponent(logMatch[1]))
+      }
+    } catch (e) {
+      console.error('解析 URL 定位参数失败', e)
+    }
+  }, [])
+
+  // 监听主进程的大模型定时任务更新通知
+  useEffect(() => {
+    if (!window.api.onCronUpdated) return
+    const unsubscribe = window.api.onCronUpdated(async () => {
+      try {
+        const tasks = await window.api.getCronTasks()
+        if (tasks) {
+          setCronTasks(tasks)
+          showToast('🤖 桌面助理已为您创建或更新了定时任务！', 'success')
+        }
+      } catch (e) {
+        console.error('刷新定时任务失败', e)
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // 监听本地命令的安全沙盒授权请求
+  useEffect(() => {
+    if (!window.api.onRequestPermission) return
+    const unsubscribe = window.api.onRequestPermission((data: any) => {
+      setActivePermissionRequest(data)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  useTokenUsageRuntime({ setTokenLogs })
+
+  const refreshSessions = useCallback(async (clearThinking = false): Promise<void> => {
+    const requestId = ++refreshSessionsRequestRef.current
+    try {
+      const currentActiveId = useAppStoreRaw.getState().activeSessionId
+      const fetchedSessions = await window.api.getLocalSessions({
+        activeSessionId: clearThinking ? undefined : currentActiveId
+      })
+      const localSess = Array.isArray(fetchedSessions) ? applyPersistedSessionOrder(fetchedSessions) : fetchedSessions
+      if (requestId !== refreshSessionsRequestRef.current) return
+      if (localSess && localSess.length > 0) {
+        if (clearThinking) {
+          // 检查 PetWidget 的 LLM 是否正在工作（30 秒内有活动则不清除）
+          const llmThinkingAt = localStorage.getItem('mindpet_llm_thinking_at')
+          const isLlmActive = llmThinkingAt && (Date.now() - Number(llmThinkingAt) < 30000)
+
+          const cleanedMessagesToSave: { msg: any, sessionId: string }[] = []
+          const cleaned = localSess.map((s: any) => ({
+            ...s,
+            messages: (s.messages || []).map((m: any) => {
+              const toolSteps = Array.isArray(m.toolSteps)
+                ? m.toolSteps.filter((step: any) => step?.type !== 'clarification')
+                : m.toolSteps
+              if (m.isThinking && !isLlmActive) {
+                const cleanedMsg = { ...m, isThinking: false, text: m.text || '⚠️ 应用异常退出，对话生成被中断。' }
+                cleanedMsg.toolSteps = toolSteps
+                cleanedMessagesToSave.push({ msg: cleanedMsg, sessionId: s.id })
+                return cleanedMsg
+              }
+              if (toolSteps !== m.toolSteps) {
+                const cleanedMsg = { ...m, toolSteps }
+                cleanedMessagesToSave.push({ msg: cleanedMsg, sessionId: s.id })
+                return cleanedMsg
+              }
+              return m
+            })
+          }))
+          setSessions(cleaned)
+          if (cleanedMessagesToSave.length > 0) {
+            window.api.saveMessages(cleanedMessagesToSave.map(item => ({ ...item.msg, sessionId: item.sessionId }))).catch(console.error)
+          }
+
+          // 重新打开应用时，默认选择最近创建的非置顶会话（若无非置顶会话，则选择最新的置顶会话）
+          if (cleaned.length > 0) {
+            const unpinned = cleaned.filter((s: any) => !s.pinned && !isRemoteSessionId(s.id))
+            let latestSess: any = null
+            if (unpinned.length > 0) {
+              latestSess = unpinned[0]
+              for (let i = 1; i < unpinned.length; i++) {
+                const t1 = unpinned[i].createdAt || unpinned[i].time
+                const t2 = latestSess.createdAt || latestSess.time
+                if (t1 && (!t2 || t1 > t2)) {
+                  latestSess = unpinned[i]
+                }
+              }
+            } else {
+              latestSess = cleaned[0]
+              for (let i = 1; i < cleaned.length; i++) {
+                const t1 = cleaned[i].createdAt || cleaned[i].time
+                const t2 = latestSess.createdAt || latestSess.time
+                if (t1 && (!t2 || t1 > t2)) {
+                  latestSess = cleaned[i]
+                }
+              }
+            }
+            if (latestSess) {
+              setActiveSessionId(latestSess.id)
+            }
+          }
+        } else {
+          setSessions(prev => {
+            if (!prev || prev.length === 0) return localSess
+
+            // 找出所有内存中正在创建、但在数据库 localSess 中尚未出现的会话
+            const localSessionIds = new Set(localSess.map((session: Session) => session.id))
+            const creatingSessions = prev.filter(ps =>
+              creatingSessionIdsRef.current.has(ps.id) && !localSessionIds.has(ps.id)
+            )
+            const previousById = new Map<string, Session>(prev.map(session => [session.id, session]))
+
+            const merged = localSess.map((ls: any) => {
+              const matchedPrev = previousById.get(ls.id)
+              if (!matchedPrev) return ls
+              const isGenerating = Boolean(useAppStoreRaw.getState().sendingSessionIds?.[ls.id])
+              if (!isGenerating) {
+                // Redis is authoritative for settled history. Keeping arbitrary
+                // memory-only IDs here caused every refresh to append old messages.
+                return { ...ls, messages: ls.messages || [] }
+              }
+              
+              const dbMessageIds = new Set((ls.messages || []).map((m: any) => m.id))
+              const previousMessagesById = new Map((matchedPrev.messages || []).map((message: any) => [message.id, message]))
+              // 找出在内存中但还没来得及落库的消息（竞态保护）
+              const memoryOnlyMessages = (matchedPrev.messages || []).filter((m: any) => !dbMessageIds.has(m.id))
+
+              const mergedMessages = (ls.messages || []).map((lm: any) => {
+                const pm = previousMessagesById.get(lm.id) as any
+                const hasPendingClarification = pm?.isThinking && Array.isArray(pm.toolSteps) && pm.toolSteps.some((step: any) => step?.type === 'clarification')
+                if (hasPendingClarification) {
+                  return {
+                    ...lm,
+                    text: pm.text || lm.text,
+                    isThinking: pm.isThinking,
+                    isError: pm.isError,
+                    toolSteps: pm.toolSteps
+                  }
+                }
+                // 竞态保护：如果内存中当前消息已完成生成(isThinking=false)，但 DB 读出来的还是 loading(isThinking=true)
+                // 说明当前正处于保存回复与拉取会话的竞态时序中，应保留内存中的最新生成状态
+                if (pm && lm.isThinking && !pm.isThinking) {
+                  return {
+                    ...lm,
+                    text: pm.text,
+                    isThinking: false,
+                    isError: pm.isError,
+                    toolSteps: pm.toolSteps || lm.toolSteps
+                  }
+                }
+                return lm
+              })
+              
+              const finalMessages = [...mergedMessages, ...memoryOnlyMessages]
+              
+              return {
+                ...ls,
+                messages: finalMessages
+              }
+            })
+
+            // 合并并追加处于创建流程中的会话
+            return [...merged, ...creatingSessions]
+          })
+        }
+      }
+    } catch (e) {
+      console.error('从本地文件载入会话记录失败', e)
+    } finally {
+      if (requestId === refreshSessionsRequestRef.current) setIsSessionsInitialized(true)
+    }
+  }, [setActiveSessionId, setIsSessionsInitialized, setSessions])
+
+  useSessionSyncRuntime({ activeSessionId, refreshSessions, setSessions })
+
+  // 同步初始化大模型与 MCP 配置
+  useEffect(() => {
+    if (!llmConfigHydrationPromise) {
+      llmConfigHydrationPromise = legacyLlmConfigForMigration
+        ? window.api.syncLlmConfig(legacyLlmConfigForMigration)
+        : window.api.getSystemLlmConfig()
+    }
+    llmConfigHydrationPromise
+      .then(config => {
+        const sanitized = sanitizeLlmConfigForRenderer(config)
+        legacyLlmConfigForMigration = null
+        setLlmConfig(sanitized)
+        persistSanitizedLlmConfig(sanitized)
+      })
+      .catch(error => {
+        // Keep a legacy localStorage value intact when migration fails so the
+        // user can retry after OS encryption becomes available.
+        console.error('初始化大模型安全配置失败', error)
+      })
+    if (!mcpConfigHydrationPromise) {
+      mcpConfigHydrationPromise = initialMcpConfigForSync
+        ? window.api.syncMcpConfig(initialMcpConfigForSync)
+        : window.api.getMcpConfig()
+    }
+    mcpConfigHydrationPromise
+      .then(config => {
+        const sanitized = sanitizeMcpConfigForRenderer(config)
+        legacyMcpConfigForMigration = null
+        initialMcpConfigForSync = null
+        setMcpConfig(sanitized)
+        persistSanitizedMcpConfig(sanitized)
+        return refreshMcpServers()
+      })
+      .catch(error => {
+        console.error('初始化 MCP 安全配置失败', error)
+      })
+  }, [])
+
+  // 监听微信聊天会话更新通知
+  useEffect(() => {
+    if (!window.api.onWechatSessionUpdated) return
+    const unsubscribe = window.api.onWechatSessionUpdated((sessionId?: string) => {
+      refreshSessions().then(() => {
+        if (sessionId) {
+          setActiveTab('chat')
+          setActiveSessionId(sessionId)
+          setTimeout(() => {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+          }, 100)
+        }
+      })
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // 处理从快捷输入框传递过来的待发送内容（文件路径或文本）
+  const handlePendingInput = useCallback(async (raw: string) => {
+    if (!raw) return
+    setActiveTab('chat')
+
+    // 尝试解析 JSON 格式（带文件附件）
+    try {
+      const payload = JSON.parse(raw)
+      // 单个文件（剪贴板图片）
+      if (payload.type === 'file' && payload.path && payload.name) {
+        if (window.api.attachFileFromPath) {
+          const result = await window.api.attachFileFromPath(payload.path, activeSessionId)
+          if (result) {
+            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+            const ext = result.name.split('.').pop()?.toLowerCase() || ''
+            const objectUrl = imageExts.includes(ext) ? `local-file:///${result.path.replace(/\\/g, '/')}` : undefined
+            setAttachedFiles(prev => [...prev, {
+              name: result.name,
+              path: result.path,
+              safeName: result.safeName,
+              objectUrl,
+              content: result.content
+            }])
+          }
+        }
+        return
+      }
+      // 多个文件 + 文本
+      if (payload.files || payload.text) {
+        if (payload.files && Array.isArray(payload.files) && window.api.attachFileFromPath) {
+          for (const f of payload.files) {
+            const result = await window.api.attachFileFromPath(f.path, activeSessionId)
+            if (result) {
+              const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+              const ext = result.name.split('.').pop()?.toLowerCase() || ''
+              const objectUrl = imageExts.includes(ext) ? `local-file:///${result.path.replace(/\\/g, '/')}` : undefined
+              setAttachedFiles(prev => [...prev, {
+                name: result.name,
+                path: result.path,
+                safeName: result.safeName,
+                objectUrl,
+                content: result.content
+              }])
+            }
+          }
+        }
+        if (payload.text) {
+          setInputValue(prev => prev ? prev + payload.text : payload.text)
+        }
+        if (payload.autoSend) {
+          setPendingAutoSendTick(tick => tick + 1)
+        }
+        return
+      }
+    } catch {
+      // 非 JSON，按纯文本处理
+    }
+
+    // 纯文本
+    setInputValue(raw)
+  }, [activeSessionId])
+
+  // 监听快捷输入框粘贴文件后传递过来的待发送内容
+  useEffect(() => {
+    if (!window.api.onPendingInput) return
+    const unsubscribe = window.api.onPendingInput((text: string) => {
+      handlePendingInput(text)
+    })
+    return () => unsubscribe()
+  }, [handlePendingInput])
+
+  // 初始化时主动拉取一次缓存的待发送内容（处理窗口刚创建、IPC 监听尚未就绪的时序问题）
+  useEffect(() => {
+    if (!window.api.getPendingInput) return
+    window.api.getPendingInput().then((text: string) => {
+      if (text) handlePendingInput(text)
+    }).catch(() => {})
+  }, [handlePendingInput])
+
+  const prevWechatStatusRef = useRef<string | null>(null)
+
+  // 微信 Bot 链接成功时，把当前会话置顶，方便在最近会话列表顶部快速找到
+  useEffect(() => {
+    if (!window.api.onWechatStatusUpdated) return
+    const unsubscribe = window.api.onWechatStatusUpdated((data: any) => {
+      const status = data?.status || 'disconnected'
+      const prevStatus = prevWechatStatusRef.current
+      prevWechatStatusRef.current = status
+
+      // 仅当微信连接状态从非 connected 变更为 connected，且当前会话是微信会话时，才把当前会话置顶
+      if (status === 'connected' && prevStatus !== null && prevStatus !== 'connected' && activeSessionId.startsWith('wechat:')) {
+        setSessions(prev => {
+          const target = prev.find(s => s.id === activeSessionId)
+          if (!target || target.pinned) return prev
+          const toggled = { ...target, pinned: true }
+          const rest = prev.filter(s => s.id !== activeSessionId)
+          const pinnedRest = rest.filter(s => s.pinned)
+          const unpinnedRest = rest.filter(s => !s.pinned)
+          return [...pinnedRest, toggled, ...unpinnedRest]
+        })
+      }
+    })
+    return () => unsubscribe()
+  }, [activeSessionId])
+
+  // Load sessions from local file
+  useEffect(() => {
+    refreshSessions(true)
+  }, [])
+
+  const prevSessionIdRef = useRef<string | null>(null)
+  const prevActiveTabRef = useRef<string | null>(null)
+  const justSwitchedRef = useRef(false)
+
+  // 统一的骨架屏触发函数
+  const triggerChatSkeleton = useCallback(() => {
+    setIsSessionSwitching(true)
+
+    // 切换会话时清空输入框和附件
+    setInputValue('')
+    setAttachedFiles([])
+
+    const skeletonTimer = setTimeout(() => {
+      setIsSessionSwitching(false)
+      justSwitchedRef.current = true
+
+      // 让 React 有时间把骨架屏替换为真实聊天 DOM 后再滚动定位
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' })
+        justSwitchedRef.current = false
+      }, 16)
+    }, 260) // Keep session navigation short and interruptible.
+
+    return skeletonTimer
+  }, [chatEndRef])
+
+  const activeSessionHasHistory = useCallback((): boolean => {
+    const session = (useAppStoreRaw.getState().sessions as Session[]).find(item => item.id === activeSessionId)
+    return Boolean(session?.messages && session.messages.length > 0)
+  }, [activeSessionId])
+
+  // 1. 处理会话切换时的骨架屏和定位
+  useEffect(() => {
+    if (prevSessionIdRef.current !== activeSessionId) {
+      prevSessionIdRef.current = activeSessionId
+      // 仅在已经位于 chat 页面时由 session 变化触发骨架屏，
+      // 避免与 tab 切换的骨架屏重复。
+      if (activeTab === 'chat') {
+        if (!activeSessionHasHistory()) {
+          setIsSessionSwitching(false)
+          setInputValue('')
+          setAttachedFiles([])
+          return undefined
+        }
+        const timer = triggerChatSkeleton()
+        return () => clearTimeout(timer)
+      }
+    }
+    return undefined
+  }, [activeSessionId, activeTab, activeSessionHasHistory, triggerChatSkeleton])
+
+  // 2. 处理从其他 tab 切换到 chat 页面时的骨架屏
+  useEffect(() => {
+    if (activeTab === 'chat' && prevActiveTabRef.current !== 'chat' && prevActiveTabRef.current !== null) {
+      if (!activeSessionHasHistory()) {
+        setIsSessionSwitching(false)
+        prevActiveTabRef.current = activeTab
+        return undefined
+      }
+      const timer = triggerChatSkeleton()
+      prevActiveTabRef.current = activeTab
+      return () => clearTimeout(timer)
+    }
+    prevActiveTabRef.current = activeTab
+    return undefined
+  }, [activeTab, activeSessionHasHistory, triggerChatSkeleton])
+
+  // 注：新消息到来时的外层滚动由 ChatPage.tsx 中监听 activeSessMessages.length 的 effect 负责，
+  // 此处不再重复监听 sessions 整体变化（否则流式输出每帧都会触发 scrollIntoView 打断用户翻看历史）
+
+  // Cron timer loop variables moved below to avoid TDZ
+
+  // ── Handlers ─────────────────────────────────────────────────
+
+  const handleFetchModels = async (): Promise<void> => {
+    setIsLoadingModels(true)
+    setShowModelDropdown(true)
+    try {
+      const list = await window.api.getModels({ provider: llmConfig.provider, apiKey: llmConfig.apiKey, baseUrl: llmConfig.baseUrl })
+      if (list && list.length > 0) {
+        const merged = Array.from(new Set([llmConfig.model, ...list].filter(Boolean))) as string[]
+        setAvailableModels(merged)
+        localStorage.setItem(modelCacheKey(llmConfig.provider, llmConfig.baseUrl), JSON.stringify(merged))
+        showToast('获取模型列表成功！', 'success')
+      } else {
+        const fallback = Array.from(new Set([
+          ...modelFallbacks(llmConfig.provider, llmConfig.model),
+          ...readCachedModels(llmConfig.provider, llmConfig.baseUrl)
+        ]))
+        if (fallback.length) setAvailableModels(fallback)
+        showToast('模型服务暂不可用，已保留当前模型', 'info')
+      }
+    } catch (e: any) {
+      showToast(e.message || '获取模型列表失败，已保留当前模型', 'info')
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
+
+  const handleDeleteSession = async (id: string): Promise<void> => {
+    const currentSessions = useAppStoreRaw.getState().sessions as Session[]
+    const filtered = currentSessions.filter(s => s.id !== id)
+    let nextSessions = filtered
+    if (filtered.length === 0) {
+      const timeStr = formatDateTime()
+      const defaultSess = {
+        id: 'agent:main:dashboard:default',
+        name: '(未命名)',
+        time: timeStr,
+        createdAt: timeStr,
+        messages: []
+      }
+      nextSessions = [defaultSess]
+      creatingSessionIdsRef.current.add(defaultSess.id)
+      try {
+        await window.api.createSession(defaultSess)
+      } finally {
+        creatingSessionIdsRef.current.delete(defaultSess.id)
+      }
+    }
+    setSessions(nextSessions)
+    if (activeSessionId === id) setActiveSessionId(nextSessions[0].id)
+    await window.api.deleteSession(id)
+  }
+
+  // 切换会话置顶状态
+  const handleTogglePinSession = async (id: string): Promise<void> => {
+    let newPinned = false
+    setSessions(prev => {
+      const target = prev.find(s => s.id === id)
+      if (!target) return prev
+      newPinned = !target.pinned
+      const toggled = { ...target, pinned: newPinned }
+      const rest = prev.filter(s => s.id !== id)
+      if (toggled.pinned) {
+        const pinnedRest = rest.filter(s => s.pinned)
+        const unpinnedRest = rest.filter(s => !s.pinned)
+        return [...pinnedRest, toggled, ...unpinnedRest]
+      }
+      return [...rest, toggled]
+    })
+    await window.api.updateSession(id, { pinned: newPinned })
+  }
+
+  // 重命名会话
+  const handleRenameSession = async (id: string, name: string): Promise<void> => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setSessions(prev => prev.map(s => (s.id === id ? { ...s, name: trimmed } : s)))
+    await window.api.updateSession(id, { name: trimmed })
+  }
+
+  const handleReorderSessions = useCallback((draggedId: string, targetId: string, placement: 'before' | 'after' = 'before'): void => {
+    if (!draggedId || !targetId || draggedId === targetId) return
+    setSessions(prev => {
+      const fromIndex = prev.findIndex(session => session.id === draggedId)
+      const targetIndex = prev.findIndex(session => session.id === targetId)
+      if (fromIndex < 0 || targetIndex < 0) return prev
+      const next = [...prev]
+      const [dragged] = next.splice(fromIndex, 1)
+      const targetIndexAfterRemoval = targetIndex > fromIndex ? targetIndex - 1 : targetIndex
+      const insertionIndex = targetIndexAfterRemoval + (placement === 'after' ? 1 : 0)
+      next.splice(insertionIndex, 0, dragged)
+      localStorage.setItem(SESSION_ORDER_STORAGE_KEY, JSON.stringify(next.map(session => session.id)))
+      return next
+    })
+  }, [setSessions])
+
+  const handleCreateNewSession = async (): Promise<void> => {
+    const currentSessions = useAppStoreRaw.getState().sessions as Session[]
+    const currentActiveId = useAppStoreRaw.getState().activeSessionId
+    const currentActiveSession = currentSessions.find(session => session.id === currentActiveId)
+    const canReuseCurrentDraft =
+      currentActiveSession &&
+      (currentActiveSession.name === '(未命名)' || currentActiveSession.name === '新会话') &&
+      (currentActiveSession.messages?.length || 0) === 0 &&
+      !currentActiveSession.contextSummary &&
+      !useAppStoreRaw.getState().sendingSessionIds[currentActiveSession.id]
+    if (canReuseCurrentDraft) {
+      setAttachedFiles([])
+      setInputValue('')
+      setActiveTab('chat')
+      return
+    }
+    let newId = createSessionId()
+    while (currentSessions.some(session => session.id === newId)) newId = createSessionId()
+    const timeStr = formatDateTime()
+    const newSess: Session = {
+      id: newId,
+      name: '(未命名)',
+      time: timeStr,
+      createdAt: timeStr,
+      messages: [],
+      pinned: false
+    }
+    creatingSessionIdsRef.current.add(newId)
+    setSessions([...currentSessions, newSess])
+    setActiveSessionId(newId)
+    setAttachedFiles([])
+    setInputValue('')
+    setActiveTab('chat')
+    try {
+      await window.api.createSession(newSess)
+    } finally {
+      creatingSessionIdsRef.current.delete(newId)
+    }
+  }
+
+  // ── 工作空间与文件上传管理 ────────────────────────────────────
+  const [workspacePath, setWorkspacePath] = useState<string>(() => {
+    return localStorage.getItem('mindpet_workspace_path') || ''
+  })
+  
+  const handleSelectWorkspace = async (): Promise<void> => {
+    try {
+      const path = await window.api.selectDirectory({ title: '选择工作空间/项目目录' })
+      if (path) {
+        setWorkspacePath(path)
+        localStorage.setItem('mindpet_workspace_path', path)
+        showToast(`工作空间已设置为：${path}`, 'success')
+      }
+    } catch (e: any) {
+      showToast(`选择工作空间失败: ${e.message}`, 'error')
+    }
+  }
+
+  const handleClearWorkspace = (e: any): void => {
+    e.stopPropagation()
+    setWorkspacePath('')
+    localStorage.removeItem('mindpet_workspace_path')
+    showToast('工作空间已清除', 'info')
+  }
+
+  const handleUploadFile = async (): Promise<void> => {
+    try {
+      const file = await window.api.selectFile()
+      if (file) {
+        setAttachedFiles(prev => [...prev, file])
+        showToast(`成功导入文本文件: ${file.name}`, 'success')
+      }
+    } catch (e: any) {
+      showToast(`读取文件失败: ${e.message}`, 'error')
+    }
+  }
+
+  const handlePasteFiles = async (files: FileList): Promise<void> => {
+    if (!files || files.length === 0) return
+    const newAttachments: AttachedFile[] = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      try {
+        const arrayBuffer = await file.arrayBuffer()
+        const result = await window.api.saveChatFile(activeSessionId, file.name || 'image.png', arrayBuffer)
+
+        let objectUrl
+        if (file.type.startsWith('image/')) {
+          objectUrl = URL.createObjectURL(file)
+        }
+
+        // 对非图片文件，解析文档内容
+        let content: string | undefined
+        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+        const docExts = ['pdf', 'docx', 'xlsx', 'xls', 'csv']
+        const textExts = ['txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'css', 'py', 'java', 'c', 'cpp', 'sh', 'bat', 'yml', 'yaml', 'ini', 'xml']
+        if (docExts.includes(ext)) {
+          content = await window.api.parseFileContent(result.path)
+        } else if (textExts.includes(ext)) {
+          content = await file.text()
+        }
+
+        newAttachments.push({
+          name: result.name,
+          path: result.path,
+          safeName: result.safeName,
+          objectUrl,
+          content
+        })
+      } catch (e: any) {
+        console.error('粘贴保存文件失败', e)
+        showToast(`保存粘贴文件失败: ${e.message}`, 'error')
+      }
+    }
+    if (newAttachments.length > 0) {
+      setAttachedFiles(prev => [...prev, ...newAttachments])
+      showToast(`成功粘贴 ${newAttachments.length} 个文件`, 'success')
+    }
+  }
+
+  const { discardPendingMessageSave } = useChatToolEvents({
+    updateSessionMessages,
+    setCronTasks,
+    activeSessionIdRef,
+    cronRunningLogsRef,
+    showToast
+  })
+  const { abortedReplyIdsRef, finalizeReply, failReply, abortReply } = useChatReplyRuntime({
+    setSessions,
+    setSendingSessionIds,
+    discardPendingMessageSave
+  })
+  const getChatState = useCallback(() => useAppStoreRaw.getState(), [])
+  const { triggerSessionSummary } = useChatSessionSummary({ getState: getChatState, setSessions })
+  const { handleSendChat } = useChatSend({
+    getState: getChatState,
+    workspacePath,
+    setShowApiKeyModal,
+    setSessions,
+    setInputValue,
+    setAttachedFiles,
+    setSendingSessionIds,
+    abortedReplyIdsRef,
+    finalizeReply,
+    failReply,
+    triggerSessionSummary
+  })
+  useEffect(() => {
+    if (pendingAutoSendTick === 0 || pendingAutoSendTick <= consumedAutoSendTickRef.current) return undefined
+    consumedAutoSendTickRef.current = pendingAutoSendTick
+    const timer = setTimeout(() => {
+      void handleSendChat()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [handleSendChat, pendingAutoSendTick])
+  useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef })
+
+
+  const handleTestConnection = async (): Promise<void> => {
+    setTestStatus('testing')
+    try {
+      const result = await window.api.callLLM({ ...llmConfig, sessionId: 'system:test' }, [{ role: 'user', content: 'Say "Success" in exactly one word.' }])
+      setTestStatus(`连接成功! 答复: "${result.trim()}"`)
+    } catch (e: any) {
+      setTestStatus(`连接失败: ${e.message || e}`)
+    }
+  }
+
+  const handleSkillsPathClick = async (): Promise<void> => {
+    try {
+      const path = await window.api.selectDirectory({ title: '选择技能存放目录' })
+      if (path) {
+        const savedPath = await window.api.setStoragePath(path)
+        showToast(`技能存放路径已成功更改为：${savedPath || '默认UserData'}`, 'success')
+        await refreshSkillsAndStorage()
+      }
+    } catch (e: any) {
+      showToast(`更改技能路径失败：${e.message || e}`, 'error')
+    }
+  }
+
+  const handleImportSkill = async (): Promise<void> => {
+    try {
+      const list = await window.api.uploadSkillPack()
+      if (list && list.length > 0) setSkillsList(list)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleDeleteSkill = async (name: string): Promise<void> => {
+    try {
+      const list = await window.api.deleteSkill(name)
+      setSkillsList(list)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleSaveStoragePath = async (): Promise<void> => {
+    setStorageSaveStatus({ type: 'idle', message: '' })
+    try {
+      const savedPath = await window.api.setStoragePath(storageInputPath)
+      setStorageSaveStatus({ type: 'success', message: `存储路径保存成功！已创建目录：${savedPath || '默认UserData'}` })
+      showToast('存储路径保存成功！已自动迁移文件。', 'success')
+      await refreshSkillsAndStorage()
+    } catch (e: any) {
+      setStorageSaveStatus({ type: 'failed', message: `存储路径修改失败：${e.message || e}` })
+      showToast(`存储路径修改失败：${e.message || e}`, 'error')
+    }
+  }
+
+  const handleToggleSandboxMode = async (enabled: boolean): Promise<void> => {
+    try {
+      const actual = await window.api.setSandboxMode(enabled)
+      setSandboxMode(actual)
+      showToast(`安全沙盒模式已${actual ? '开启' : '关闭'}`, 'success')
+    } catch (e: any) {
+      showToast(`保存沙盒配置失败: ${e.message || e}`, 'error')
+    }
+  }
+
+  const handleRespondPermission = (approved: boolean, scope: 'once' | 'turn' = 'once'): void => {
+    if (activePermissionRequest) {
+      window.api.respondPermission(activePermissionRequest.requestId, approved, scope)
+      setActivePermissionRequest(null)
+    }
+  }
+
+  const refreshSshAndDeviceStatus = useCallback(async (sessId: string) => {
+    if (!window.api || !window.api.getExecutionDevice) return
+    try {
+      const dev = await window.api.getExecutionDevice(sessId)
+      setExecutionDeviceState(dev)
+      const status = await window.api.getSshStatus(sessId)
+      setSshConnected(status.connected)
+      setSshHost(status.host || '')
+      setSshUsername(status.username || '')
+    } catch (e) {
+      console.error('获取会话 SSH 状态失败', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeSessionId) {
+      refreshSshAndDeviceStatus(activeSessionId)
+    }
+  }, [activeSessionId, refreshSshAndDeviceStatus])
+
+  const handleUpdateExecutionDevice = async (type: 'local' | 'ssh') => {
+    if (!activeSessionId) return
+    await window.api.setExecutionDevice(activeSessionId, type)
+    setExecutionDeviceState(type)
+  }
+
+  const handleConnectSsh = async (config: any): Promise<{ success: boolean; message?: string }> => {
+    if (!activeSessionId) return { success: false, message: '会话不存在' }
+    const res = await window.api.connectSsh(activeSessionId, config)
+    if (res.success) {
+      await window.api.setExecutionDevice(activeSessionId, 'ssh')
+      setExecutionDeviceState('ssh')
+      setSshConnected(true)
+      setSshHost(config.host)
+      setSshUsername(config.username)
+    }
+    return res
+  }
+
+  const handleDisconnectSsh = async () => {
+    if (!activeSessionId) return
+    await window.api.disconnectSsh(activeSessionId)
+    await window.api.setExecutionDevice(activeSessionId, 'local')
+    setExecutionDeviceState('local')
+    setSshConnected(false)
+    setSshHost('')
+    setSshUsername('')
+  }
+
+  const handleAbortLlm = async (): Promise<void> => {
+    setActivePermissionRequest(null)
+    const activeMessages = (useAppStoreRaw.getState().sessions as Session[])
+      .find(session => session.id === activeSessionId)?.messages || []
+    await abortReply(activeSessionId, activeMessages, showToast)
+  }
+
+  const handleToggleCronTask = async (id: string): Promise<void> => {
+    const updated = cronTasks.map(t => t.id === id ? { ...t, isActive: !t.isActive } : t)
+    setCronTasks(updated)
+    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
+    await window.api.saveCronTasks(updated)
+  }
+
+  const handleDeleteCronTask = async (id: string): Promise<void> => {
+    const updated = cronTasks.filter(t => t.id !== id)
+    setCronTasks(updated)
+    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
+    await window.api.saveCronTasks(updated)
+  }
+
+  const handleClearCronLogs = async (id: string): Promise<void> => {
+    const updated = cronTasks.map(t => t.id === id ? { ...t, logs: [] } : t)
+    setCronTasks(updated)
+    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
+    await window.api.saveCronTasks(updated)
+    showToast('定时任务日志已清空', 'success')
+  }
+
+  const handleAddCronTask = async (taskData: Omit<CronTask, 'id' | 'lastTriggered' | 'triggerCount' | 'logs'>): Promise<void> => {
+    const newTask: CronTask = {
+      ...taskData,
+      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      lastTriggered: '从未执行',
+      triggerCount: 0,
+      logs: []
+    }
+    const updated = [...cronTasks, newTask]
+    setCronTasks(updated)
+    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
+    await window.api.saveCronTasks(updated)
+    showToast('定时任务添加成功', 'success')
+  }
+
+  const handleEditCronTask = async (id: string, updates: Partial<CronTask>): Promise<void> => {
+    const updated = cronTasks.map(t => t.id === id ? { ...t, ...updates } : t)
+    setCronTasks(updated)
+    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
+    await window.api.saveCronTasks(updated)
+    showToast('定时任务已更新', 'success')
+  }
+
+  const handleClearTokenLogs = (): void => {
+    setTokenLogs([])
+    localStorage.removeItem('mindpet_token_logs')
+    localStorage.removeItem('agentself_token_logs')
+    showToast('已清空 Token 消耗日志', 'success')
+  }
+
+  // ── Cron Timer Loop & Backend Executor (Moved here to avoid TDZ) ──
+  // Cron timer loop
+  const runTaskBackend = async (taskToRun: CronTask, tempSessionId: string, logId: string) => {
+    try {
+      const chatMessages = [
+        { role: 'user', content: `你正在后台执行定时任务，请直接调用可用工具并用最简短的话汇报结果。执行定时任务指令: ${taskToRun.action || '无'}` }
+      ]
+
+      let response = ''
+      if (taskToRun.name === '系统画像提纯与经验沉淀') {
+        const result = await window.api.purifyMemoryPipeline()
+        response = `内置系统画像与避坑经验提纯分析已完成。\n本次共合并处理了 ${result.count} 份未更新的对话摘要，并从中抽取/强化了 ${result.insertCount || 0} 条避坑经验。相关源文件已标记为已更新。`
+      } else {
+        response = await window.api.callLLM(
+          {
+            ...llmConfig,
+            sessionId: tempSessionId,
+            messageId: Date.now()
+          },
+          chatMessages,
+          workspacePath
+        )
+      }
+
+      const runningLog = cronRunningLogsRef.current[tempSessionId]
+      if (runningLog) {
+        runningLog.status = 'success'
+        runningLog.message = `定时任务 [${taskToRun.name}] 执行完成。`
+        if (runningLog.messages) {
+          runningLog.messages = runningLog.messages.map(m => 
+            m.sender === 'agent' ? { ...m, text: response, isThinking: false } : m
+          )
+        }
+        delete cronRunningLogsRef.current[tempSessionId]
+
+        setCronTasks(prevTasks => {
+          const nextTasks = prevTasks.map(t => {
+            if (t.id === taskToRun.id) {
+              const updatedLogs = (t.logs || []).map(l => l.id === logId ? { ...runningLog } : l)
+              return { ...t, logs: updatedLogs }
+            }
+            return t
+          })
+          localStorage.setItem('mindpet_cron_tasks', JSON.stringify(nextTasks))
+          window.api.saveCronTasks(nextTasks)
+          return nextTasks
+        })
+
+        // 触发系统托盘通知与桌面挂件气泡
+        window.api.showBubble(`任务 [${taskToRun.name}] 执行成功！`, response, taskToRun.id, logId)
+
+        // 在 Chat 会话中添加简化的完成提醒
+        const successTimeStr = formatDateTime()
+        const successTimeOnly = successTimeStr.split(' ')[1] || successTimeStr
+        setSessions(prevSessions => {
+          const updated = prevSessions.map(session => {
+            if (session.id === activeSessionId) {
+              return {
+                ...session,
+                messages: [...session.messages, {
+                  id: Date.now() + Math.random(),
+                  sender: 'system',
+                  text: `${successTimeOnly} - 完成【${taskToRun.name}】任务`,
+                  time: successTimeStr
+                }]
+              }
+            }
+            return session
+          })
+          if (autoSaveHistory) localStorage.setItem('mindpet_sessions', JSON.stringify(updated))
+          return updated
+        })
+      }
+    } catch (err: any) {
+      console.error('后台执行定时任务出错', err)
+      const runningLog = cronRunningLogsRef.current[tempSessionId]
+      if (runningLog) {
+        runningLog.status = 'failed'
+        runningLog.message = `定时任务 [${taskToRun.name}] 执行失败：${err.message || err}`
+        if (runningLog.messages) {
+          runningLog.messages = runningLog.messages.map(m => 
+            m.sender === 'agent' ? { ...m, text: `⚠️ 执行过程中出现错误：${err.message || err}`, isThinking: false, isError: true } : m
+          )
+        }
+        delete cronRunningLogsRef.current[tempSessionId]
+
+        setCronTasks(prevTasks => {
+          const nextTasks = prevTasks.map(t => {
+            if (t.id === taskToRun.id) {
+              const updatedLogs = (t.logs || []).map(l => l.id === logId ? { ...runningLog } : l)
+              return { ...t, logs: updatedLogs }
+            }
+            return t
+          })
+          localStorage.setItem('mindpet_cron_tasks', JSON.stringify(nextTasks))
+          window.api.saveCronTasks(nextTasks)
+          return nextTasks
+        })
+
+        window.api.showBubble(`任务 [${taskToRun.name}] 执行失败。`, err.message || err, taskToRun.id, logId)
+
+        // 在 Chat 会话中添加简化的失败提醒
+        const failTimeStr = formatDateTime()
+        const failTimeOnly = failTimeStr.split(' ')[1] || failTimeStr
+        setSessions(prevSessions => {
+          const updated = prevSessions.map(session => {
+            if (session.id === activeSessionId) {
+              return {
+                ...session,
+                messages: [...session.messages, {
+                  id: Date.now() + Math.random(),
+                  sender: 'system',
+                  text: `${failTimeOnly} - 【${taskToRun.name}】任务执行失败`,
+                  time: failTimeStr
+                }]
+              }
+            }
+            return session
+          })
+          if (autoSaveHistory) localStorage.setItem('mindpet_sessions', JSON.stringify(updated))
+          return updated
+        })
+      }
+    }
+  }
+
+  useCronScheduler({ setCronTasks, cronRunningLogsRef, runTaskBackend })
+
+  const handleSetActiveSessionId = useCallback((id: string) => {
+    setActiveSessionId(id)
+    setTimeout(() => {
+      refreshSessions()
+    }, 0)
+  }, [setActiveSessionId, refreshSessions])
+
+  // ── 使用 useMemo 稳定返回引用，配合子组件 React.memo 跳过不必要重渲染 ──
+  // 仅依赖数据字段；函数引用通过闭包捕获，数据相同时语义等价
+  return useMemo(() => ({
+    // navigation
+    activeTab, setActiveTab,
+    agentSubTab, setAgentSubTab,
+    settingsSubTab, setSettingsSubTab,
+    // ui
+    isCollapsed, setIsCollapsed,
+    showApiKey, setShowApiKey,
+    showApiKeyModal, setShowApiKeyModal,
+    showModelDropdown, setShowModelDropdown,
+    isLoadingModels,
+    availableModels,
+    dropdownRef,
+    // toast
+    toast, showToast,
+    // theme
+    theme, handleThemeToggle,
+    // llm
+    llmConfig, saveLlmConfig,
+    handleFetchModels, handleTestConnection,
+    testStatus,
+    // cron
+    cronTasks,
+    handleToggleCronTask, handleDeleteCronTask, handleClearCronLogs, handleAddCronTask, handleEditCronTask,
+    selectedTaskForLog, setSelectedTaskForLog,
+    selectedCronLogDetails, setSelectedCronLogDetails,
+    // sessions
+    setSessions,
+    refreshSessions,
+    activeSessionId, setActiveSessionId: handleSetActiveSessionId,
+    inputValue, setInputValue,
+    isSending,
+    chatEndRef,
+    handleCreateNewSession, handleDeleteSession, handleTogglePinSession, handleRenameSession, handleReorderSessions, handleSendChat,
+    // workspace & attached file
+    workspacePath, setWorkspacePath, handleSelectWorkspace, handleClearWorkspace,
+    attachedFiles, setAttachedFiles, handlePasteFiles, handleUploadFile,
+    // generated files & preview
+    generatedFiles, setGeneratedFiles,
+    showFilePanel, setShowFilePanel,
+    openTabs, setOpenTabs,
+    previewFile, setPreviewFile,
+    previewLoading, setPreviewLoading,
+    officePreviewRequest, setOfficePreviewRequest,
+    loadGeneratedFiles,
+    handlePreviewFile,
+    handleDeleteFile,
+    handleOpenGeneratedFileFolder,
+    // system
+    // skills
+    skillsList,
+    skillsPath,
+    handleSkillsPathClick, handleImportSkill, handleDeleteSkill,
+    refreshSkillsAndStorage,
+    disabledSkillNames,
+    toggleSkillEnable,
+    activeMcpServers,
+    refreshMcpServers,
+    mcpConfig,
+    saveMcpConfig,
+    // storage
+    storageInputPath, setStorageInputPath,
+    actualStoragePath,
+    storageSaveStatus,
+    handleSaveStoragePath,
+    // avatar
+    customModelDir, setCustomModelDir,
+    customModelFile, setCustomModelFile,
+    avatarList,
+    currentAvatarName,
+    refreshAvatarsList,
+    // tts
+    ttsEnabled, setTtsEnabled,
+    // memory
+    autoSaveHistory, setAutoSaveHistory,
+    contextRounds, setContextRounds,
+    // models default
+    DEFAULT_MODELS,
+    // token logs
+    tokenLogs, setTokenLogs,
+    handleClearTokenLogs,
+    // highlighted message
+    highlightedMessageId, setHighlightedMessageId,
+    // sandbox
+    sandboxMode,
+    handleToggleSandboxMode,
+    activePermissionRequest,
+    handleRespondPermission,
+    handleAbortLlm,
+    // SSH
+    executionDevice,
+    sshConnected,
+    sshHost,
+    sshUsername,
+    handleUpdateExecutionDevice,
+    handleConnectSsh,
+    handleDisconnectSsh,
+    refreshSshAndDeviceStatus,
+    // session switch
+    isSessionSwitching,
+    isSessionsInitialized,
+    // avatar derived & handlers
+    currentAvatarStyle,
+    currentAvatarVoice
+  }), [
+    // ── Zustand 数据字段（仅引用比较，不包含函数引用） ──
+    activeTab, agentSubTab, settingsSubTab,
+    isCollapsed, showApiKey, showApiKeyModal, showModelDropdown,
+    isLoadingModels, availableModels,
+    toast, selectedTaskForLog, selectedCronLogDetails,
+    pendingOpenTaskId, pendingOpenLogId,
+    theme, sendingSessionIds,
+    llmConfig, mcpConfig,
+    cronTasks, activeSessionId,
+    inputValue, tokenLogs,
+    highlightedMessageId, generatedFiles, showFilePanel,
+    openTabs, previewFile, previewLoading, officePreviewRequest,
+    skillsList, skillsPath, disabledSkillNames,
+    activeMcpServers, storageInputPath, actualStoragePath, storageSaveStatus,
+    sandboxMode, activePermissionRequest,
+    executionDevice, sshConnected, sshHost, sshUsername,
+    customModelDir, customModelFile, avatarList,
+    ttsEnabled, autoSaveHistory, contextRounds,
+    testStatus, isSessionSwitching, isSessionsInitialized,
+    // ── 本地 React 状态 ──
+    workspacePath, attachedFiles
+  ])
+}
+
+export type AppStore = ReturnType<typeof useAppStore>
