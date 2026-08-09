@@ -1,0 +1,93 @@
+# === IDE 配置 ===
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Playwright MCP 浏览器快照（可能含敏感页面内容）===
+.playwright-mcp/
+
+# === 敏感配置文件 ===
+.env
+.env.*
+*.log
+logs/
+config.properties
+config.yml
+config.yaml
+config.json
+application.properties
+application.yml
+application.yaml
+secrets.*
+credentials.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# === Token 存储 ===
+.token
+token.json
+token.properties
+.weixin/
+weixin-token/
+12306_account.txt
+
+# === Claude / AI 工具 ===
+.claude/
+.impeccable/
+.gemini*
+
+# === 构建输出 ===
+target/
+out/
+build/
+dist/
+*.class
+*.jar
+*.war
+*.ear
+
+# === 依赖 ===
+node_modules/
+.mvn/
+.gradle/
+
+# === 运行时文件 ===
+*.pid
+*.seed
+*.pid.lock
+dump.rdb
+.eslintcache
+
+# === Agent 相关 ===
+.agents*
+skills-lock.json
+desktop_notifications.json
+llm-dynamic-config.json
+skills-config.json
+weather.log/
+
+# === 操作系统 ===
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# === 临时文件 ===
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+*.orig
+*.rej
+
+# === 压缩包 ===
+*.zip
+*.tar.gz
+*.rar
+*.7z
