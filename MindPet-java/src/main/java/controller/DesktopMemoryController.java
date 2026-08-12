@@ -159,7 +159,6 @@ public class DesktopMemoryController {
             int userMessages = 0;
             int assistantMessages = 0;
             Set<String> companionDates = new HashSet<>();
-            int conversationRounds = Math.min(userMessages, assistantMessages);
             Map<String, Integer> activityCounts = new TreeMap<>();
             for (Map<String, Object> stored : storedMessages) {
                 String role = archiveRole(stored.get("sender"));
@@ -173,7 +172,7 @@ public class DesktopMemoryController {
                     activityCounts.merge(date, 1, Integer::sum);
                 }
             }
-            conversationRounds = Math.min(userMessages, assistantMessages);
+            int conversationRounds = Math.min(userMessages, assistantMessages);
 
             List<Map<String, Object>> messages = new ArrayList<>();
             for (Map<String, Object> stored : storedMessages) {
@@ -242,16 +241,26 @@ public class DesktopMemoryController {
         return "";
     }
 
+    private static final java.time.format.DateTimeFormatter ARCHIVE_DATETIME_FMT =
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private String archiveDate(Object rawTime) {
         String time = String.valueOf(rawTime == null ? "" : rawTime).trim();
         if (time.isBlank()) return "";
+        // ISO: yyyy-MM-ddTHH:mm:ss (Java default)
         try {
             return LocalDateTime.parse(time).toLocalDate().toString();
         } catch (RuntimeException ignored) {
+            // ISO instant: yyyy-MM-ddTHH:mm:ssZ
             try {
                 return Instant.parse(time).atZone(ZoneId.systemDefault()).toLocalDate().toString();
             } catch (RuntimeException ignoredInstant) {
-                return "";
+                // 前端常用格式: yyyy-MM-dd HH:mm:ss (replace 'T' with space, no zone)
+                try {
+                    return LocalDateTime.parse(time, ARCHIVE_DATETIME_FMT).toLocalDate().toString();
+                } catch (RuntimeException ignoredSpace) {
+                    return "";
+                }
             }
         }
     }
@@ -262,7 +271,12 @@ public class DesktopMemoryController {
         try {
             return LocalDateTime.parse(time).atZone(ZoneId.systemDefault()).toInstant().toString();
         } catch (RuntimeException ignored) {
-            return time;
+            try {
+                return LocalDateTime.parse(time, ARCHIVE_DATETIME_FMT)
+                    .atZone(ZoneId.systemDefault()).toInstant().toString();
+            } catch (RuntimeException ignoredSpace) {
+                return time;
+            }
         }
     }
 

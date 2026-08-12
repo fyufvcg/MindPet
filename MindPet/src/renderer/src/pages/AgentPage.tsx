@@ -4,6 +4,7 @@ import { formatBytes } from '../utils/helpers'
 import type { AppStore } from '../hooks/useAppStore'
 import { ChatMessageItem } from '../components/ChatMessageItem'
 import {
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   CircleX,
@@ -20,6 +21,7 @@ import {
   Lightbulb,
   KeyRound,
   LoaderCircle,
+  MessageSquare,
   Network,
   Pause,
   Pencil,
@@ -31,7 +33,9 @@ import {
   Search,
   Settings2,
   Siren,
+  Sparkles,
   Store,
+  Tag,
   Trash2,
   TrendingUp,
   Upload,
@@ -83,12 +87,209 @@ function useAnimatedNumber(target: number, duration = 680): number {
   return value
 }
 
+interface SkillGenerateModalProps {
+  onSave: (name: string, content: string) => Promise<void>
+  onClose: () => void
+}
+
+function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React.JSX.Element {
+  const [step, setStep] = React.useState<'input' | 'preview'>('input')
+  const [skillName, setSkillName] = React.useState('')
+  const [description, setDescription] = React.useState('')
+  const [content, setContent] = React.useState('')
+  const [viewMode, setViewMode] = React.useState<'edit' | 'preview'>('preview')
+  const [toolCount, setToolCount] = React.useState(0)
+  const [loading, setLoading] = React.useState(false)
+  const [transitioning, setTransitioning] = React.useState(false)
+
+  const doGenerate = async (): Promise<void> => {
+    if (!description.trim()) return
+    setLoading(true)
+    try {
+      const result = await (window as any).api.generateSkill(skillName, description)
+      if (result.status === 'ok') {
+        setContent(result.content || '')
+        if (result.name && !skillName) setSkillName(String(result.name))
+        setToolCount(result.toolCount || 0)
+        setTransitioning(true)
+        setTimeout(() => { setStep('preview'); setTransitioning(false) }, 280)
+      } else {
+        alert('生成失败: ' + (result.message || '未知错误'))
+      }
+    } catch (e: any) {
+      alert('生成失败: ' + (e.message || String(e)))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const doSave = async (): Promise<void> => {
+    const name = skillName.trim() || '新技能'
+    await onSave(name, content)
+  }
+
+  const goBack = (): void => {
+    setTransitioning(true)
+    setTimeout(() => { setStep('input'); setTransitioning(false) }, 280)
+  }
+
+  // 预加载工具目录
+  React.useEffect(() => {
+    (window as any).api.getToolCatalog().then((data: any) => {
+      if (data?.tools) setToolCount(data.tools.length)
+    }).catch(() => {})
+  }, [])
+
+  return (
+    <div className="mcp-modal-overlay" onClick={onClose}>
+      <div className="mcp-modal-card skill-gen-modal"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="mcp-modal-header skill-gen-header">
+          <div className="mcp-modal-title">
+            <Sparkles size={18} strokeWidth={1.5} aria-hidden="true" />
+            AI 生成技能
+          </div>
+          <button className="mcp-modal-close-btn" onClick={onClose} aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Step indicator */}
+        <div className="skill-gen-steps">
+          <button
+            className={`skill-gen-step ${step === 'input' ? 'active' : ''} ${step === 'preview' ? 'done' : ''}`}
+            onClick={() => { if (step === 'preview') goBack() }}
+            type="button"
+          >
+            <span className="skill-gen-step-dot">
+              {step === 'preview' ? <CheckCircle2 size={14} strokeWidth={2} /> : '1'}
+            </span>
+            <span className="skill-gen-step-label">描述需求</span>
+          </button>
+          <div className={`skill-gen-step-connector ${step === 'preview' ? 'active' : ''}`} />
+          <button
+            className={`skill-gen-step ${step === 'preview' ? 'active' : ''}`}
+            disabled={step !== 'preview'}
+            type="button"
+          >
+            <span className="skill-gen-step-dot">2</span>
+            <span className="skill-gen-step-label">预览保存</span>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className={`skill-gen-body ${transitioning ? 'skill-gen-transitioning' : ''}`}>
+        {step === 'input' ? (
+          <>
+            <div className="skill-gen-field">
+              <label className="skill-gen-label">
+                <Tag size={14} strokeWidth={1.5} aria-hidden="true" />
+                技能名称
+                <span className="skill-gen-label-hint">选填</span>
+              </label>
+              <input
+                className="mcp-input-fancy"
+                placeholder="例如：每日天气助手"
+                value={skillName} onChange={e => setSkillName(e.target.value)} />
+            </div>
+
+            <div className="skill-gen-field">
+              <label className="skill-gen-label">
+                <MessageSquare size={14} strokeWidth={1.5} aria-hidden="true" />
+                描述你想要的技能
+              </label>
+              <textarea
+                className="skill-gen-textarea-v2"
+                placeholder="例如：每天早上 8 点自动查天气，下雨就提醒我带伞。或者：帮我把对话中提到的待办事项自动整理成清单。"
+                value={description} onChange={e => setDescription(e.target.value)} />
+            </div>
+
+            {toolCount > 0 && (
+              <div className="skill-gen-hint">
+                <Lightbulb size={14} strokeWidth={1.5} aria-hidden="true" />
+                <span>已加载 {toolCount} 个可用工具，AI 会自动匹配并编排技能流程</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="skill-gen-view-toggle">
+              <button
+                className={`skill-gen-view-btn ${viewMode === 'edit' ? 'active' : ''}`}
+                onClick={() => setViewMode('edit')}
+              >
+                <Pencil size={14} strokeWidth={1.5} aria-hidden="true" />
+                编辑
+              </button>
+              <button
+                className={`skill-gen-view-btn ${viewMode === 'preview' ? 'active' : ''}`}
+                onClick={() => setViewMode('preview')}
+              >
+                <FileText size={14} strokeWidth={1.5} aria-hidden="true" />
+                预览
+              </button>
+            </div>
+
+            {viewMode === 'edit' ? (
+              <textarea className="skill-gen-editor"
+                value={content} onChange={e => setContent(e.target.value)} />
+            ) : (
+              <div className="skill-gen-render">
+                {content || (
+                  <span className="skill-gen-empty">生成内容为空，请返回上一步重新描述</span>
+                )}
+              </div>
+            )}
+
+            <div className="skill-gen-hint">
+              <Lightbulb size={14} strokeWidth={1.5} aria-hidden="true" />
+              <span>可直接编辑源码微调，满意后点击保存</span>
+            </div>
+          </>
+        )}
+        </div>
+
+        {/* Footer */}
+        <div className="mcp-modal-footer skill-gen-footer">
+          {step === 'input' ? (
+            <>
+              <button className="btn-secondary" onClick={onClose}>取消</button>
+              <button className="btn-primary skill-gen-submit" onClick={doGenerate}
+                disabled={!description.trim() || loading}>
+                {loading ? (
+                  <><LoaderCircle size={15} strokeWidth={2} className="ui-icon-leading spinning" aria-hidden="true" />生成中…</>
+                ) : (
+                  <><Sparkles size={15} strokeWidth={1.5} className="ui-icon-leading" aria-hidden="true" />生成技能</>
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn-secondary" onClick={goBack}>
+                <ArrowLeft size={15} strokeWidth={1.5} className="ui-icon-leading" aria-hidden="true" />
+                返回修改
+              </button>
+              <button className="btn-primary skill-gen-submit" onClick={doSave}
+                disabled={!content.trim()}>
+                <Save size={15} strokeWidth={1.5} className="ui-icon-leading" aria-hidden="true" />
+                保存技能
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AgentPage({ store, archiveMode = false }: AgentPageProps): React.JSX.Element {
   const {
     agentSubTab, setAgentSubTab,
     // skills
     skillsList, skillsPath,
     handleSkillsPathClick, handleImportSkill, handleDeleteSkill,
+    handleSaveGeneratedSkill,
     // memory
     autoSaveHistory, setAutoSaveHistory,
     contextRounds, setContextRounds,
@@ -108,6 +309,22 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
   const [archiveStats, setArchiveStats] = React.useState({ conversationRounds: 0, companionDays: 0 })
   const [archiveActivityByDate, setArchiveActivityByDate] = React.useState<Record<string, number>>({})
   const [archiveView, setArchiveView] = React.useState<'intimacy' | 'growth'>('intimacy')
+
+  // ── Skill 生成本地状态 ──
+  const [skillGenOpen, setSkillGenOpen] = React.useState(false)
+
+  const onSkillGenOpen = React.useCallback(() => {
+    setSkillGenOpen(true)
+  }, [])
+
+  const onSkillGenClose = React.useCallback(() => {
+    setSkillGenOpen(false)
+  }, [])
+
+  // ── Skill 生成 handler 包装 ──
+  const onSkillGenSave = React.useCallback(async (name: string, content: string) => {
+    await handleSaveGeneratedSkill(name, content)
+  }, [handleSaveGeneratedSkill])
 
   // ── 四表管理状态 ──
   const TABLE_NAMES: Record<string, string> = {
@@ -318,6 +535,18 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
       level: cell.count === 0 || maxCount === 0 ? 0 : Math.min(4, Math.max(1, Math.ceil(cell.count / (maxCount / 4))))
     }))
   }, [archiveActivityByDate])
+  const recentWeekCount = React.useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    let sum = 0
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      sum += Number(archiveActivityByDate[toLocalDateKey(d)]) || 0
+    }
+    return sum
+  }, [archiveActivityByDate])
+
   const companionTrajectory = React.useMemo(() => {
     const weekCounts = Array.from({ length: Math.ceil(heatmapCells.length / 7) }, (_, week) => (
       heatmapCells.slice(week * 7, week * 7 + 7).reduce((total, cell) => total + cell.count, 0)
@@ -332,9 +561,9 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
     return {
       path,
       end: points[points.length - 1] || { x: 416, y: 58 },
-      recentCount: weekCounts[weekCounts.length - 1] || 0
+      recentCount: recentWeekCount
     }
-  }, [heatmapCells])
+  }, [heatmapCells, recentWeekCount])
   const heatmapMonthLabels = React.useMemo(() => {
     if (heatmapCells.length === 0) return []
     const firstDate = heatmapCells[0].date
@@ -456,12 +685,17 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 <FolderOpen size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
                 存放路径: {skillsPath || '正在加载技能目录...'}
               </span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-secondary" onClick={() => window.api.openSkillsFolder()}>
+              <div className="skills-action-btns">
+                <button className="skill-btn skill-btn-ghost" onClick={() => window.api.openSkillsFolder()}>
+                  <FolderOpen size={15} strokeWidth={2} aria-hidden="true" />
                   打开目录
                 </button>
-                <button className="btn-primary" onClick={handleImportSkill}>
-                  <Upload size={15} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                <button className="skill-btn skill-btn-magic" onClick={onSkillGenOpen}>
+                  <Sparkles size={15} strokeWidth={2} aria-hidden="true" />
+                  AI 生成技能
+                </button>
+                <button className="skill-btn skill-btn-fill" onClick={handleImportSkill}>
+                  <Upload size={15} strokeWidth={2} aria-hidden="true" />
                   导入技能包 (.zip)
                 </button>
               </div>
@@ -498,10 +732,18 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 </table>
               ) : (
                 <div className="empty-state">
-                  本地没有已加载的 ZIP 技能包。请点击"导入技能包"选择 ZIP 压缩文件。
+                  本地没有已加载的 ZIP 技能包。请点击"导入技能包"选择 ZIP 压缩文件，或使用 AI 生成。
                 </div>
               )}
             </div>
+
+            {/* ── AI 生成 Skill 模态框 ── */}
+            {skillGenOpen && (
+              <SkillGenerateModal
+                onSave={onSkillGenSave}
+                onClose={onSkillGenClose}
+              />
+            )}
           </div>
         )}
 

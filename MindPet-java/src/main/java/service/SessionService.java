@@ -75,7 +75,8 @@ public class SessionService {
         meta.put("updated_at", java.time.LocalDateTime.now().toString());
         redis.opsForHash().putAll(metaKey, meta);
         redis.opsForZSet().add(listKey, sessionId, System.currentTimeMillis() / 1000.0);
-        return getMeta(userId, sessionId);
+        Map<String, Object> result = getMeta(userId, sessionId);
+        return result != null ? result : new LinkedHashMap<>(meta);
     }
 
     /** 删除会话及其消息 */

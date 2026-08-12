@@ -71,6 +71,9 @@ llm-dynamic-config.json
 skills-config.json
 weather.log/
 
+# === 本地数据存储 (skills + mcp 配置等) ===
+data/
+
 # === 操作系统 ===
 .DS_Store
 Thumbs.db

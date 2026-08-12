@@ -3647,6 +3647,64 @@ body {
   margin-bottom: 16px;
 }
 
+/* ── 技能加入页操作按钮 ── */
+
+.skills-action-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.skill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+  outline: none;
+  line-height: 1.4;
+}
+
+/* ghost: 打开目录 */
+.skill-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border-input);
+  color: var(--text-secondary);
+}
+
+.skill-btn-ghost:hover {
+  background: var(--bg-menu-hover);
+  color: var(--text-primary);
+}
+
+/* magic: AI 生成技能 — 蓝色描边，安静但有辨识度 */
+.skill-btn-magic {
+  background: transparent;
+  border: 1px solid var(--ds-color-23336238326636, #3976f6);
+  color: var(--ds-color-23336238326636, #3976f6);
+}
+
+.skill-btn-magic:hover {
+  background: rgba(57, 118, 246, 0.06);
+}
+
+/* fill: 导入技能包 — 实心蓝，主操作 */
+.skill-btn-fill {
+  background: var(--ds-color-23336238326636, #3976f6);
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.skill-btn-fill:hover {
+  background: #2868d9;
+}
+
 .skill-zip-badge {
   background: var(--ds-color-726762612839362c);
   border: 1px solid var(--ds-color-726762612839362c);
@@ -11087,4 +11145,356 @@ body.session-dragging * {
     margin-inline: 10px;
     margin-bottom: 10px;
   }
+}
+
+/* ==================== Skill 生成向导 ==================== */
+
+.skill-gen-modal {
+  max-width: 560px;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.skill-gen-header {
+  padding: 16px 24px;
+}
+
+/* ── 步骤指示器 ── */
+
+.skill-gen-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 32px 6px;
+}
+
+.skill-gen-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 20px;
+  transition: background 0.2s, opacity 0.2s;
+  font-family: inherit;
+}
+
+.skill-gen-step:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.skill-gen-step.done {
+  opacity: 0.7;
+}
+
+.skill-gen-step.done:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.skill-gen-step.active {
+  opacity: 1;
+}
+
+.skill-gen-step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+  flex-shrink: 0;
+}
+
+.skill-gen-step .skill-gen-step-dot {
+  background: var(--border-card, rgba(128,128,128,0.15));
+  color: var(--text-muted, #888);
+}
+
+.skill-gen-step.active .skill-gen-step-dot,
+.skill-gen-step.done .skill-gen-step-dot {
+  background: var(--ds-color-23336238326636, #3b82f6);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
+.skill-gen-step-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.skill-gen-step.active .skill-gen-step-label {
+  color: var(--text-primary, #1a1a1a);
+  font-weight: 600;
+}
+
+.skill-gen-step-connector {
+  width: 48px;
+  height: 2px;
+  background: var(--border-card, rgba(128,128,128,0.15));
+  border-radius: 1px;
+  transition: background 0.4s;
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+.skill-gen-step-connector.active {
+  background: var(--ds-color-23336238326636, #3b82f6);
+}
+
+/* ── Body ── */
+
+.skill-gen-body {
+  padding: 16px 24px 4px;
+  transition: opacity 0.28s ease-out, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.skill-gen-body.skill-gen-transitioning {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.skill-gen-field {
+  margin-bottom: 18px;
+}
+
+.skill-gen-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin-bottom: 8px;
+}
+
+.skill-gen-label svg {
+  color: var(--ds-color-23336238326636, #3b82f6);
+  flex-shrink: 0;
+}
+
+.skill-gen-label-hint {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  background: var(--bg-surface, rgba(128,128,128,0.06));
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+/* ── 输入区 ── */
+
+.skill-gen-textarea-v2 {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1a1a1a);
+  border: 1px solid var(--border-card, rgba(128,128,128,0.2));
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.skill-gen-textarea-v2:focus {
+  border-color: var(--ds-color-23336238326636, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.skill-gen-textarea-v2::placeholder {
+  color: var(--text-muted, #999);
+}
+
+/* ── 提示行 ── */
+
+.skill-gen-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.06);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #666);
+}
+
+.skill-gen-hint svg {
+  color: var(--ds-color-23336238326636, #3b82f6);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── 查看模式切换 ── */
+
+.skill-gen-view-toggle {
+  display: inline-flex;
+  background: var(--bg-surface, rgba(128,128,128,0.06));
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 14px;
+}
+
+.skill-gen-view-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-muted, #888);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.skill-gen-view-btn.active {
+  background: var(--bg-card, #fff);
+  color: var(--text-primary, #1a1a1a);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.skill-gen-view-btn.active svg {
+  color: var(--ds-color-23336238326636, #3b82f6);
+}
+
+/* ── 编辑/预览内容区 ── */
+
+.skill-gen-editor {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1a1a1a);
+  border: 1px solid var(--border-card, rgba(128,128,128,0.2));
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.skill-gen-editor:focus {
+  border-color: var(--ds-color-23336238326636, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.skill-gen-render {
+  width: 100%;
+  min-height: 300px;
+  max-height: 400px;
+  overflow: auto;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-card, rgba(128,128,128,0.2));
+  border-radius: 10px;
+  padding: 18px;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.skill-gen-render h1 { font-size: 1.3em; font-weight: 700; margin: 0 0 8px; }
+.skill-gen-render h2 { font-size: 1.1em; font-weight: 600; margin: 18px 0 8px; border-bottom: 1px solid var(--border-card); padding-bottom: 6px; }
+.skill-gen-render h3 { font-size: 1em; font-weight: 600; margin: 14px 0 6px; }
+.skill-gen-render ul, .skill-gen-render ol { padding-left: 22px; margin: 6px 0; }
+.skill-gen-render code { background: var(--bg-surface); padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+.skill-gen-render strong { color: var(--text-primary); font-weight: 600; }
+
+.skill-gen-empty {
+  color: var(--text-muted, #999);
+  font-style: italic;
+}
+
+/* ── Footer ── */
+
+.skill-gen-footer {
+  padding: 14px 24px;
+}
+
+.skill-gen-submit {
+  min-width: 110px;
+  justify-content: center;
+}
+
+/* ── 暗色主题适配 ── */
+
+.agent-window-container.dark .skill-gen-step.active .skill-gen-step-label {
+  color: #e5e7eb;
+}
+
+.agent-window-container.dark .skill-gen-view-btn.active {
+  background: rgba(255,255,255,0.08);
+  color: #e5e7eb;
+}
+
+.agent-window-container.dark .skill-gen-hint {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.agent-window-container.dark .skill-gen-render,
+.agent-window-container.dark .skill-gen-editor,
+.agent-window-container.dark .skill-gen-textarea-v2 {
+  background: rgba(255,255,255,0.04);
+  color: #e5e7eb;
+}
+
+.agent-window-container.dark .skill-gen-step-connector {
+  background: rgba(255,255,255,0.1);
+}
+
+.agent-window-container.dark .skill-gen-step-connector.active {
+  background: var(--ds-color-23336238326636, #3b82f6);
+}
+
+/* ── 暗色：技能加入操作按钮 ── */
+
+.agent-window-container.dark .skill-btn-ghost {
+  border-color: rgba(255,255,255,0.1);
+  color: #9ca3af;
+}
+
+.agent-window-container.dark .skill-btn-ghost:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e5e7eb;
+}
+
+.agent-window-container.dark .skill-btn-magic {
+  border-color: #74aaf4;
+  color: #74aaf4;
+}
+
+.agent-window-container.dark .skill-btn-magic:hover {
+  background: rgba(116, 170, 244, 0.1);
+}
+
+.agent-window-container.dark .skill-btn-fill {
+  background: #74aaf4;
+  color: #0b1220;
+}
+
+.agent-window-container.dark .skill-btn-fill:hover {
+  background: #5b96e0;
 }

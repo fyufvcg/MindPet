@@ -273,6 +273,42 @@ public class DesktopController {
         return Map.of("status", "ok", "skills", skillStore.getAll());
     }
 
+    /**
+     * 返回所有可用工具清单（名称 + 描述 + 参数 + 分组），供前端 skill 生成 LLM 参考。
+     */
+    @GetMapping("/tools/catalog")
+    public Map<String, Object> getToolCatalog() {
+        try {
+            java.util.List<Map<String, Object>> catalog = aiService.getToolCatalog();
+            logger.log("INFO", "[Desktop] 工具目录已返回: " + catalog.size() + " 个工具");
+            return Map.of("status", "ok", "tools", catalog);
+        } catch (Exception e) {
+            logger.log("ERROR", "[Desktop] 获取工具目录失败: " + e.getMessage());
+            return Map.of("status", "error", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * 根据用户自然语言描述生成 SKILL.md。
+     * 请求体：{ "description": "用户描述", "skillName": "可选名称" }
+     */
+    @PostMapping("/skills/generate")
+    public Map<String, Object> generateSkill(@RequestBody Map<String, Object> body) {
+        String description = String.valueOf(body.getOrDefault("description", ""));
+        String skillName = String.valueOf(body.getOrDefault("skillName", ""));
+        if (description.isBlank()) {
+            return Map.of("status", "error", "message", "描述不能为空");
+        }
+        try {
+            Map<String, Object> result = aiService.generateSkill(description, skillName);
+            logger.log("INFO", "[Desktop] Skill 生成: " + result.getOrDefault("name", "?"));
+            return result;
+        } catch (Exception e) {
+            logger.log("ERROR", "[Desktop] Skill 生成失败: " + e.getMessage());
+            return Map.of("status", "error", "message", e.getMessage());
+        }
+    }
+
     // ==================== 工具方法 ====================
 
     private void writeNdjson(OutputStream out, String type, String content, String message) throws Exception {

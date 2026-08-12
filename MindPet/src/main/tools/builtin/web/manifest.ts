@@ -3,10 +3,10 @@ import browserAutomationSkill from './SKILL.md?raw'
 
 export const webManifest: ToolManifest = {
   identifier: 'mindpet-web',
-  category: 'search',
+  category: 'browser',
   meta: {
-    title: '网页检索',
-    description: '联网搜索关键词，或抓取指定网页的全文正文内容',
+    title: '浏览器操控与网页检索',
+    description: '连接用户浏览器、操控页面、联网搜索、抓取网页全文',
     avatar: '🌐'
   },
   api: [

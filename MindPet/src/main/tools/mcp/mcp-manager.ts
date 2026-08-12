@@ -1,9 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { app } from 'electron'
 import * as fs from 'fs'
 import { join } from 'path'
+import { getDefaultDataDir } from '../../storage-path'
 import { McpNameMapper } from './mcp-name-mapper.js'
 import {
   loadSecureSystemMcpConfig,
@@ -277,7 +277,7 @@ export class McpManager {
 
     if (changed) {
       try {
-        const cachePath = join(app.getPath('userData'), 'mcp_tools_cache.json')
+        const cachePath = join(getDefaultDataDir(), 'mcp_tools_cache.json')
         fs.writeFileSync(cachePath, JSON.stringify(this.toolsCache, null, 2), 'utf8')
         console.log(`[MCP] 已将服务 ${serverId} 的工具描述列表成功写入本地缓存磁盘文件`)
       } catch (e) {
@@ -547,7 +547,7 @@ export class McpManager {
 
   public loadSystemMcpConfig(): { servers: McpServerConfig[] } {
     try {
-      const cachePath = join(app.getPath('userData'), 'mcp_tools_cache.json')
+      const cachePath = join(getDefaultDataDir(), 'mcp_tools_cache.json')
       const loaded = loadSecureSystemMcpConfig()
       const loadedServers = loaded.servers as McpServerConfig[]
       const servers = loadedServers.filter(server => !this.isLegacyPaddleMcpConfig(server))
@@ -587,9 +587,15 @@ export class McpManager {
 
   public saveSystemMcpConfig(config: Record<string, unknown>): { servers: McpServerConfig[] } {
     const rawServers = Array.isArray(config.servers) ? config.servers as McpServerConfig[] : []
+    // 保护 Desktop MCP Server：前端同步时不会携带，始终从内存保留
+    const desktopEntry = this.systemMcpConfig.servers.find(s => s.id === 'desktop-tools')
+    let merged = rawServers.filter(server => !this.isLegacyPaddleMcpConfig(server))
+    if (desktopEntry && !merged.find(s => s.id === 'desktop-tools')) {
+      merged.push(desktopEntry)
+    }
     const saved = saveSecureSystemMcpConfig({
       ...config,
-      servers: rawServers.filter(server => !this.isLegacyPaddleMcpConfig(server))
+      servers: merged
     })
     this.systemMcpConfig = { servers: saved.servers as McpServerConfig[] }
     this.setConfigs(this.systemMcpConfig.servers)

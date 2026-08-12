@@ -32,6 +32,9 @@ declare global {
       getSkillsList: () => Promise<any[]>
       deleteSkill: (name: string) => Promise<any[]>
       getActiveSkillsPrompt: (enabledSkillNames: string[]) => Promise<string>
+      getToolCatalog: () => Promise<any>
+      generateSkill: (skillName: string, description: string) => Promise<any>
+      saveGeneratedSkill: (name: string, content: string) => Promise<any[]>
       callLLM: (config: any, messages: any[], workspacePath?: string) => Promise<string>
       selectFile: () => Promise<{ name: string; path: string; content: string } | null>
       selectAttachmentFiles: () => Promise<string[]>

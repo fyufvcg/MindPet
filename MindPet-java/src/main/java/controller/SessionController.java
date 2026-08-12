@@ -39,6 +39,9 @@ public class SessionController {
             return Map.of("status", "error", "message", "session id 不能为空");
         }
         Map<String, Object> meta = sessionService.upsertSession(userId, sessionId, body);
+        if (meta == null) {
+            return Map.of("status", "error", "message", "session 创建失败，请重试");
+        }
         return Map.of("status", "ok", "session", meta);
     }
 

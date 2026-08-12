@@ -24,9 +24,11 @@ function limitAttachmentTextPreview(content: string): string {
   return `${content.slice(0, ATTACHMENT_TEXT_PREVIEW_LIMIT)}\n\n[附件文本预读已截断：原文共 ${content.length} 个字符，仅保留前 ${ATTACHMENT_TEXT_PREVIEW_LIMIT} 个字符。需要完整内容时请使用文件工具分段读取；需要版式转换时请使用 Office PDF 转换工具。]`
 }
 
+import { getDefaultDataDir } from './storage-path'
 import { toolRegistry } from './tools/core/tool-registry'
 import { registerBuiltinTools } from './tools/builtin'
 import { mcpManager } from './tools/mcp/mcp-manager'
+import { startMcpServer, MCP_SERVER_ID, MCP_SERVER_PORT } from './tools/mcp/mcp-server'
 import { permissionManager } from './tools/security/permission-manager'
 import { clarificationManager } from './tools/interaction/clarification-manager'
 import { credentialManager } from './tools/interaction/credential-manager'
@@ -439,6 +441,8 @@ async function saveBase64ImageInternal(dataUrl: string): Promise<{ path: string;
 }
 const activeLlmAbortControllers = new Map<string, AbortController>()
 const abortedSessionIds = new Set<string>()
+// 去重：同一个 messageId 的请求只处理一次，后续相同 messageId 的调用复用第一个请求的结果
+const activeLlmPromises = new Map<string, Promise<string>>()
 // 跟踪每个会话最近上传的 xlsx 文件，用于 generate_file 时自动复制数据验证
 const sessionLastXlsxMap: Map<string, string> = new Map()
 
@@ -876,19 +880,24 @@ function createWindow(): void {
     })
 
     const deliverPendingPetChat = (): void => {
-      if (!pendingPetChat || !petWidgetReady || !mainWindow || mainWindow.isDestroyed()) return
+      if (!pendingPetChat) { return }
+      if (!petWidgetReady) { console.log('[IPC] deliverPendingPetChat 跳过 petWidgetReady=false'); return }
+      if (!mainWindow || mainWindow.isDestroyed()) { console.log('[IPC] deliverPendingPetChat 跳过 mainWindow 不可用'); return }
       const request = pendingPetChat
       pendingPetChat = null
+      console.log('[IPC] deliverPendingPetChat 发送 chat-to-pet text=' + (request.text || '').slice(0, 30))
       mainWindow.webContents.send('chat-to-pet', request.text, request.isNewSession, request.imagePath)
     }
 
     ipcMain.on('pet-widget-ready', (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || event.sender.id !== mainWindow.webContents.id) return
+      console.log('[IPC] pet-widget-ready 收到 wasReady=' + petWidgetReady + ' hasPending=' + !!pendingPetChat)
       petWidgetReady = true
       deliverPendingPetChat()
     })
 
     ipcMain.on('send-chat-to-pet', (_, text: string, isNewSession?: boolean, imagePath?: string) => {
+      console.log('[IPC] send-chat-to-pet 收到 text=' + (text || '').slice(0, 30) + ' isNewSession=' + isNewSession + ' petWidgetReady=' + petWidgetReady + ' hasPending=' + !!pendingPetChat)
       pendingPetChat = { text, isNewSession, imagePath }
       if (!mainWindow || mainWindow.isDestroyed()) createWindow()
       deliverPendingPetChat()
@@ -1008,6 +1017,29 @@ app.whenReady().then(() => {
   loadSystemLlmConfig()
   systemMcpConfig = mcpManager.loadSystemMcpConfig()
 
+  // ── 启动 Desktop MCP Server + 自动注册到 Java 后端 ──────────
+  startMcpServer()
+  const desktopMcpConfig = {
+    id: MCP_SERVER_ID,
+    name: 'MindPet Desktop 工具',
+    url: `http://127.0.0.1:${MCP_SERVER_PORT}`,
+    apiKey: '',
+    hasApiKey: false,
+    type: 'stream' as const,
+    enabled: true,
+    description: '桌面端本地工具（截图、浏览器控制、文件操作等）',
+  }
+  const existingServers = mcpManager.systemMcpConfig.servers || []
+  const filtered = existingServers.filter((s: any) => s.id !== MCP_SERVER_ID)
+  const merged = { servers: [...filtered, desktopMcpConfig] }
+  systemMcpConfig = mcpManager.saveSystemMcpConfig(merged)
+  // 同步到 Java 后端（后端可能尚未启动，失败时静默忽略；mcp-manager 已保护 desktop-tools 不被覆盖）
+  fetch('http://127.0.0.1:8080/api/desktop/mcp-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(systemMcpConfig),
+  }).then(() => console.log('[MCP] ✅ Desktop 工具配置已同步到后端'))
+    .catch(() => console.warn('[MCP] ⏳ 后端未就绪，前端 MCP 同步时会补推'))
 
   // Set app user model id for windows
   electronApp.setAppUserModelId(windowsAppUserModelId)
@@ -1562,7 +1594,7 @@ app.whenReady().then(() => {
         console.error('自定义存储路径无效，退回默认路径', e)
       }
     }
-    return app.getPath('userData')
+    return getDefaultDataDir()
   }
 
   const resolveLocalPath = (filePath: string): string => {
@@ -1736,7 +1768,7 @@ app.whenReady().then(() => {
   ipcMain.handle('api:set-storage-path', async (_, pathStr: string) => {
     try {
       const oldBaseDir = getActiveStorageDir()
-      const newBaseDir = pathStr ? pathStr.trim() : app.getPath('userData')
+      const newBaseDir = pathStr ? pathStr.trim() : getDefaultDataDir()
 
       if (oldBaseDir === newBaseDir) {
         return oldBaseDir
@@ -2217,12 +2249,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('api:abort-llm', (_, sessionId?: string) => {
     if (sessionId) {
-      abortedSessionIds.add(sessionId)
       const controller = activeLlmAbortControllers.get(sessionId)
       if (controller) {
+        abortedSessionIds.add(sessionId)
         try { controller.abort() } catch (_) { /* ignore */ }
         activeLlmAbortControllers.delete(sessionId)
       }
+      // 如果没有活跃的 controller，说明没有正在进行的请求，
+      // 不需要向 abortedSessionIds 下毒，避免后续请求被误杀
     } else {
       for (const controller of activeLlmAbortControllers.values()) {
         try { controller.abort() } catch (_) { /* ignore */ }
@@ -3590,6 +3624,75 @@ app.whenReady().then(() => {
     }
   })
 
+  // 获取工具目录（从后端拉取，含 Java + MCP 工具）
+  ipcMain.handle('api:get-tool-catalog', async () => {
+    try {
+      const resp = await fetch('http://127.0.0.1:8080/api/desktop/tools/catalog')
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      const data = await resp.json()
+      return data
+    } catch (e) {
+      console.error('[Tools] 获取工具目录失败:', e)
+      return { status: 'error', message: String(e) }
+    }
+  })
+
+  // 调用后端 LLM 生成 SKILL.md
+  ipcMain.handle('api:generate-skill', async (_, skillName: string, description: string) => {
+    try {
+      const resp = await fetch('http://127.0.0.1:8080/api/desktop/skills/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillName, description })
+      })
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      return await resp.json()
+    } catch (e) {
+      console.error('[Skills] 生成失败:', e)
+      return { status: 'error', message: String(e) }
+    }
+  })
+
+  // 保存生成的 skill：写入 SKILL.md → 打包 ZIP → 存入 skills 目录
+  ipcMain.handle('api:save-generated-skill', async (_, name: string, content: string) => {
+    try {
+      const skillsPath = getActiveSkillsDir()
+      const folderName = name.replace(/\.zip$/i, '')
+      const folderPath = join(skillsPath, folderName)
+      const zipPath = join(skillsPath, folderName + '.zip')
+
+      // 创建文件夹并写入 SKILL.md
+      if (!fs.existsSync(folderPath)) {
+        fs.mkdirSync(folderPath, { recursive: true })
+      }
+      await fs.promises.writeFile(join(folderPath, 'SKILL.md'), content, 'utf-8')
+
+      // 用 JSZip 打包
+      const zip = new JSZip()
+      const addFiles = async (dir: string, zipRoot: string) => {
+        const items = await fs.promises.readdir(dir, { withFileTypes: true })
+        for (const item of items) {
+          const fullPath = join(dir, item.name)
+          const zipPath2 = zipRoot ? zipRoot + '/' + item.name : item.name
+          if (item.isDirectory()) {
+            await addFiles(fullPath, zipPath2)
+          } else {
+            zip.file(zipPath2, await fs.promises.readFile(fullPath))
+          }
+        }
+      }
+      await addFiles(folderPath, '')
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
+      await fs.promises.writeFile(zipPath, zipBuffer)
+
+      console.log('[Skills] 已保存生成的技能:', name, '→', zipPath)
+      return await readSkillsFolder()
+    } catch (e) {
+      console.error('[Skills] 保存生成技能失败:', e)
+      return []
+    }
+  })
+
   // 4.5. 文本文件选择与加载接口（支持 PDF/Word/Excel/CSV 等格式）
   ipcMain.handle('api:select-file', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
@@ -3983,117 +4086,147 @@ app.whenReady().then(() => {
 
     // 检查此 session 在开始前是否已经被主动终止了
     if (abortedSessionIds.has(sessionId)) {
+      console.log('[LLM] ❌ abortedSessionIds 残留毒药，拒绝请求 sessionId=' + sessionId + ' messageId=' + (config.messageId || '?'))
       abortedSessionIds.delete(sessionId)
       throw new Error('UserAborted')
     }
 
-    if (event && !(config as any).isBackground) {
-      const oldController = activeLlmAbortControllers.get(sessionId)
-      if (oldController) {
-        try { oldController.abort() } catch (_) { /* ignore */ }
-      }
-      thisController = new AbortController()
-      activeLlmAbortControllers.set(sessionId, thisController)
-    } else {
-      thisController = new AbortController()
+    // 去重：同一个 messageId 的请求只处理一次
+    const dedupKey = sessionId + '::' + (config.messageId || '')
+    const existingPromise = activeLlmPromises.get(dedupKey)
+    if (existingPromise) {
+      console.log('[LLM] 🔄 重复请求，复用已有结果 sessionId=' + sessionId + ' messageId=' + (config.messageId || '?') + ' nonce=' + (config.callNonce || '?'))
+      return existingPromise
     }
 
-    try {
-      // ===== 转发到 Java 后端（小晴）= =====
-      const stepStream = callJavaBackend(config, messages, thisController.signal)
-
-      let finalResponse = ''
-      let hasTokenEvent = false
-      for await (const step of stepStream) {
-        if (step.type === 'text_delta') {
-          if (event) {
-            event.sender.send('api:llm-text-delta', {
-              content: step.content,
-              sessionId: config.sessionId,
-              messageId: config.messageId
-            })
+    // 将实际执行逻辑包装为独立 promise，存入 activeLlmPromises 供去重
+    const executePromise = (async (): Promise<string> => {
+      const caller = event ? 'IPC' : 'internal'
+      if (event && !(config as any).isBackground) {
+        // 快捷聊天 session 不自动 abort 旧请求（同一用户操作的重复投递不应互相打断）
+        const isQuickChat = sessionId.startsWith('quickchat:')
+        if (!isQuickChat) {
+          const oldController = activeLlmAbortControllers.get(sessionId)
+          if (oldController) {
+            console.log('[LLM] ⚠️ 发现旧请求，abort sessionId=' + sessionId + ' 旧messageId将被中断，新messageId=' + (config.messageId || '?'))
+            try { oldController.abort() } catch (_) { /* ignore */ }
           }
-        } else if (step.type === 'text') {
-          finalResponse = step.content || ''
-        } else if (step.type === 'token_usage') {
-          hasTokenEvent = true
+        }
+        thisController = new AbortController()
+        activeLlmAbortControllers.set(sessionId, thisController)
+        console.log('[LLM] ▶️ 新请求开始 sessionId=' + sessionId + ' messageId=' + (config.messageId || '?') + ' caller=' + caller + ' nonce=' + (config.callNonce || '?'))
+      } else {
+        thisController = new AbortController()
+        console.log('[LLM] ▶️ 新请求开始(background) sessionId=' + sessionId + ' messageId=' + (config.messageId || '?') + ' caller=' + caller)
+      }
+
+      try {
+        // ===== 转发到 Java 后端（小晴）= =====
+        const stepStream = callJavaBackend(config, messages, thisController.signal)
+
+        let finalResponse = ''
+        let hasTokenEvent = false
+        for await (const step of stepStream) {
+          if (step.type === 'text_delta') {
+            if (event) {
+              event.sender.send('api:llm-text-delta', {
+                content: step.content,
+                sessionId: config.sessionId,
+                messageId: config.messageId
+              })
+            }
+          } else if (step.type === 'text') {
+            finalResponse = step.content || ''
+          } else if (step.type === 'token_usage') {
+            hasTokenEvent = true
+            const src = remoteChannelForSessionId(config.sessionId || '')
+            const tokenData = {
+              model: step.model || 'unknown',
+              provider: step.provider || 'doubao',
+              promptTokens: step.promptTokens || 0,
+              completionTokens: step.completionTokens || 0,
+              totalTokens: step.totalTokens || 0,
+              timestamp: Date.now(),
+              sessionId: config.sessionId,
+              messageId: config.messageId,
+              source: src
+            }
+            if (event) {
+              event.sender.send('api:llm-token-usage', tokenData)
+            } else if (agentWindow && !agentWindow.isDestroyed()) {
+              agentWindow.webContents.send('api:llm-token-usage', tokenData)
+            }
+          } else if (step.type === 'generated_files' && Array.isArray(step.files)) {
+            const generatedEvent = {
+              type: 'generated_files',
+              name: 'chart',
+              files: step.files,
+              sessionId: config.sessionId,
+              messageId: config.messageId,
+              timestamp: Date.now()
+            }
+            _onToolEvent?.(generatedEvent)
+            if (event) event.sender.send('api:llm-tool-event', generatedEvent)
+          } else if (step.type === 'error') {
+            throw new Error(step.message || 'Unknown backend error')
+          }
+        }
+
+        // 后端未返回 token 数据时，用字符数估算
+        if (!hasTokenEvent && finalResponse) {
+          const promptChars = messages.reduce((sum: number, m: any) => {
+            const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')
+            return sum + c.length
+          }, 0)
+          const completionChars = finalResponse.length
+          const estPrompt = Math.max(1, Math.round(promptChars / 2.5))
+          const estCompletion = Math.max(1, Math.round(completionChars / 2.5))
           const src = remoteChannelForSessionId(config.sessionId || '')
-          const tokenData = {
-            model: step.model || 'unknown',
-            provider: step.provider || 'doubao',
-            promptTokens: step.promptTokens || 0,
-            completionTokens: step.completionTokens || 0,
-            totalTokens: step.totalTokens || 0,
+          const estData = {
+            model: config.model || 'unknown',
+            provider: config.provider || 'doubao',
+            promptTokens: estPrompt,
+            completionTokens: estCompletion,
+            totalTokens: estPrompt + estCompletion,
             timestamp: Date.now(),
             sessionId: config.sessionId,
             messageId: config.messageId,
             source: src
           }
           if (event) {
-            event.sender.send('api:llm-token-usage', tokenData)
+            event.sender.send('api:llm-token-usage', estData)
           } else if (agentWindow && !agentWindow.isDestroyed()) {
-            agentWindow.webContents.send('api:llm-token-usage', tokenData)
+            agentWindow.webContents.send('api:llm-token-usage', estData)
           }
-        } else if (step.type === 'generated_files' && Array.isArray(step.files)) {
-          const generatedEvent = {
-            type: 'generated_files',
-            name: 'chart',
-            files: step.files,
-            sessionId: config.sessionId,
-            messageId: config.messageId,
-            timestamp: Date.now()
-          }
-          _onToolEvent?.(generatedEvent)
-          if (event) event.sender.send('api:llm-tool-event', generatedEvent)
-        } else if (step.type === 'error') {
-          throw new Error(step.message || 'Unknown backend error')
         }
-      }
 
-      // 后端未返回 token 数据时，用字符数估算
-      if (!hasTokenEvent && finalResponse) {
-        const promptChars = messages.reduce((sum: number, m: any) => {
-          const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')
-          return sum + c.length
-        }, 0)
-        const completionChars = finalResponse.length
-        const estPrompt = Math.max(1, Math.round(promptChars / 2.5))
-        const estCompletion = Math.max(1, Math.round(completionChars / 2.5))
-        const src = remoteChannelForSessionId(config.sessionId || '')
-        const estData = {
-          model: config.model || 'unknown',
-          provider: config.provider || 'doubao',
-          promptTokens: estPrompt,
-          completionTokens: estCompletion,
-          totalTokens: estPrompt + estCompletion,
-          timestamp: Date.now(),
-          sessionId: config.sessionId,
-          messageId: config.messageId,
-          source: src
+        if (activeLlmAbortControllers.get(sessionId) === thisController) {
+          activeLlmAbortControllers.delete(sessionId)
         }
-        if (event) {
-          event.sender.send('api:llm-token-usage', estData)
-        } else if (agentWindow && !agentWindow.isDestroyed()) {
-          agentWindow.webContents.send('api:llm-token-usage', estData)
+        abortedSessionIds.delete(sessionId)
+        dismissAutomationOverlay()
+        return finalResponse
+      } catch (e: any) {
+        const isOwnController = activeLlmAbortControllers.get(sessionId) === thisController
+        if (isOwnController) {
+          activeLlmAbortControllers.delete(sessionId)
         }
+        abortedSessionIds.delete(sessionId)
+        dismissAutomationOverlay()
+        if (thisController.signal.aborted) {
+          console.log('[LLM] ❌ 请求被中断 sessionId=' + sessionId + ' messageId=' + (config.messageId || '?') + ' error=' + (e?.message || e))
+          throw new Error('UserAborted')
+        }
+        console.log('[LLM] ⚠️ 请求异常(非中断) sessionId=' + sessionId + ' messageId=' + (config.messageId || '?') + ' error=' + (e?.message || e))
+        throw e
       }
+    })()
 
-      if (activeLlmAbortControllers.get(sessionId) === thisController) {
-        activeLlmAbortControllers.delete(sessionId)
-      }
-      abortedSessionIds.delete(sessionId)
-      dismissAutomationOverlay()
-      return finalResponse
-    } catch (e: any) {
-      if (activeLlmAbortControllers.get(sessionId) === thisController) {
-        activeLlmAbortControllers.delete(sessionId)
-      }
-      abortedSessionIds.delete(sessionId)
-      dismissAutomationOverlay()
-      if (thisController.signal.aborted) {
-        throw new Error('UserAborted')
-      }
-      throw e
+    activeLlmPromises.set(dedupKey, executePromise)
+    try {
+      return await executePromise
+    } finally {
+      activeLlmPromises.delete(dedupKey)
     }
   }
 

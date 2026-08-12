@@ -324,10 +324,14 @@ export function PetWidget(): React.JSX.Element {
 
   // ── 快捷聊天核心响应大模型逻辑 ─────────────────────────────
   const handleChatToPet = async (text: string, isNewSession?: boolean, imagePath?: string) => {
+    const callId = Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    console.log('[PetWidget] handleChatToPet 被调用 callId=' + callId + ' thinking=' + isLlmThinkingRef.current + ' text=' + text.slice(0, 30))
     if (isLlmThinkingRef.current) {
-      window.api.sendPetReplyToInput?.('上一条请求仍在处理中，请稍候再试。')
+      console.log('[PetWidget] ⚠️ 上一请求仍在处理中，跳过 callId=' + callId)
       return
     }
+    // 立即设置 ref 防止同一事件循环中的重复调用（IPC 事件可能在 React 渲染前连续到达）
+    isLlmThinkingRef.current = true
     setIsLlmThinking(true)
     localStorage.setItem('mindpet_llm_thinking_at', String(Date.now()))
 
@@ -337,7 +341,8 @@ export function PetWidget(): React.JSX.Element {
 
     await new Promise(resolve => setTimeout(resolve, 1200))
 
-    let activeSessionId = localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || 'agent:main:dashboard:default'
+    const quickChatSessionId = localStorage.getItem('quickchat_session_id')
+    let activeSessionId = quickChatSessionId || localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || 'agent:main:dashboard:default'
     let replyId = Date.now() + 1
 
     try {
@@ -504,11 +509,15 @@ export function PetWidget(): React.JSX.Element {
       await window.api.saveMessage({ ...agentPlaceholderMsg, sessionId: activeSessionId })
 
       const workspacePath = localStorage.getItem('mindpet_workspace_path') || ''
+      // 生成唯一 nonce 用于追踪和去重
+      const callNonce = callId + '-' + replyId + '-' + Math.random().toString(36).slice(2, 8)
+      console.log('[PetWidget] 调用 callLLM callId=' + callId + ' sessionId=' + activeSessionId + ' messageId=' + replyId + ' nonce=' + callNonce)
       const response = await window.api.callLLM(
         {
           ...llmConfig,
           sessionId: activeSessionId,
-          messageId: replyId
+          messageId: replyId,
+          callNonce
         },
         chatMessages,
         workspacePath
@@ -557,7 +566,7 @@ export function PetWidget(): React.JSX.Element {
       }
 
     } catch (e: any) {
-      console.error('[PetWidget] 对话生成失败:', e)
+      console.error('[PetWidget] 对话生成失败 callId=' + callId + ' sessionId=' + activeSessionId + ' error=' + (e?.message || e))
       const isAbort = e.message?.includes('UserAborted') || e.message?.includes('aborted')
       const errMsg = isAbort
         ? '对话生成已被中断。'

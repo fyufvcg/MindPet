@@ -16,3 +16,8 @@ dump.rdb
 llm-dynamic-config.json
 skills-config.json
 weather.log/
+
+# === 本地数据存储 (skills + mcp 配置等) ===
+../data/
+system_mcp_config.json
+mcp_tools_cache.json

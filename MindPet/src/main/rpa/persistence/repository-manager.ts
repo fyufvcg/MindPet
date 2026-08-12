@@ -1,22 +1,18 @@
-import { join } from 'path'
-import { getActiveStorageDir } from '../../tools/utils/paths'
 import type { RpaRunRepository } from './run-repository'
-import { SqliteRpaRunRepository } from './sqlite-run-repository'
+import { HttpRpaRunRepository } from './http-run-repository'
 
-const repositories = new Map<string, SqliteRpaRunRepository>()
+let repository: HttpRpaRunRepository | null = null
 
 export function getRpaRunRepository(): RpaRunRepository {
-  const filename = join(getActiveStorageDir(), 'rpa', 'runs.sqlite')
-  let repository = repositories.get(filename)
   if (!repository) {
-    repository = new SqliteRpaRunRepository(filename)
-    repositories.set(filename, repository)
+    repository = new HttpRpaRunRepository()
   }
   return repository
 }
 
 export async function closeAllRpaRepositories(): Promise<void> {
-  const activeRepositories = [...repositories.values()]
-  repositories.clear()
-  await Promise.allSettled(activeRepositories.map((repository) => repository.close()))
+  if (repository) {
+    await repository.close()
+    repository = null
+  }
 }

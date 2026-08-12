@@ -67,8 +67,8 @@ public class AiService {
             "didi_searchPlace", "didi_estimateRide", "didi_createOrder", "didi_queryOrder", "didi_cancelOrder"));
         GROUP_DESCRIPTIONS.put("出行", "IP定位、路线规划、火车票查询/订票/抢票、滴滴打车(搜索地点/估价/下单/查询/取消)");
 
-        TOOL_GROUPS.put("search", List.of("webSearch"));
-        GROUP_DESCRIPTIONS.put("search", "联网搜索，查新闻、资讯、实时信息");
+        TOOL_GROUPS.put("search", List.of("search", "browser"));
+        GROUP_DESCRIPTIONS.put("search", "文件内容搜索、联网搜索、网页全文抓取");
 
         TOOL_GROUPS.put("recipe", List.of("getAllRecipes", "getRecipeById", "getRecipesByCategory", "recommendMeals", "whatToEat"));
         GROUP_DESCRIPTIONS.put("recipe", "菜谱查询、做饭推荐、吃什么建议");
@@ -79,8 +79,8 @@ public class AiService {
             "mcdonaldOrder", "mcdonaldCampaigns", "mcdonaldCoupons", "mcdonaldOrderStatus"));
         GROUP_DESCRIPTIONS.put("delivery", "闪购/外卖下单（搜索商品、加购物车、填地址、提交订单）");
 
-        TOOL_GROUPS.put("本地", List.of("file_read", "file_write", "file_list", "file_delete"));
-        GROUP_DESCRIPTIONS.put("本地", "本地文件操作（读取/写入/列表/删除）");
+        TOOL_GROUPS.put("本地", List.of("file"));
+        GROUP_DESCRIPTIONS.put("本地", "本地文件操作（创建/读取/写入/修改/删除/移动/重命名/搜索），支持 PDF/Word/Excel/CSV/图片多格式");
 
         TOOL_GROUPS.put("data", List.of("chart_bar", "chart_line", "chart_pie", "chart_scatter"));
         GROUP_DESCRIPTIONS.put("data", "数据分析与远程图表生成（柱状图、折线图、饼图、散点图），以及展示、发送或导出图表图片");
@@ -97,12 +97,27 @@ public class AiService {
         TOOL_GROUPS.put("email", List.of("listRecentMails", "searchMails", "getMailDetail", "sendMail", "replyMail", "deleteMail"));
         GROUP_DESCRIPTIONS.put("email", "邮件操作（收件箱列表、搜索、详情、发送、回复、删除）");
 
-        TOOL_GROUPS.put("browser", List.of("browser_navigate", "browser_click",
-            "browser_type", "browser_fill", "browser_screenshot",
-            "browser_snapshot", "browser_hover", "browser_select",
-            "browser_press_key", "browser_close", "browser_navigate_back",
-            "browser_wait_for"));
-        GROUP_DESCRIPTIONS.put("browser", "浏览器操控（打开网页、点击、输入、截图、快照、悬停、选择、按键、回退、关闭）");
+        TOOL_GROUPS.put("browser", List.of("browser"));
+        GROUP_DESCRIPTIONS.put("browser", "浏览器操控（连接用户浏览器、打开网页、点击、输入、截图快照、标签页管理）");
+
+        // ── Desktop 工具分组 — 对应前端 tools/builtin 分类 ──────────
+        // 工具名格式: desktop_tools__desktop__{category}__{toolName}
+        // 路由时按 category 段匹配；每个组的值是 category 名
+        TOOL_GROUPS.put("终端", List.of("terminal"));
+        GROUP_DESCRIPTIONS.put("终端", "执行终端命令、管理进程、获取命令输出");
+
+        TOOL_GROUPS.put("电脑操控", List.of("computer"));
+        GROUP_DESCRIPTIONS.put("电脑操控", "截图感知屏幕内容、控制鼠标键盘、切换窗口、操作桌面应用");
+
+        TOOL_GROUPS.put("文档处理", List.of("office"));
+        GROUP_DESCRIPTIONS.put("文档处理", "生成与修改 Excel 表格、Word 文档、PDF 文档、PPTX 演示文稿");
+
+        TOOL_GROUPS.put("系统", List.of("system"));
+        GROUP_DESCRIPTIONS.put("系统", "获取系统硬件信息、物理定位、管理后台定时任务");
+
+        TOOL_GROUPS.put("自动化", List.of("rpa"));
+        GROUP_DESCRIPTIONS.put("自动化", "搜索、查看、运行和管理 RPA 自动化工作流");
+
         // profile 组不在此列 — 由 MemoryCuratorService 独立管理
 
         StringBuilder sb = new StringBuilder();
@@ -338,12 +353,31 @@ public class AiService {
         var neededNames = groups.stream()
             .flatMap(g -> TOOL_GROUPS.getOrDefault(g, List.of()).stream())
             .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        // MCP 工具（来自 McpManager）始终可用，不参与意图路由过滤
+        // MCP 工具路由：Desktop 工具按 category 分组过滤，其他 MCP 工具全量透传
+        java.util.concurrent.atomic.AtomicInteger dtMatched = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger dtTotal = new java.util.concurrent.atomic.AtomicInteger(0);
         ToolCallback[] filtered = allCallbacks.stream()
             .filter(tc -> {
                 String name = tc.getToolDefinition().name();
-                // MCP 工具名格式: serverId__toolName，始终保留
-                if (name.contains("__")) return true;
+                if (name.contains("__")) {
+                    if (name.contains("desktop__") || name.contains("desktop_tools__")) {
+                        dtTotal.incrementAndGet();
+                        String[] parts = name.split("__");
+                        for (int i = 0; i < parts.length - 1; i++) {
+                            if ("desktop".equals(parts[i])) {
+                                String category = parts[i + 1];
+                                if (neededNames.contains(category)) {
+                                    dtMatched.incrementAndGet();
+                                    return true;
+                                }
+                                return false;
+                            }
+                        }
+                        dtMatched.incrementAndGet();
+                        return true;
+                    }
+                    return true;
+                }
                 return neededNames.stream().anyMatch(expected -> matchesToolName(name, expected));
             })
             .map(tc -> new org.springframework.ai.tool.ToolCallback() {
@@ -387,6 +421,10 @@ public class AiService {
                 }
             })
             .toArray(org.springframework.ai.tool.ToolCallback[]::new);
+        if (dtTotal.get() > 0) {
+            logger.log("INFO", "  [路由] Desktop工具: " + dtMatched.get() + "/" + dtTotal.get()
+                + " 命中分组 " + groups);
+        }
         logger.log("INFO", "  可用工具: " + Arrays.stream(filtered)
             .map(tc -> tc.getToolDefinition().name())
             .collect(java.util.stream.Collectors.joining(", ")));
@@ -903,6 +941,173 @@ public class AiService {
             return model.ChatResult.of(fallback, streamedToolsUsed.get());
         } finally {
             tool.ToolUserContext.clear();
+        }
+    }
+
+    // ==================== Tool Catalog ====================
+
+    /**
+     * 返回所有可用工具的清单，供 skill 生成 LLM 参考。
+     * 每条包含 name、description、group、parameters、source。
+     */
+    public List<Map<String, Object>> getToolCatalog() {
+        List<Map<String, Object>> catalog = new ArrayList<>();
+        Map<String, ToolCallbackProvider> providers = appCtx.getBeansOfType(ToolCallbackProvider.class);
+        for (var entry : providers.entrySet()) {
+            try {
+                for (ToolCallback tc : entry.getValue().getToolCallbacks()) {
+                    var def = tc.getToolDefinition();
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", def.name());
+                    item.put("description", def.description() != null ? def.description() : "");
+
+                    // 提取参数名列表
+                    List<String> paramNames = new ArrayList<>();
+                    try {
+                        String inputSchema = def.inputSchema();
+                        if (inputSchema != null && !inputSchema.isBlank()) {
+                            var schemaNode = new ObjectMapper().readTree(inputSchema);
+                            var props = schemaNode.get("properties");
+                            if (props != null) {
+                                var fieldNames = props.fieldNames();
+                                while (fieldNames.hasNext()) paramNames.add(fieldNames.next());
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    item.put("parameters", paramNames);
+
+                    // 反向查找 group
+                    String toolName = def.name();
+                    String group = findGroupForTool(toolName);
+                    item.put("group", group != null ? group : "其他");
+
+                    // source 标记
+                    if (toolName.contains("__")) {
+                        item.put("source", toolName.contains("desktop") ? "desktop" : "mcp");
+                    } else {
+                        item.put("source", "java");
+                    }
+
+                    catalog.add(item);
+                }
+            } catch (Exception e) {
+                logger.log("WARN", "  getToolCatalog: provider[" + entry.getKey() + "] failed: " + e.getMessage());
+            }
+        }
+        return catalog;
+    }
+
+    private String findGroupForTool(String toolName) {
+        if (toolName.contains("__")) {
+            String[] parts = toolName.split("__");
+            for (int i = 0; i < parts.length - 1; i++) {
+                if ("desktop".equals(parts[i])) {
+                    String category = parts[i + 1];
+                    for (var entry : TOOL_GROUPS.entrySet()) {
+                        if (entry.getValue().contains(category)) return entry.getKey();
+                    }
+                    return category;
+                }
+            }
+            return "MCP";
+        }
+        for (var entry : TOOL_GROUPS.entrySet()) {
+            for (String expected : entry.getValue()) {
+                if (matchesToolName(toolName, expected)) return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    // ==================== Skill Generation ====================
+
+    private static final String SKILL_GEN_SYSTEM_PROMPT =
+        "你是一个 AI 技能编排专家。你的任务是根据用户的需求描述，结合可用的工具清单，" +
+        "生成一个结构化的技能定义文件（SKILL.md）。\n\n" +
+        "## 规则\n" +
+        "1. 只能使用「可用工具清单」中列出的工具，严禁编造不存在的工具名\n" +
+        "2. 每个 section 都必须填写，不能省略\n" +
+        "3. 「可用工具」section 只列出该技能实际会用到的工具\n" +
+        "4. 「示例对话」至少给出一组示例\n" +
+        "5. 技能名称使用中文，简洁明确\n\n" +
+        "## 输出格式（严格按此 Markdown 结构）\n\n" +
+        "# {技能名称}\n\n" +
+        "## 触发条件\n" +
+        "- 关键词: ...\n" +
+        "- 场景: ...\n\n" +
+        "## 行为指令\n" +
+        "1. 步骤一：...\n" +
+        "2. 步骤二：...\n\n" +
+        "## 可用工具\n" +
+        "- `toolName` — 在此技能中的用途\n\n" +
+        "## 输出格式\n" +
+        "- 回复风格：...\n" +
+        "- 内容结构：...\n\n" +
+        "## 约束\n" +
+        "- 不要...\n" +
+        "- 必须...\n\n" +
+        "## 示例对话\n" +
+        "**用户**: \"...\"\n" +
+        "**AI**: \"...\"\n\n" +
+        "直接输出 SKILL.md 内容，不要包裹在代码块中，不要额外解释。";
+
+    /**
+     * 根据用户自然语言描述生成 SKILL.md 内容。
+     */
+    public Map<String, Object> generateSkill(String userDescription, String skillName) {
+        try {
+            List<Map<String, Object>> catalog = getToolCatalog();
+            StringBuilder toolsSection = new StringBuilder();
+            Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+            for (var t : catalog) {
+                String group = String.valueOf(t.getOrDefault("group", "其他"));
+                grouped.computeIfAbsent(group, k -> new ArrayList<>()).add(t);
+            }
+            for (var entry : grouped.entrySet()) {
+                toolsSection.append("### ").append(entry.getKey()).append("\n");
+                for (var t : entry.getValue()) {
+                    toolsSection.append("- **").append(t.get("name")).append("**");
+                    String desc = String.valueOf(t.getOrDefault("description", ""));
+                    if (!desc.isBlank()) toolsSection.append("：").append(desc);
+                    @SuppressWarnings("unchecked")
+                    List<String> params = (List<String>) t.get("parameters");
+                    if (params != null && !params.isEmpty()) {
+                        toolsSection.append("（参数: ").append(String.join(", ", params)).append("）");
+                    }
+                    toolsSection.append("\n");
+                }
+                toolsSection.append("\n");
+            }
+
+            String userPrompt = "## 可用工具清单\n\n" + toolsSection + "\n## 用户需求\n\n" +
+                (skillName != null && !skillName.isBlank() ? "技能名称：" + skillName + "\n" : "") +
+                userDescription;
+
+            var spec = buildChatClient()
+                .prompt()
+                .system(SKILL_GEN_SYSTEM_PROMPT)
+                .user(userPrompt);
+            if (dynamicConfig.hasOverride() && !dynamicConfig.getModel().isBlank()) {
+                spec = spec.options(OpenAiChatOptions.builder().model(dynamicConfig.getModel()).build());
+            }
+            String content = spec.call().content();
+            if (content == null || content.isBlank()) {
+                return Map.of("status", "error", "message", "LLM 返回空内容");
+            }
+
+            // 尝试从内容中提取技能名称
+            String extractedName = skillName != null && !skillName.isBlank() ? skillName : "";
+            if (extractedName.isBlank()) {
+                String firstLine = content.strip().split("\\R")[0];
+                extractedName = firstLine.replaceAll("^#\\s*", "").strip();
+            }
+
+            logger.log("INFO", "[SkillGen] 已生成技能: " + extractedName + " (" + content.length() + " 字符)");
+            return Map.of("status", "ok", "content", content, "name", extractedName,
+                "toolCount", catalog.size());
+        } catch (Exception e) {
+            logger.log("ERROR", "[SkillGen] 生成失败: " + e.getMessage());
+            return Map.of("status", "error", "message", "生成失败: " + e.getMessage());
         }
     }
 

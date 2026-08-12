@@ -1,16 +1,16 @@
-import { app } from 'electron'
 import { join } from 'path'
 import { McpConfigStore, type RuntimeMcpConfig } from './mcp-config-store'
 import { getSecretVault } from './secret-vault'
+import { getDefaultDataDir } from '../storage-path'
 
 let store: McpConfigStore | null = null
-let storeUserDataPath = ''
+let storeDataDir = ''
 
 function getStore(): McpConfigStore {
-  const userDataPath = app.getPath('userData')
-  if (!store || storeUserDataPath !== userDataPath) {
-    store = new McpConfigStore(join(userDataPath, 'system_mcp_config.json'), getSecretVault())
-    storeUserDataPath = userDataPath
+  const dataDir = getDefaultDataDir()
+  if (!store || storeDataDir !== dataDir) {
+    store = new McpConfigStore(join(dataDir, 'system_mcp_config.json'), getSecretVault())
+    storeDataDir = dataDir
   }
   return store
 }

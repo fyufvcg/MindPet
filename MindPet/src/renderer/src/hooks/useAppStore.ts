@@ -380,6 +380,10 @@ export const useAppStoreRaw = create<any>((set) => ({
   officePreviewRequest: null,
   skillsList: [],
   skillsPath: '',
+  skillGenOpen: false,
+  skillGenLoading: false,
+  skillGenResult: null as { name: string; content: string } | null,
+  skillGenError: '',
   disabledSkillNames: (() => {
     try {
       const saved = localStorage.getItem('mindpet_disabled_skills') || localStorage.getItem('agentself_disabled_skills')
@@ -505,6 +509,10 @@ export const useAppStoreRaw = create<any>((set) => ({
   setOfficePreviewRequest: (val: any) => set({ officePreviewRequest: val }),
   setSkillsList: (val: any) => set({ skillsList: val }),
   setSkillsPath: (val: any) => set({ skillsPath: val }),
+  setSkillGenOpen: (val: any) => set({ skillGenOpen: val }),
+  setSkillGenLoading: (val: any) => set({ skillGenLoading: val }),
+  setSkillGenResult: (val: any) => set({ skillGenResult: val }),
+  setSkillGenError: (val: any) => set({ skillGenError: val }),
   setDisabledSkillNames: (val: any) => set((state: any) => ({
     disabledSkillNames: typeof val === 'function' ? val(state.disabledSkillNames) : val
   })),
@@ -1717,6 +1725,16 @@ export function useAppStore() {
     } catch (e) { console.error(e) }
   }
 
+  const handleSaveGeneratedSkill = async (name: string, content: string): Promise<void> => {
+    try {
+      const list = await window.api.saveGeneratedSkill(name, content)
+      setSkillsList(list)
+      showToast(`技能「${name}」已保存`, 'success')
+    } catch (e: any) {
+      showToast('保存失败: ' + (e.message || String(e)), 'error')
+    }
+  }
+
   const handleSaveStoragePath = async (): Promise<void> => {
     setStorageSaveStatus({ type: 'idle', message: '' })
     try {
@@ -2045,6 +2063,7 @@ export function useAppStore() {
     skillsList,
     skillsPath,
     handleSkillsPathClick, handleImportSkill, handleDeleteSkill,
+    handleSaveGeneratedSkill,
     refreshSkillsAndStorage,
     disabledSkillNames,
     toggleSkillEnable,

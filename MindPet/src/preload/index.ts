@@ -56,6 +56,11 @@ const api = {
   deleteSkill: (name: string): Promise<any[]> => ipcRenderer.invoke('api:delete-skill', name),
   getActiveSkillsPrompt: (enabledSkillNames: string[]): Promise<string> =>
     ipcRenderer.invoke('api:get-active-skills-prompt', enabledSkillNames),
+  getToolCatalog: (): Promise<any> => ipcRenderer.invoke('api:get-tool-catalog'),
+  generateSkill: (skillName: string, description: string): Promise<any> =>
+    ipcRenderer.invoke('api:generate-skill', skillName, description),
+  saveGeneratedSkill: (name: string, content: string): Promise<any[]> =>
+    ipcRenderer.invoke('api:save-generated-skill', name, content),
   callLLM: (config: any, messages: any[], workspacePath?: string): Promise<string> =>
     ipcRenderer.invoke('api:call-llm', config, messages, workspacePath),
   selectFile: (): Promise<{ name: string; path: string; content: string } | null> =>

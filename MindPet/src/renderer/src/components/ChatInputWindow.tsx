@@ -126,6 +126,20 @@ export function ChatInputWindow(): React.JSX.Element {
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const requestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shouldScrollRef = useRef<'smooth' | 'auto' | false>(false)
+  const quickChatSessionIdRef = useRef<string>('')
+
+  // 清理快捷聊天独立会话
+  const cleanupQuickChatSession = (sessionId: string) => {
+    if (!sessionId) return
+    try {
+      const sessions = JSON.parse(localStorage.getItem('mindpet_sessions') || '[]')
+      const filtered = sessions.filter((s: any) => s.id !== sessionId)
+      localStorage.setItem('mindpet_sessions', JSON.stringify(filtered))
+    } catch (e) { /* ignore */ }
+    localStorage.removeItem('quickchat_session_id')
+    // 异步删除 DB 记录（不阻塞窗口关闭）
+    window.api.deleteSession(sessionId).catch(() => {})
+  }
 
   // 组件卸载时清理定时器
   useEffect(() => {
@@ -213,7 +227,8 @@ export function ChatInputWindow(): React.JSX.Element {
 
   // 读取本地会话列表并进行初始化
   const loadSessions = async (syncActiveView = true): Promise<void> => {
-    const storedActiveId = localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || ''
+    const quickChatId = quickChatSessionIdRef.current || localStorage.getItem('quickchat_session_id') || ''
+    const storedActiveId = quickChatId || localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || ''
     let parsed: QuickSession[] = []
     try {
       parsed = await window.api.getLocalSessions({ activeSessionId: storedActiveId, todayOnly: true }) || []
@@ -272,7 +287,33 @@ export function ChatInputWindow(): React.JSX.Element {
     void loadSessions(false)
   }, [])
 
-  // 监听大模型的回复
+  // 创建快捷聊天独立会话（与主窗口会话隔离）
+  useEffect(() => {
+    const sessionId = 'quickchat:' + Date.now()
+    quickChatSessionIdRef.current = sessionId
+    localStorage.setItem('quickchat_session_id', sessionId)
+
+    // 写入 localStorage 的 mindpet_sessions（不污染 activeSessionId）
+    try {
+      const sessions = JSON.parse(localStorage.getItem('mindpet_sessions') || '[]')
+      const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 19)
+      sessions.unshift({ id: sessionId, name: '(快捷聊天)', time: timeStr, createdAt: timeStr, messages: [] })
+      localStorage.setItem('mindpet_sessions', JSON.stringify(sessions))
+    } catch (e) { /* ignore */ }
+
+    // 异步写入 DB
+    window.api.createSession({ id: sessionId, name: '(快捷聊天)', createdAt: Date.now(), messages: [] }).catch(() => {})
+
+    // 重置消息状态
+    setMessages([])
+    setIsThinking(false)
+
+    return () => {
+      cleanupQuickChatSession(sessionId)
+    }
+  }, [])
+
+  // 监听大模型的回复（PetWidget 转发，作为兜底路径）
   useEffect(() => {
     if (!window.api.onPetReplyResponse) return
     const unsubscribe = window.api.onPetReplyResponse((replyText: string) => {
@@ -281,7 +322,12 @@ export function ChatInputWindow(): React.JSX.Element {
         requestTimeoutRef.current = null
       }
       shouldScrollRef.current = 'smooth'
-      setMessages(prev => [...prev, { sender: 'agent', text: replyText }])
+      setMessages(prev => {
+        // 防重复：如果最后一条 agent 消息内容相同则跳过
+        const lastAgent = [...prev].reverse().find(m => m.sender === 'agent')
+        if (lastAgent && lastAgent.text === replyText) return prev
+        return [...prev, { sender: 'agent', text: replyText }]
+      })
       setIsThinking(false)
       // 延时加载一下，确保 PetWidget 已将最新的 response 序列化存储在 localStorage
       setTimeout(() => { void loadSessions() }, 150)
@@ -445,9 +491,12 @@ export function ChatInputWindow(): React.JSX.Element {
     if (allFiles.length > 0) {
       window.api.sendPendingInput(JSON.stringify(payload))
       window.api.openAgentWindow()
+      cleanupQuickChatSession(quickChatSessionIdRef.current)
       window.api.closeInputWindow()
     } else {
-      // 纯文本普通提问直接在小窗口内交互，不弹窗跳转
+      // 纯文本提问：直接在快捷窗口内调用 LLM，回复显示在小面板中
+      const sessionId = quickChatSessionIdRef.current
+      localStorage.setItem('quickchat_session_id', sessionId)
       shouldScrollRef.current = 'smooth'
       setMessages(prev => [...prev, { sender: 'user', text: userText }])
       setIsThinking(true)
@@ -462,9 +511,108 @@ export function ChatInputWindow(): React.JSX.Element {
           text: '请求等待时间过长，请检查模型配置或网络后重试。'
         }])
       }, 90_000)
-      if (window.api.sendChatToPet) {
-        window.api.sendChatToPet(userText)
-      }
+
+      // 直接在快捷窗口中调用 LLM（不依赖 PetWidget IPC 转发）
+      void (async () => {
+        const replyId = Date.now() + 1
+        try {
+          // 读取 LLM 配置
+          const savedLlmConfig = localStorage.getItem('mindpet_llm_config') || localStorage.getItem('agentself_llm_config')
+          let llmConfig: any = { provider: 'gemini', apiKey: '', hasApiKey: false, baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: '', temperature: 0.7 }
+          if (savedLlmConfig) { try { llmConfig = JSON.parse(savedLlmConfig) } catch (e) { } }
+
+          const isOllama = llmConfig.provider === 'ollama'
+          const hasKey = isOllama || !!llmConfig.apiKey || !!llmConfig.hasApiKey
+          if (!hasKey) {
+            if (requestTimeoutRef.current) { clearTimeout(requestTimeoutRef.current); requestTimeoutRef.current = null }
+            setIsThinking(false)
+            setMessages(prev => [...prev, { sender: 'agent', text: '主人，请先配置大模型 API Key 哦~' }])
+            return
+          }
+
+          // 构建消息上下文（基于快捷聊天的独立会话）
+          const allSessions: QuickSession[] = JSON.parse(localStorage.getItem('mindpet_sessions') || '[]')
+          const activeSession = allSessions.find(s => s.id === sessionId) || { id: sessionId, name: userText.slice(0, 15) || '(快捷聊天)', messages: [] }
+          const contextRounds = Number(localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10')
+          const currentMessages = (activeSession.messages || []).filter((m: any) =>
+            (m.sender === 'user' || m.sender === 'agent') && !m.isThinking && !m.isError
+          )
+
+          const chatMessages = currentMessages.slice(-contextRounds * 2).map((m: any) => ({
+            role: m.sender === 'user' ? 'user' : 'assistant',
+            content: m.text || ''
+          }))
+          chatMessages.push({ role: 'user', content: userText })
+
+          // 保存会话到 localStorage
+          const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 19)
+          const isNew = !allSessions.some(s => s.id === sessionId)
+          const sessionName = (isNew || !activeSession.name || activeSession.name === '(未命名)' || activeSession.name === '新会话' || activeSession.name === '(快捷聊天)')
+            ? (userText.length > 15 ? userText.substring(0, 15) + '...' : userText)
+            : activeSession.name
+
+          if (isNew) {
+            allSessions.unshift({ id: sessionId, name: sessionName, createdAt: timeStr, messages: [] })
+          }
+          const cleanedSessions = allSessions.map(s => {
+            if (s.id === sessionId) {
+              return {
+                ...s,
+                name: sessionName,
+                messages: [
+                  ...(s.messages || []).map((m: any) => m.isThinking ? { ...m, isThinking: false, text: m.text || '对话被中断。' } : m),
+                  { sender: 'user', text: userText, time: timeStr },
+                  { sender: 'agent', text: '', isThinking: true, time: timeStr }
+                ]
+              }
+            }
+            return s
+          })
+          localStorage.setItem('mindpet_sessions', JSON.stringify(cleanedSessions))
+          window.api.saveMessage({ sessionId, sender: 'user', text: userText, time: timeStr }).catch(() => {})
+          window.api.saveMessage({ sessionId, sender: 'agent', text: '', isThinking: true, time: timeStr, id: replyId }).catch(() => {})
+
+          const workspacePath = localStorage.getItem('mindpet_workspace_path') || ''
+
+          // 直接调用 LLM
+          const response = await window.api.callLLM(
+            { ...llmConfig, sessionId, messageId: replyId },
+            chatMessages,
+            workspacePath
+          )
+
+          // 显示回复到快捷聊天小面板
+          if (requestTimeoutRef.current) { clearTimeout(requestTimeoutRef.current); requestTimeoutRef.current = null }
+          shouldScrollRef.current = 'smooth'
+          setMessages(prev => [...prev, { sender: 'agent', text: response }])
+          setIsThinking(false)
+
+          // 更新 session 保存最终回复
+          const fresh: QuickSession[] = JSON.parse(localStorage.getItem('mindpet_sessions') || '[]')
+          const finalSessions = fresh.map(s => {
+            if (s.id === sessionId) {
+              return {
+                ...s,
+                name: sessionName,
+                messages: (s.messages || []).map((m: any) =>
+                  m.isThinking ? { ...m, text: response, isThinking: false } : m
+                )
+              }
+            }
+            return s
+          })
+          localStorage.setItem('mindpet_sessions', JSON.stringify(finalSessions))
+          window.api.saveMessage({ sessionId, sender: 'agent', text: response, time: timeStr, isThinking: false, id: replyId }).catch(() => {})
+        } catch (e: any) {
+          console.error('[ChatInput] LLM 调用失败:', e?.message || e)
+          if (requestTimeoutRef.current) { clearTimeout(requestTimeoutRef.current); requestTimeoutRef.current = null }
+          const isAbort = (e?.message || '').includes('UserAborted') || (e?.message || '').includes('aborted')
+          if (!isAbort) {
+            setIsThinking(false)
+            setMessages(prev => [...prev, { sender: 'agent', text: `出错啦：${e?.message || e}` }])
+          }
+        }
+      })()
     }
 
     setText('')
@@ -473,23 +621,24 @@ export function ChatInputWindow(): React.JSX.Element {
   }
 
   const handleClearAll = () => {
-    const newId = 'agent:session:' + Date.now()
-    localStorage.setItem('agentself_active_session_id', newId)
-    localStorage.setItem('mindpet_active_session_id', newId)
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('api:wechat-session-updated', newId)
-    }
+    // 清理旧快捷聊天会话
+    const oldId = quickChatSessionIdRef.current
+    cleanupQuickChatSession(oldId)
 
-    // 同步写入数据库
+    const newId = 'quickchat:' + Date.now()
+    quickChatSessionIdRef.current = newId
+    localStorage.setItem('quickchat_session_id', newId)
+
+    // 同步写入 localStorage（不污染主窗口的 activeSessionId）
     try {
-      const saved = localStorage.getItem('agentself_sessions') || localStorage.getItem('mindpet_sessions')
+      const saved = localStorage.getItem('mindpet_sessions')
       let parsed: any[] = []
       if (saved) { try { parsed = JSON.parse(saved) } catch (e) { } }
       const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 19)
-      const newSession = { id: newId, name: '(未命名)', time: timeStr, createdAt: timeStr, messages: [] }
+      const newSession = { id: newId, name: '(快捷聊天)', time: timeStr, createdAt: timeStr, messages: [] }
       const updated = [...parsed, newSession]
       localStorage.setItem('mindpet_sessions', JSON.stringify(updated))
-      
+
       // 增量写入数据库
       window.api.createSession(newSession).catch(() => { })
     } catch (e) { }
@@ -514,6 +663,7 @@ export function ChatInputWindow(): React.JSX.Element {
     if (e.key === 'Enter') {
       handleSend()
     } else if (e.key === 'Escape') {
+      cleanupQuickChatSession(quickChatSessionIdRef.current)
       window.api.closeInputWindow()
     }
   }
@@ -1652,7 +1802,7 @@ export function ChatInputWindow(): React.JSX.Element {
         </button>
 
         {/* 关闭窗口按钮 */}
-        <button className="close-window-btn" onClick={() => window.api.closeInputWindow()} title="关闭">
+        <button className="close-window-btn" onClick={() => { cleanupQuickChatSession(quickChatSessionIdRef.current); window.api.closeInputWindow() }} title="关闭">
           <X size={15} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
@@ -1699,10 +1849,13 @@ export function ChatInputWindow(): React.JSX.Element {
               <button
                 className="action-btn chat-link-btn"
                 onClick={() => {
-                  // 广播会话更新，确保 Agent 窗口加载最新数据
-                  const activeId = localStorage.getItem('agentself_active_session_id') || localStorage.getItem('mindpet_active_session_id') || ''
+                  // 将快捷聊天会话设为主窗口的活跃会话，然后跳转
+                  const quickChatId = quickChatSessionIdRef.current
+                  localStorage.setItem('agentself_active_session_id', quickChatId)
+                  localStorage.setItem('mindpet_active_session_id', quickChatId)
+                  localStorage.removeItem('quickchat_session_id')
                   if (window.electron && window.electron.ipcRenderer) {
-                    window.electron.ipcRenderer.send('api:wechat-session-updated', activeId)
+                    window.electron.ipcRenderer.send('api:wechat-session-updated', quickChatId)
                   }
                   window.api.openAgentWindow()
                   window.api.closeInputWindow()
