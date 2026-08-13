@@ -106,7 +106,7 @@ export interface TokenLog {
   source?: 'desktop' | 'wechat' | 'qq'
 }
 
-export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa'
+export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa' | 'memory_gallery'
 export type AgentSubTab = 'skills' | 'memory' | 'knowledge' | 'cron' | 'mcp'
 export type SettingsSubTab = 'keys' | 'storage' | 'avatar'
 

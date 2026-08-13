@@ -7,7 +7,6 @@ import { OverviewIcon, SkillsIcon, SettingsIcon } from './icons/Icons'
 import {
   CheckCircle2,
   ArrowLeft,
-  ChevronRight,
   CircleX,
   Copy,
   KeyRound,
@@ -43,6 +42,7 @@ const KnowledgeGraphPanel = lazy(() => import('./KnowledgeGraphPanel').then(modu
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 const LogsPage = lazy(() => import('../pages/LogsPage').then(module => ({ default: module.LogsPage })))
 const RpaPage = lazy(() => import('../rpa/RpaPage').then(module => ({ default: module.RpaPage })))
+const MemoryGalleryPage = lazy(() => import('../pages/MemoryGalleryPage').then(module => ({ default: module.MemoryGalleryPage })))
 const FilePreviewPanel = lazy(() =>
   import('./FilePreviewPanel').then(module => ({ default: module.FilePreviewPanel }))
 )
@@ -51,7 +51,7 @@ function PageLoadingFallback(): React.JSX.Element {
   return <div className="page-loading-placeholder" role="status" aria-label="正在加载页面" />
 }
 
-type FunctionPageId = 'control' | 'agent' | 'archive' | 'knowledge' | 'rpa' | 'logs' | 'settings'
+type FunctionPageId = 'control' | 'agent' | 'archive' | 'knowledge' | 'rpa' | 'logs' | 'settings' | 'memory_gallery'
 
 type WorkspaceTab =
   | { key: string; kind: 'session'; sessionId: string }
@@ -69,7 +69,8 @@ const FUNCTION_PAGE_LABELS: Record<FunctionPageId, string> = {
   knowledge: '知识图谱',
   rpa: 'RPA 任务',
   logs: '日志',
-  settings: '设置'
+  settings: '设置',
+  memory_gallery: '记忆回廊'
 }
 
 const AGENT_SUB_TAB_LABELS: Record<string, string> = {
@@ -285,6 +286,8 @@ export function AgentWindow(): React.JSX.Element {
 
   // 侧边栏下方菜单组（控制/代理/日志/设置）默认收起，把空间让给最近会话
   const [menuHovering, setMenuHovering] = useState(false)
+  // 当前被点击展开的分组（hover 之外，点击也可临时展开/收起二级菜单）
+  const [openGroup, setOpenGroup] = useState<string | null>(null)
 
   // Migrate persisted sessions that still point at the old Agent sub-tab.
   useEffect(() => {
@@ -548,6 +551,7 @@ export function AgentWindow(): React.JSX.Element {
       case 'logs': page = <LogsPage store={store} />; break
       case 'settings': page = <SettingsPage store={store} />; break
       case 'rpa': page = <RpaPage />; break
+      case 'memory_gallery': page = <MemoryGalleryPage />; break
       default: page = <div>Overview</div>
     }
     return <Suspense fallback={<PageLoadingFallback />}>{page}</Suspense>
@@ -569,7 +573,7 @@ export function AgentWindow(): React.JSX.Element {
         <div
           className={`sidebar-menu-rail ${menuHovering ? 'menu-expanded' : ''}`}
           onMouseEnter={() => setMenuHovering(true)}
-          onMouseLeave={() => setMenuHovering(false)}
+          onMouseLeave={() => { setMenuHovering(false); setOpenGroup(null) }}
         >
           <div className="sidebar-rail-drag" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion: string }} />
           <div className="sidebar-rail-brand">
@@ -592,48 +596,77 @@ export function AgentWindow(): React.JSX.Element {
             </button>
           </div>
 
-          {/* 可折叠菜单组：默认以方形图标显示，展开后显示文字 */}
+          {/* 三分组可折叠菜单：hover 分组标题展开子项 */}
           <div className="sidebar-menu">
-            <div className={`menu-item menu-item-companion ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('chat'))} role="button" tabIndex={0} aria-current={activeTab === 'chat' ? 'page' : undefined} title="陪伴">
-              <div className="menu-item-left"><MessageCircle size={18} strokeWidth={2} aria-hidden="true" /><span>陪伴</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
+
+            {/* ── 陪伴 ── */}
+            <div className={`menu-group ${openGroup === 'companion' ? 'open' : ''} ${activeTab === 'chat' || activeTab === 'control' || activeTab === 'rpa' ? 'has-active' : ''}`}>
+              <div className="menu-group-header" role="button" tabIndex={0} onClick={() => setOpenGroup(openGroup === 'companion' ? null : 'companion')} onKeyDown={(event) => handleMenuKeyDown(event, () => setOpenGroup(openGroup === 'companion' ? null : 'companion'))}>
+                <div className="menu-item-left"><MessageCircle size={18} strokeWidth={2} aria-hidden="true" /><span>陪伴</span></div>
+              </div>
+              <div className="menu-group-items">
+                <div className={`menu-item menu-group-item ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('chat'))} role="button" tabIndex={0} aria-current={activeTab === 'chat' ? 'page' : undefined}>
+                  <div className="menu-item-left"><MessageCircle size={16} strokeWidth={2} aria-hidden="true" /><span>聊天</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'control' ? 'active' : ''}`} onClick={() => setActiveTab('control')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('control'))} role="button" tabIndex={0} aria-current={activeTab === 'control' ? 'page' : undefined}>
+                  <div className="menu-item-left"><OverviewIcon /><span>连接与服务</span></div>
+                </div>
+                <div
+                  className={`menu-item menu-group-item ${activeTab === 'rpa' ? 'active' : ''}`}
+                  onClick={() => { void selectRpaTask(null).then(() => setActiveTab('rpa')) }}
+                  onKeyDown={(event) => handleMenuKeyDown(event, () => { void selectRpaTask(null).then(() => setActiveTab('rpa')) })}
+                  role="button" tabIndex={0} aria-current={activeTab === 'rpa' ? 'page' : undefined}
+                >
+                  <div className="menu-item-left"><Workflow size={16} strokeWidth={2} aria-hidden="true" /><span>自动化</span></div>
+                </div>
+              </div>
             </div>
-            <div className={`menu-item ${activeTab === 'control' ? 'active' : ''}`} onClick={() => setActiveTab('control')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('control'))} role="button" tabIndex={0} aria-current={activeTab === 'control' ? 'page' : undefined} title="连接与服务">
-              <div className="menu-item-left"><OverviewIcon /><span>连接与服务</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
+
+            {/* ── 记忆 ── */}
+            <div className={`menu-group ${openGroup === 'memory' ? 'open' : ''} ${activeTab === 'archive' || activeTab === 'knowledge' || activeTab === 'memory_gallery' || (activeTab === 'agent' && agentSubTab === 'memory') || activeTab === 'logs' ? 'has-active' : ''}`}>
+              <div className="menu-group-header" role="button" tabIndex={0} onClick={() => setOpenGroup(openGroup === 'memory' ? null : 'memory')} onKeyDown={(event) => handleMenuKeyDown(event, () => setOpenGroup(openGroup === 'memory' ? null : 'memory'))}>
+                <div className="menu-item-left"><Heart size={18} strokeWidth={2} aria-hidden="true" /><span>记忆</span></div>
+              </div>
+              <div className="menu-group-items">
+                <div className={`menu-item menu-group-item ${activeTab === 'archive' ? 'active' : ''}`} onClick={() => setActiveTab('archive')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('archive'))} role="button" tabIndex={0} aria-current={activeTab === 'archive' ? 'page' : undefined}>
+                  <div className="menu-item-left"><Heart size={16} strokeWidth={2} aria-hidden="true" /><span>陪伴档案</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'knowledge' ? 'active' : ''}`} onClick={() => setActiveTab('knowledge')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('knowledge'))} role="button" tabIndex={0} aria-current={activeTab === 'knowledge' ? 'page' : undefined}>
+                  <div className="menu-item-left"><Network size={16} strokeWidth={2} aria-hidden="true" /><span>知识图谱</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'memory_gallery' ? 'active' : ''}`} onClick={() => setActiveTab('memory_gallery')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('memory_gallery'))} role="button" tabIndex={0} aria-current={activeTab === 'memory_gallery' ? 'page' : undefined}>
+                  <div className="menu-item-left"><List size={16} strokeWidth={2} aria-hidden="true" /><span>记忆回廊</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'agent' && agentSubTab === 'memory' ? 'active' : ''}`} onClick={() => { setActiveTab('agent'); setAgentSubTab('memory') }} onKeyDown={(event) => handleMenuKeyDown(event, () => { setActiveTab('agent'); setAgentSubTab('memory') })} role="button" tabIndex={0} aria-current={activeTab === 'agent' && agentSubTab === 'memory' ? 'page' : undefined}>
+                  <div className="menu-item-left"><ScrollText size={16} strokeWidth={2} aria-hidden="true" /><span>记忆控制</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('logs'))} role="button" tabIndex={0} aria-current={activeTab === 'logs' ? 'page' : undefined}>
+                  <div className="menu-item-left"><ScrollText size={16} strokeWidth={2} aria-hidden="true" /><span>使用记录</span></div>
+                </div>
+              </div>
             </div>
-            <div className={`menu-item ${activeTab === 'agent' ? 'active' : ''}`} onClick={() => setActiveTab('agent')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('agent'))} role="button" tabIndex={0} aria-current={activeTab === 'agent' ? 'page' : undefined} title="能力中心">
-              <div className="menu-item-left"><SkillsIcon /><span>能力中心</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
+
+            {/* ── 设置 ── */}
+            <div className={`menu-group ${openGroup === 'settings' ? 'open' : ''} ${activeTab === 'settings' || (activeTab === 'agent' && (agentSubTab === 'skills' || agentSubTab === 'mcp' || agentSubTab === 'cron')) ? 'has-active' : ''}`}>
+              <div className="menu-group-header" role="button" tabIndex={0} onClick={() => setOpenGroup(openGroup === 'settings' ? null : 'settings')} onKeyDown={(event) => handleMenuKeyDown(event, () => setOpenGroup(openGroup === 'settings' ? null : 'settings'))}>
+                <div className="menu-item-left"><SettingsIcon /><span>设置</span></div>
+              </div>
+              <div className="menu-group-items">
+                <div className={`menu-item menu-group-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('settings'))} role="button" tabIndex={0} aria-current={activeTab === 'settings' ? 'page' : undefined}>
+                  <div className="menu-item-left"><SettingsIcon /><span>系统设置</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'agent' && agentSubTab === 'skills' ? 'active' : ''}`} onClick={() => { setActiveTab('agent'); setAgentSubTab('skills') }} onKeyDown={(event) => handleMenuKeyDown(event, () => { setActiveTab('agent'); setAgentSubTab('skills') })} role="button" tabIndex={0} aria-current={activeTab === 'agent' && agentSubTab === 'skills' ? 'page' : undefined}>
+                  <div className="menu-item-left"><SkillsIcon /><span>技能加入</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'agent' && agentSubTab === 'mcp' ? 'active' : ''}`} onClick={() => { setActiveTab('agent'); setAgentSubTab('mcp') }} onKeyDown={(event) => handleMenuKeyDown(event, () => { setActiveTab('agent'); setAgentSubTab('mcp') })} role="button" tabIndex={0} aria-current={activeTab === 'agent' && agentSubTab === 'mcp' ? 'page' : undefined}>
+                  <div className="menu-item-left"><Network size={16} strokeWidth={2} aria-hidden="true" /><span>MCP 服务</span></div>
+                </div>
+                <div className={`menu-item menu-group-item ${activeTab === 'agent' && agentSubTab === 'cron' ? 'active' : ''}`} onClick={() => { setActiveTab('agent'); setAgentSubTab('cron') }} onKeyDown={(event) => handleMenuKeyDown(event, () => { setActiveTab('agent'); setAgentSubTab('cron') })} role="button" tabIndex={0} aria-current={activeTab === 'agent' && agentSubTab === 'cron' ? 'page' : undefined}>
+                  <div className="menu-item-left"><List size={16} strokeWidth={2} aria-hidden="true" /><span>定时任务</span></div>
+                </div>
+              </div>
             </div>
-            <div className={`menu-item ${activeTab === 'archive' ? 'active' : ''}`} onClick={() => setActiveTab('archive')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('archive'))} role="button" tabIndex={0} aria-current={activeTab === 'archive' ? 'page' : undefined} title="陪伴档案">
-              <div className="menu-item-left"><Heart size={18} strokeWidth={2} aria-hidden="true" /><span>陪伴档案</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div className={`menu-item ${activeTab === 'knowledge' ? 'active' : ''}`} onClick={() => setActiveTab('knowledge')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('knowledge'))} role="button" tabIndex={0} aria-current={activeTab === 'knowledge' ? 'page' : undefined} title="知识图谱">
-              <div className="menu-item-left"><Network size={18} strokeWidth={2} aria-hidden="true" /><span>知识图谱</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div
-              className={`menu-item ${activeTab === 'rpa' ? 'active' : ''}`}
-              onClick={() => { void selectRpaTask(null).then(() => setActiveTab('rpa')) }}
-              onKeyDown={(event) => handleMenuKeyDown(event, () => { void selectRpaTask(null).then(() => setActiveTab('rpa')) })}
-              role="button"
-              tabIndex={0}
-              aria-current={activeTab === 'rpa' ? 'page' : undefined}
-              title="RPA 任务"
-            >
-              <div className="menu-item-left"><Workflow size={18} strokeWidth={2} aria-hidden="true" /><span>自动化</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div className={`menu-item ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('logs'))} role="button" tabIndex={0} aria-current={activeTab === 'logs' ? 'page' : undefined} title="使用记录">
-              <div className="menu-item-left"><ScrollText size={18} strokeWidth={2} aria-hidden="true" /><span>使用记录</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div className={`menu-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')} onKeyDown={(event) => handleMenuKeyDown(event, () => setActiveTab('settings'))} role="button" tabIndex={0} aria-current={activeTab === 'settings' ? 'page' : undefined} title="设置">
-              <div className="menu-item-left"><SettingsIcon /><span>设置</span></div>
-              <ChevronRight className="menu-item-arrow" size={14} strokeWidth={2} aria-hidden="true" />
-            </div>
+
           </div>
 
           <div className="sidebar-footer">
@@ -800,6 +833,7 @@ export function AgentWindow(): React.JSX.Element {
               {activeTab === 'knowledge' && '知识图谱'}
               {activeTab === 'logs' && 'Token 消耗与模型日志统计'}
               {activeTab === 'settings' && '系统设置'}
+              {activeTab === 'memory_gallery' && '记忆回廊'}
             </div>
             {activeTab !== 'chat' && (
               <div className="content-subtitle">
@@ -809,6 +843,7 @@ export function AgentWindow(): React.JSX.Element {
                 {activeTab === 'knowledge' && '探索实体、关系与可追溯证据'}
                 {activeTab === 'logs' && '实时监测大语言模型调用频率及 Token 开销走势'}
                 {activeTab === 'settings' && '大模型与虚拟体模拟配置项'}
+                {activeTab === 'memory_gallery' && '照片、对话与 LLM 摘要编织的记忆时间线'}
               </div>
             )}
           </div>
