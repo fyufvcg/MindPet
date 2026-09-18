@@ -144,8 +144,8 @@ declare global {
       memoryTables: () => Promise<{ status: string; tables: Record<string, number> }>
       memoryTableList: (table: string, page?: number, limit?: number, search?: string) => Promise<{ status: string; table: string; rows: any[]; count: number; total: number; page: number; limit: number; totalPages: number; message?: string }>
       memoryTableDelete: (table: string, id: string) => Promise<{ status: string; deleted: number }>
-      memoryTableCreate: (table: string, data: Record<string, string>) => Promise<{ status: string; message?: string }>
-      memoryTableUpdate: (table: string, id: string, data: Record<string, string>) => Promise<{ status: string; updated: number }>
+      memoryTableCreate: (table: string, data: Record<string, string>) => Promise<{ status: string; message?: string; created?: number }>
+      memoryTableUpdate: (table: string, id: string, data: Record<string, string>) => Promise<{ status: string; updated?: number; message?: string }>
       getKnowledgeGraph: (query?: string, limit?: number) => Promise<any>
       getKnowledgeGraphEvidence: (entityId: string, limit?: number) => Promise<any>
       deleteKnowledgeGraphEntity: (entityId: string) => Promise<{ status: string; deleted: boolean }>

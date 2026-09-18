@@ -253,9 +253,9 @@ const api = {
     ipcRenderer.invoke('api:memory-table-list', table, page, limit, search),
   memoryTableDelete: (table: string, id: string): Promise<{ status: string; deleted: number }> =>
     ipcRenderer.invoke('api:memory-table-delete', table, id),
-  memoryTableCreate: (table: string, data: Record<string, string>): Promise<{ status: string; message?: string }> =>
+  memoryTableCreate: (table: string, data: Record<string, string>): Promise<{ status: string; message?: string; created?: number }> =>
     ipcRenderer.invoke('api:memory-table-create', table, data),
-  memoryTableUpdate: (table: string, id: string, data: Record<string, string>): Promise<{ status: string; updated: number }> =>
+  memoryTableUpdate: (table: string, id: string, data: Record<string, string>): Promise<{ status: string; updated?: number; message?: string }> =>
     ipcRenderer.invoke('api:memory-table-update', table, id, data),
   memoryStats: (): Promise<{ status: string; longTermCount: number }> =>
     ipcRenderer.invoke('api:memory-stats'),

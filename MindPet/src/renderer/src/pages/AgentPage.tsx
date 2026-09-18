@@ -2368,7 +2368,16 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 style={{ fontSize: '12.5px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer' }}>取消</button>
               <button className="btn-primary"
                 onClick={async () => {
-                  await window.api.memoryTableUpdate(editingRow.table, editingRow.id, editingRow.data)
+                  try {
+                    const res = await window.api.memoryTableUpdate(editingRow.table, editingRow.id, editingRow.data)
+                    if (res?.status !== 'ok') {
+                      showToast(res?.message || '保存失败', 'error')
+                      return
+                    }
+                  } catch {
+                    showToast('保存失败：无法连接后端', 'error')
+                    return
+                  }
                   setEditingRow(null)
                   loadTableData(activeTable, tablePage, tableSearch)
                   loadTableStats()
@@ -2429,7 +2438,16 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 style={{ fontSize: '12.5px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer' }}>取消</button>
               <button className="btn-primary"
                 onClick={async () => {
-                  await window.api.memoryTableCreate(activeTable, newRowData)
+                  try {
+                    const res = await window.api.memoryTableCreate(activeTable, newRowData)
+                    if (res?.status !== 'ok') {
+                      showToast(res?.message || '创建失败', 'error')
+                      return
+                    }
+                  } catch {
+                    showToast('创建失败：无法连接后端', 'error')
+                    return
+                  }
                   setShowAddModal(false)
                   setNewRowData({})
                   loadTableData(activeTable, tablePage, tableSearch)

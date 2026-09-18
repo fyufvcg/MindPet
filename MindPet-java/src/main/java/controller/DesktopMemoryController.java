@@ -478,6 +478,10 @@ public class DesktopMemoryController {
         }
         try {
             String content = body.getOrDefault("content", "");
+            // user_profile 的属性值前端以 propValue 提交（与 createInTable 保持一致），回退到 content
+            if (content.isBlank()) {
+                content = body.getOrDefault("propValue", "");
+            }
             String category = body.getOrDefault("category", "");
             String propKey = body.getOrDefault("propKey", "");
             String importance = body.getOrDefault("importance", "");
