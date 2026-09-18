@@ -36,7 +36,7 @@ public class IpGeoTool {
     }
 
     /**
-     * Get raw IP location data as JsonNode. Shared by RoutePlanTool and TicketQueryTool.
+     * Get raw IP location data as JsonNode. Shared by RoutePlanTool.
      * Returns null on failure.
      */
     public JsonNode getLocationData() {

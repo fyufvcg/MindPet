@@ -84,6 +84,8 @@ public class DesktopController {
         List<String> images = (List<String>) body.getOrDefault("images", List.of());
         @SuppressWarnings("unchecked")
         List<String> activeSkills = (List<String>) body.getOrDefault("activeSkills", List.of());
+        // 前端注入的技能规约全文（SKILL.md）。仅用于本次请求，不写入 DynamicLlmConfig。
+        String extraSystemPrompt = String.valueOf(body.getOrDefault("systemPrompt", ""));
 
         ToolUserContext.set(userId, sessionId);
         ToolUserContext.setRequestId(requestId);
@@ -124,7 +126,7 @@ public class DesktopController {
                 result = aiService.chatWithImageStream(userId,
                     message.isBlank() ? null : message, imageBytes, "image.png", contextRounds, onDelta, skills);
             } else {
-                result = aiService.chatStream(userId, message, contextRounds, onDelta, skills);
+                result = aiService.chatStream(userId, message, contextRounds, onDelta, skills, extraSystemPrompt);
             }
             String reply = result.reply();
 

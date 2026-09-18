@@ -58,25 +58,6 @@ if not defined REDIS_DIR (
 
 
 
-REM === 自动检测 mcp-12306 位置 ===
-
-set MCP_EXE=
-
-for /f "delims=" %%i in ('where mcp-12306 2^>nul') do set MCP_EXE=%%i
-
-if not defined MCP_EXE (
-
-    for %%d in (
-
-        "%LOCALAPPDATA%\Python\pythoncore-3.14-64\Scripts\mcp-12306.exe"
-
-        "%LOCALAPPDATA%\Programs\Python\Python3*\Scripts\mcp-12306.exe"
-
-        "%APPDATA%\Python\Python3*\Scripts\mcp-12306.exe"
-
-    ) do if not defined MCP_EXE if exist "%%~d" set MCP_EXE=%%~d
-
-)
 
 
 
@@ -88,7 +69,7 @@ powershell -NoProfile -Command "$p=Get-CimInstance Win32_Process ^| Where-Object
 
 REM --- 编译项目 ---
 
-echo [0/4] 编译项目...
+echo [0/2] 编译项目...
 
 call mvn package -DskipTests -q
 
@@ -109,7 +90,7 @@ echo.
 
 
 REM --- 启动 Redis ---
-echo [1/4] 启动 Redis...
+echo [1/2] 启动 Redis...
 set REDIS_RUNNING=0
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":6379" 2^>nul') do set REDIS_RUNNING=1
 if !REDIS_RUNNING! equ 1 (
@@ -145,129 +126,15 @@ echo.
 
 
 
-REM --- 启动 12306 MCP Server ---
-
-echo [2/4] 启动 12306 票务 MCP 服务...
-
-set MCP12306_RUNNING=0
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000.*LISTENING" 2^>nul') do set MCP12306_RUNNING=1
-
-if !MCP12306_RUNNING! equ 1 (
-
-    echo       12306 MCP 已在运行，跳过启动
-
-    goto :skip_mcp
-
-)
-
-if not defined MCP_EXE (
-
-    echo       [提示] 未找到 mcp-12306，票务功能不可用
-
-    echo       安装方法: pip install mcp-12306
-
-    goto :skip_mcp
-
-)
-
-start "12306-MCP" /B "!MCP_EXE!"
-
-echo       12306 MCP 服务启动中 (http://localhost:8000)
-
-echo       等待 MCP 服务就绪...
-
-set retry=0
-
-:wait_mcp
-
-timeout /t 2 /nobreak >nul
-
-curl -s --max-time 3 http://localhost:8000/health >nul 2>&1
-
-if not errorlevel 1 goto :mcp_ready
-
-set /a retry+=1
-
-if !retry! lss 15 goto :wait_mcp
-
-echo       [警告] MCP 服务超时未就绪，继续启动 Bot
-
-goto :skip_mcp
-
-:mcp_ready
-
-echo       12306 MCP 服务已就绪!
-
-:skip_mcp
 
 
 
-REM --- 启动 HowToCook MCP Server (菜谱) ---
-
-echo [*] 启动 HowToCook 菜谱 MCP...
-
-set COOK_RUNNING=0
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000.*LISTENING" 2^>nul') do set COOK_RUNNING=1
-
-if !COOK_RUNNING! equ 1 (
-
-    echo       HowToCook MCP 已在运行
-
-    goto :skip_cook
-
-)
-
-where npx >nul 2>&1
-
-if errorlevel 1 (
-
-    echo       [提示] 未找到 npx，菜谱不可用
-
-    echo       安装方法: npm install -g npx
-
-    goto :skip_cook
-
-)
-
-start "HowToCook-MCP" /B npx -y howtocook-mcp --transport http --port 3000
-
-echo       HowToCook MCP 启动中 (http://localhost:3000)
-
-echo       等待就绪...
-
-set cr=0
-
-:wait_cook
-
-timeout /t 2 /nobreak >nul
-
-curl -s --max-time 3 http://localhost:3000/health >nul 2>&1
-
-if not errorlevel 1 goto :cook_ready
-
-set /a cr+=1
-
-if !cr! lss 10 goto :wait_cook
-
-echo       [警告] HowToCook MCP 超时
-
-goto :skip_cook
-
-:cook_ready
-
-echo       HowToCook MCP 已就绪!
-
-:skip_cook
-
-echo.
 
 
 
 REM --- 启动 Java Bot ---
 
-echo [3/4] 启动 MindPet Bot...
+echo [2/2] 启动 MindPet Bot...
 
 echo    (Playwright 浏览器由 Java 在应用启动时自动打开)
 

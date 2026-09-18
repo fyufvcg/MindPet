@@ -83,11 +83,6 @@ app:
   memory:
     redis:
       enabled: true
-  food:
-    howtocook:
-      mcp-url: http://127.0.0.1:3000/mcp
-    delivery:
-      command: mcp-taobao-server
   embedding:
     use-ollama: true
     ollama:

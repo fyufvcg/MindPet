@@ -210,6 +210,8 @@ export async function* callJavaBackend(
     mode: config.mode || 'chat',
     contextRounds: (config as any).contextRounds || 6,
     activeSkills: (config as any).activeSkills || [],
+    // 前端注入的技能规约全文（SKILL.md），后端仅用于本次请求
+    systemPrompt: (config as any).systemPrompt || '',
     history: backendMessages.slice(0, -1)
   })
 

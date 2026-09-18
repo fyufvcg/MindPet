@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * 滴滴出行 MCP 客户端 — 调用滴滴官方云端 MCP 服务。
- * 参照 TicketQueryTool 的 JSON-RPC 模式，不经过 Spring AI MCP 集成。
+ * 手写 HTTP JSON-RPC 客户端，不经过 Spring AI MCP 集成。
  *
  * API Key 从 application.yml 读取，需先去 https://mcp.didichuxing.com/ 登录获取。
  */

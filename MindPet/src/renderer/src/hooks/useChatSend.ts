@@ -31,6 +31,31 @@ interface ChatSendOptions {
   triggerSessionSummary: (sessionId: string, sessions: any[]) => Promise<void>
 }
 
+/**
+ * 技能 SKILL.md 全文注入缓存。
+ * 按「会话 + 启用技能集合」缓存：会话开始时注入一次，之后复用；
+ * 切换会话或用户增删技能时自动失效重取。
+ */
+const skillsPromptCache = new Map<string, string>()
+
+async function loadSkillsPrompt(sessionId: string, activeSkills: string[]): Promise<string> {
+  if (!sessionId || activeSkills.length === 0) return ''
+  const cacheKey = `${sessionId}::${[...activeSkills].sort().join(',')}`
+  const cached = skillsPromptCache.get(cacheKey)
+  if (cached !== undefined) return cached
+  try {
+    // 主进程会读取已启用技能的 SKILL.md 全文，并顺带同步到后端 SkillStore
+    const prompt = await window.api.getActiveSkillsPrompt(activeSkills)
+    const resolved = prompt || ''
+    skillsPromptCache.set(cacheKey, resolved)
+    return resolved
+  } catch (e) {
+    console.error('[Skills] 读取技能全文失败:', e)
+    skillsPromptCache.set(cacheKey, '')
+    return ''
+  }
+}
+
 function getAvatar(state: ChatSendState): { name: string; style: string; voice: string } {
   const avatar = state.avatarList.find(item => state.customModelDir ? item.dir === state.customModelDir : item.isDefault)
   return {
@@ -204,8 +229,22 @@ export function useChatSend({
         .map(toLlmMessage)
 
       if (abortedReplyIdsRef.current.has(replyId)) throw new Error('UserAborted')
+
+      // 技能全文注入：会话开始注入一次，同会话同技能集合复用缓存
+      const skillsPrompt = await loadSkillsPrompt(sessionId, activeSkills)
+      const systemPrompt = skillsPrompt
+        ? [llmConfig.systemPrompt, skillsPrompt].filter(Boolean).join('\n\n')
+        : llmConfig.systemPrompt
+
       const response = await window.api.callLLM(
-        { ...llmConfig, sessionId, messageId: replyId, contextRounds: state.contextRounds, activeSkills },
+        {
+          ...llmConfig,
+          systemPrompt,
+          sessionId,
+          messageId: replyId,
+          contextRounds: state.contextRounds,
+          activeSkills
+        },
         chatMessages,
         workspacePath
       )

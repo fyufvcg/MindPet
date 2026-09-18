@@ -63,21 +63,18 @@ public class AiService {
         TOOL_GROUPS.put("calc", List.of("numericCalculate", "dateCalculate", "convertTimezone", "convertCurrency"));
         GROUP_DESCRIPTIONS.put("calc", "数学计算、日期计算、时区转换、汇率换算");
 
-        TOOL_GROUPS.put("出行", List.of("ipGeolocation", "routePlanning", "queryTickets", "bookTicket", "snapTicket",
+        TOOL_GROUPS.put("出行", List.of("ipGeolocation", "routePlanning",
             "didi_searchPlace", "didi_estimateRide", "didi_createOrder", "didi_queryOrder", "didi_cancelOrder"));
-        GROUP_DESCRIPTIONS.put("出行", "IP定位、路线规划、火车票查询/订票/抢票、滴滴打车(搜索地点/估价/下单/查询/取消)");
+        GROUP_DESCRIPTIONS.put("出行", "IP定位、路线规划、滴滴打车(搜索地点/估价/下单/查询/取消)");
 
         TOOL_GROUPS.put("search", List.of("search", "browser"));
         GROUP_DESCRIPTIONS.put("search", "文件内容搜索、联网搜索、网页全文抓取");
 
-        TOOL_GROUPS.put("recipe", List.of("getAllRecipes", "getRecipeById", "getRecipesByCategory", "recommendMeals", "whatToEat"));
-        GROUP_DESCRIPTIONS.put("recipe", "菜谱查询、做饭推荐、吃什么建议");
-
-        TOOL_GROUPS.put("delivery", List.of("shangou_open_login", "shangou_check_login", "shangou_list_addresses", "shangou_set_address",
-            "shangou_search", "shangou_shop_menu", "shangou_add_to_cart", "shangou_view_cart", "shangou_create_order",
-            "shangou_submit_order", "shangou_get_server_status",
+        // 麦当劳：纯前端配置的 MCP 原子工具由 getToolCallbacks 无条件透传；
+        // 这 4 个是 Java 侧的复合包装（把官方多步编码链路收敛成一句话）
+        TOOL_GROUPS.put("delivery", List.of(
             "mcdonaldOrder", "mcdonaldCampaigns", "mcdonaldCoupons", "mcdonaldOrderStatus"));
-        GROUP_DESCRIPTIONS.put("delivery", "闪购/外卖下单（搜索商品、加购物车、填地址、提交订单）");
+        GROUP_DESCRIPTIONS.put("delivery", "麦当劳点餐（下单、活动、优惠券、订单状态）");
 
         TOOL_GROUPS.put("本地", List.of("file"));
         GROUP_DESCRIPTIONS.put("本地", "本地文件操作（创建/读取/写入/修改/删除/移动/重命名/搜索），支持 PDF/Word/Excel/CSV/图片多格式");
@@ -641,6 +638,16 @@ public class AiService {
     }
     public model.ChatResult chatStream(String userId, String userMessage, int contextRounds,
                                        Consumer<String> onDelta, Set<String> activeSkills) {
+        return chatStream(userId, userMessage, contextRounds, onDelta, activeSkills, "");
+    }
+
+    /**
+     * @param extraSystemPrompt 前端注入的额外 system prompt（如已启用技能的 SKILL.md 全文）。
+     *                          仅作用于本次请求，不写入 DynamicLlmConfig。
+     */
+    public model.ChatResult chatStream(String userId, String userMessage, int contextRounds,
+                                       Consumer<String> onDelta, Set<String> activeSkills,
+                                       String extraSystemPrompt) {
         String fallback = "MindPet 暂时有点累，稍后再试试吧~";
         if (!isConfigured()) {
             String message = "请先配置 LLM API。";
@@ -671,7 +678,7 @@ public class AiService {
 
             ToolCallLimitAdvisor.reset();
             logger.log("INFO", "[2/2] 流式调用 LLM...");
-            String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills);
+            String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills, extraSystemPrompt);
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
                 String toolNames = Arrays.stream(callbacks)
                     .map(tc -> tc.getToolDefinition().name())
@@ -1135,6 +1142,15 @@ public class AiService {
         return buildSystemPrompt(userId, query, emotion, trend, Set.of());
     }
     private String buildSystemPrompt(String userId, String query, EmotionService.EmotionResult emotion, String trend, Set<String> skills) {
+        return buildSystemPrompt(userId, query, emotion, trend, skills, "");
+    }
+
+    /**
+     * @param extraPrompt 前端注入的额外 system prompt（如已启用技能的 SKILL.md 全文），
+     *                    仅作用于本次请求。空则行为与旧版完全一致。
+     */
+    private String buildSystemPrompt(String userId, String query, EmotionService.EmotionResult emotion,
+                                     String trend, Set<String> skills, String extraPrompt) {
         // 兼容前端历史配置，但不把旧品牌名继续传给模型。
         String basePrompt = dynamicConfig.hasSystemPrompt()
             ? normalizeIdentity(dynamicConfig.getSystemPrompt())
@@ -1206,6 +1222,12 @@ public class AiService {
                 prompt += "- " + name + "\n";
             }
             logger.log("INFO", "[Skill] 已注入 " + skills.size() + " 个技能: " + String.join(", ", skills));
+        }
+
+        // 前端注入的技能规约全文（SKILL.md）。由前端在会话开始时取一次并缓存复用。
+        if (extraPrompt != null && !extraPrompt.isBlank()) {
+            prompt += "\n\n" + extraPrompt;
+            logger.log("INFO", "[Skill] 已注入技能规约全文 " + extraPrompt.length() + " 字符");
         }
 
         return prompt;
