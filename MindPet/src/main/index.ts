@@ -4235,6 +4235,32 @@ app.whenReady().then(() => {
     return callLlmInternal(config, messages, workspacePath, event)
   })
 
+  // LLM 连通性测试 — 走后端轻量接口，如实返回上游状态码（429/503...），不降级成"累"话术
+  ipcMain.handle('api:test-llm', async (_, config) => {
+    const startedAt = Date.now()
+    try {
+      const res = await fetch('http://127.0.0.1:8080/api/desktop/llm-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: config?.apiKey || '',
+          baseUrl: config?.baseUrl || '',
+          model: config?.model || ''
+        })
+      })
+      const data = await res.json()
+      return { ...data, backendStatus: res.status }
+    } catch (e: any) {
+      // 后端本身没起来（ECONNREFUSED 等）
+      return {
+        ok: false,
+        unreachable: true,
+        message: `无法连接后端服务 (127.0.0.1:8080): ${e?.message || e}`,
+        elapsedMs: Date.now() - startedAt
+      }
+    }
+  })
+
   // 微信智能助手接口通道注册
   ipcMain.handle('api:wechat-start-login', async () => {
     if (wechatBotManager) {

@@ -63,6 +63,8 @@ const api = {
     ipcRenderer.invoke('api:save-generated-skill', name, content),
   callLLM: (config: any, messages: any[], workspacePath?: string): Promise<string> =>
     ipcRenderer.invoke('api:call-llm', config, messages, workspacePath),
+  testLlm: (config: any): Promise<{ ok: boolean; httpStatus?: number; reason?: string; message?: string; detail?: string; content?: string; model?: string; baseUrl?: string; timeout?: boolean; unreachable?: boolean; elapsedMs?: number }> =>
+    ipcRenderer.invoke('api:test-llm', config),
   selectFile: (): Promise<{ name: string; path: string; content: string } | null> =>
     ipcRenderer.invoke('api:select-file'),
   selectAttachmentFiles: (): Promise<string[]> =>

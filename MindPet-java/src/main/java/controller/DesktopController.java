@@ -7,17 +7,23 @@ import model.ChatResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import service.AiService;
+import service.DynamicChatClientFactory;
 import tool.ToolUserContext;
 import util.Logger;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 桌面端 API — AgentPet (Tauri + React) 的前端通过 HTTP 调用这些接口。
@@ -31,16 +37,19 @@ public class DesktopController {
     private final DynamicLlmConfig dynamicLlmConfig;
     private final service.McpManager mcpManager;
     private final config.SkillStore skillStore;
+    private final DynamicChatClientFactory chatClientFactory;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Logger logger;
 
     @Autowired
     public DesktopController(AiService aiService, DynamicLlmConfig dynamicLlmConfig,
-                             service.McpManager mcpManager, config.SkillStore skillStore, Logger logger) {
+                             service.McpManager mcpManager, config.SkillStore skillStore,
+                             DynamicChatClientFactory chatClientFactory, Logger logger) {
         this.aiService = aiService;
         this.dynamicLlmConfig = dynamicLlmConfig;
         this.mcpManager = mcpManager;
         this.skillStore = skillStore;
+        this.chatClientFactory = chatClientFactory;
         this.logger = logger;
     }
 
@@ -185,6 +194,142 @@ public class DesktopController {
             ToolUserContext.drainGeneratedFiles(requestId);
             ToolUserContext.clear();
         }
+    }
+
+    /**
+     * LLM 连通性测试 — 轻量接口，只做一次最小调用，不写入任何会话/记忆。
+     *
+     * <p>与 /chat/stream 的关键区别：失败时如实返回上游 HTTP 状态码（429/503/...），
+     * 而不是降级成"S 暂时有点累"这类正常回复。设置页的"测试大模型连接"用这个接口，
+     * 避免把上游限流/不可用误报成连接成功。
+     */
+    @PostMapping("/llm-test")
+    public Map<String, Object> llmTest(@RequestBody(required = false) Map<String, Object> body) {
+        long startedAt = System.currentTimeMillis();
+
+        // 前端把当前表单里的配置直接带过来。只用于本次测试，绝不落盘、不改动正在生效的配置。
+        String apiKey = body == null ? "" : str(body.get("apiKey"));
+        String baseUrl = body == null ? "" : str(body.get("baseUrl"));
+        String model = body == null ? "" : str(body.get("model"));
+
+        boolean transientTest = !apiKey.isBlank() || !baseUrl.isBlank() || !model.isBlank();
+        if (!transientTest) {
+            // 未下发配置时才回退到当前生效配置
+            apiKey = chatClientFactory.effectiveApiKeyForDisplay();
+            baseUrl = chatClientFactory.effectiveBaseUrlForDisplay();
+            model = chatClientFactory.effectiveModel();
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("model", model);
+        result.put("baseUrl", baseUrl);
+        result.put("testedWith", transientTest ? "request" : "active");
+
+        if (apiKey.isBlank() || baseUrl.isBlank() || model.isBlank()) {
+            result.put("ok", false);
+            result.put("message", "LLM 未配置：请先填写 API Key / Base URL / 模型");
+            result.put("elapsedMs", System.currentTimeMillis() - startedAt);
+            return result;
+        }
+
+        try {
+            // 一次性客户端：不缓存、不落盘，避免测试污染生效配置
+            var spec = chatClientFactory.buildTransient(apiKey, baseUrl, model).prompt()
+                .user("Reply with exactly one word: Success");
+
+            String reply = CompletableFuture
+                .supplyAsync(() -> spec.call().content())
+                .get(30, TimeUnit.SECONDS);
+
+            String content = reply == null ? "" : reply.trim();
+            result.put("ok", true);
+            result.put("content", content);
+            result.put("empty", content.isEmpty());
+            result.put("elapsedMs", System.currentTimeMillis() - startedAt);
+            logger.log("INFO", "[Desktop] LLM 测试成功 model=" + model
+                + " 耗时=" + result.get("elapsedMs") + "ms");
+        } catch (Exception e) {
+            Throwable cause = (e instanceof ExecutionException && e.getCause() != null) ? e.getCause() : e;
+            boolean timeout = (e instanceof TimeoutException) || (cause instanceof TimeoutException);
+            Integer status = extractHttpStatus(cause);
+            String rawMessage = cause.getMessage() == null ? "" : cause.getMessage();
+            String detail = extractErrorBody(cause);
+
+            // 有些实现（如 Spring AI 的 RestClient 包装）会把状态码并进 message，
+            // 形如 "401 - {json...}"，此时也提取出来作为 httpStatus。
+            if (status == null) {
+                java.util.regex.Matcher matcher =
+                    java.util.regex.Pattern.compile("^\\s*(\\d{3})\\b").matcher(rawMessage);
+                if (matcher.find()) status = Integer.parseInt(matcher.group(1));
+            }
+            String message = timeout
+                ? "请求超时（30 秒内没有响应）"
+                : (rawMessage.isBlank() ? cause.getClass().getSimpleName() : rawMessage);
+
+            result.put("ok", false);
+            result.put("timeout", timeout);
+            if (status != null) {
+                result.put("httpStatus", status);
+                result.put("reason", reasonPhrase(status));
+            }
+            result.put("message", message);
+            result.put("errorType", cause.getClass().getName());
+            if (detail != null && !detail.isBlank()) result.put("detail", detail);
+            result.put("elapsedMs", System.currentTimeMillis() - startedAt);
+            logger.log("ERROR", "[Desktop] LLM 测试失败 status=" + status
+                + " type=" + cause.getClass().getSimpleName() + " " + message);
+        }
+        return result;
+    }
+
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    /** 从异常链里挖上游 HTTP 状态码。Spring AI 内部异常类型随版本变动，故用反射。 */    private Integer extractHttpStatus(Throwable throwable) {
+        for (Throwable t = throwable; t != null; t = t.getCause()) {
+            try {
+                Object value = t.getClass().getMethod("getStatusCode").invoke(t);
+                if (value instanceof org.springframework.http.HttpStatusCode code) return code.value();
+                if (value instanceof Integer i) return i;
+            } catch (Exception ignored) {
+                // 该层没有 getStatusCode，继续往 cause 找
+            }
+            if (t.getCause() == t) break;
+        }
+        return null;
+    }
+
+    /** 从异常链里挖上游响应体，便于前端展示 429/503 的详细原因。 */
+    private String extractErrorBody(Throwable throwable) {
+        for (Throwable t = throwable; t != null; t = t.getCause()) {
+            try {
+                Object value = t.getClass().getMethod("getResponseBodyAsString").invoke(t);
+                if (value instanceof String s && !s.isBlank()) {
+                    return s.length() > 500 ? s.substring(0, 500) : s;
+                }
+            } catch (Exception ignored) {
+                // 该层没有响应体，继续往 cause 找
+            }
+            if (t.getCause() == t) break;
+        }
+        return null;
+    }
+
+    private String reasonPhrase(int status) {
+        return switch (status) {
+            case 400 -> "Bad Request — 请求格式或参数错误";
+            case 401 -> "Unauthorized — API Key 无效或缺失";
+            case 403 -> "Forbidden — 无权访问该模型";
+            case 404 -> "Not Found — Base URL 或模型名不存在";
+            case 408 -> "Request Timeout";
+            case 429 -> "Too Many Requests — 触发限流/额度不足";
+            case 500 -> "Internal Server Error — 上游服务异常";
+            case 502 -> "Bad Gateway";
+            case 503 -> "Service Unavailable — 上游服务暂不可用";
+            case 504 -> "Gateway Timeout — 上游响应超时";
+            default -> "HTTP " + status;
+        };
     }
 
     /**

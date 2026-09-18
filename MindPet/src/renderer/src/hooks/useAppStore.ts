@@ -123,6 +123,21 @@ interface CachedContextMessage {
   tokens: number
 }
 
+/** LLM 连通性测试结果。区分 idle / testing / ok / error 四态，错误时携带上游状态码与详情。 */
+export interface LlmTestResult {
+  state: 'idle' | 'testing' | 'ok' | 'error'
+  content?: string
+  httpStatus?: number
+  reason?: string
+  message?: string
+  detail?: string
+  model?: string
+  baseUrl?: string
+  timeout?: boolean
+  unreachable?: boolean
+  elapsedMs?: number
+}
+
 interface SessionContextCache {
   total: number
   scopeSignature: string
@@ -409,7 +424,7 @@ export const useAppStoreRaw = create<any>((set) => ({
     return val === null ? true : val === 'true'
   })(),
   contextRounds: Number(localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10'),
-  testStatus: 'idle',
+  testStatus: { state: 'idle' } as LlmTestResult,
   isSessionSwitching: false,
   isSessionsInitialized: false,
 
@@ -1689,12 +1704,16 @@ export function useAppStore() {
 
 
   const handleTestConnection = async (): Promise<void> => {
-    setTestStatus('testing')
+    setTestStatus({ state: 'testing' })
     try {
-      const result = await window.api.callLLM({ ...llmConfig, sessionId: 'system:test' }, [{ role: 'user', content: 'Say "Success" in exactly one word.' }])
-      setTestStatus(`连接成功! 答复: "${result.trim()}"`)
+      const res = await window.api.testLlm(llmConfig)
+      if (res?.ok) {
+        setTestStatus({ state: 'ok', ...res })
+      } else {
+        setTestStatus({ state: 'error', ...res, message: res?.message || '未知错误' })
+      }
     } catch (e: any) {
-      setTestStatus(`连接失败: ${e.message || e}`)
+      setTestStatus({ state: 'error', message: e?.message || String(e) })
     }
   }
 

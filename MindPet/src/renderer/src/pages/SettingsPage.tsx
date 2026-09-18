@@ -1,6 +1,6 @@
 import React from 'react'
 import { DEFAULT_MODELS } from '../utils/helpers'
-import type { AppStore } from '../hooks/useAppStore'
+import type { AppStore, LlmTestResult } from '../hooks/useAppStore'
 import { getProviderIcon, getModelIcon } from '../utils/modelIcons'
 import {
   AudioLines,
@@ -51,6 +51,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     // tts
     ttsEnabled, setTtsEnabled,
   } = store
+
+  // 连通性测试结果：store 里是宽类型，这里收窄以便安全访问状态码等字段
+  const test = testStatus as LlmTestResult
 
   // 虚拟体编辑弹窗状态
   const [showEditAvatarModal, setShowEditAvatarModal] = React.useState(false)
@@ -355,27 +358,70 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
 
             {/* Actions row */}
             <div className="action-row">
-              <button className="btn-primary" onClick={handleTestConnection} disabled={testStatus === 'testing'}>
-                {testStatus === 'testing'
+              <button className="btn-primary" onClick={handleTestConnection} disabled={test?.state === 'testing'}>
+                {test?.state === 'testing'
                   ? '正在连通测试...'
                   : <><Plug size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />测试大模型连接</>}
               </button>
             </div>
 
-            {testStatus !== 'idle' && testStatus !== 'testing' && (
-              <div style={{
-                fontSize: '12.5px',
-                color: testStatus.startsWith('连接成功') ? '#10b981' : '#f87171',
-                background: testStatus.startsWith('连接成功') ? 'rgba(16,185,129,0.05)' : 'rgba(248,113,113,0.05)',
-                border: `1px solid ${testStatus.startsWith('连接成功') ? 'rgba(16,185,129,0.2)' : 'rgba(248,113,113,0.2)'}`,
-                padding: '10px 14px',
-                borderRadius: '6px',
-                marginTop: '10px',
-                wordBreak: 'break-all'
-              }}>
-                {testStatus}
-              </div>
-            )}
+            {test && (test.state === 'ok' || test.state === 'error') && (() => {
+              const isOk = test.state === 'ok'
+              return (
+                <div style={{
+                  fontSize: '12.5px',
+                  color: isOk ? '#10b981' : '#f87171',
+                  background: isOk ? 'rgba(16,185,129,0.05)' : 'rgba(248,113,113,0.05)',
+                  border: `1px solid ${isOk ? 'rgba(16,185,129,0.2)' : 'rgba(248,113,113,0.2)'}`,
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  marginTop: '10px',
+                  wordBreak: 'break-all'
+                }}>
+                  {isOk ? (
+                    <>
+                      <div style={{ fontWeight: 600 }}>连接成功</div>
+                      <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>
+                        模型回复: "{test.content || '(空响应)'}"
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>
+                        {[test.model, test.elapsedMs != null ? `${test.elapsedMs}ms` : null].filter(Boolean).join(' · ')}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 600 }}>
+                        {test.unreachable
+                          ? '后端服务不可用'
+                          : test.timeout
+                            ? '连接失败：请求超时'
+                            : test.httpStatus
+                              ? `连接失败：HTTP ${test.httpStatus}`
+                              : '连接失败'}
+                      </div>
+                      {test.httpStatus && test.reason && (
+                        <div style={{ marginTop: 2 }}>{test.reason}</div>
+                      )}
+                      <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{test.message}</div>
+                      {test.detail && (
+                        <div style={{
+                          marginTop: 6, fontSize: 11, fontFamily: 'monospace',
+                          whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto',
+                          color: 'var(--text-muted)'
+                        }}>
+                          {test.detail}
+                        </div>
+                      )}
+                      {(test.model || test.elapsedMs != null) && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                          {[test.model, test.elapsedMs != null ? `${test.elapsedMs}ms` : null].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 

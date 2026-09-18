@@ -36,6 +36,7 @@ declare global {
       generateSkill: (skillName: string, description: string) => Promise<any>
       saveGeneratedSkill: (name: string, content: string) => Promise<any[]>
       callLLM: (config: any, messages: any[], workspacePath?: string) => Promise<string>
+      testLlm: (config: any) => Promise<{ ok: boolean; httpStatus?: number; reason?: string; message?: string; detail?: string; content?: string; model?: string; baseUrl?: string; timeout?: boolean; unreachable?: boolean; elapsedMs?: number }>
       selectFile: () => Promise<{ name: string; path: string; content: string } | null>
       selectAttachmentFiles: () => Promise<string[]>
       parseFileContent: (filePath: string) => Promise<string>

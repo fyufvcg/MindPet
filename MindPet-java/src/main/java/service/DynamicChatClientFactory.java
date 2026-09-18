@@ -38,6 +38,38 @@ public class DynamicChatClientFactory {
         return !isBlank(effectiveApiKey()) && !isBlank(effectiveBaseUrl()) && !isBlank(effectiveModel());
     }
 
+    /** 当前生效的 API Key（已解析静态/动态回退） */
+    public String effectiveApiKeyForDisplay() {
+        return effectiveApiKey();
+    }
+
+    /** completions 路径，透传给临时客户端构建 */
+    public String completionsPath() {
+        return completionsPath;
+    }
+
+    /**
+     * 用显式凭证构建一个一次性 ChatClient：<b>不写缓存、不落盘、不改动 dynamicConfig</b>。
+     * 供设置页的连通性测试使用——测试绝不能污染正在生效的配置。
+     */
+    public ChatClient buildTransient(String apiKey, String baseUrl, String model) {
+        String url = baseUrl == null ? "" : baseUrl.trim();
+        if (url.endsWith("/chat/completions")) {
+            url = url.substring(0, url.length() - "/chat/completions".length());
+        }
+        OpenAiApi api = OpenAiApi.builder()
+            .baseUrl(url)
+            .apiKey(apiKey == null ? "" : apiKey.trim())
+            .completionsPath(completionsPath)
+            .build();
+        OpenAiChatModel chatModel = OpenAiChatModel.builder().openAiApi(api).build();
+        ChatClient.Builder builder = ChatClient.builder(chatModel);
+        if (model != null && !model.isBlank()) {
+            builder = builder.defaultOptions(OpenAiChatOptions.builder().model(model.trim()).build());
+        }
+        return builder.build();
+    }
+
     public ChatClient build() {
         if (!dynamicConfig.hasOverride()) return staticBuilder.build();
 
@@ -74,6 +106,11 @@ public class DynamicChatClientFactory {
 
     public String effectiveModel() {
         return dynamicConfig.effectiveModel(config.getModel());
+    }
+
+    /** 当前生效的 Base URL（动态 > 静态，已去掉 /chat/completions 后缀），供连通性测试回显 */
+    public String effectiveBaseUrlForDisplay() {
+        return effectiveBaseUrl();
     }
 
     private String effectiveApiKey() {
