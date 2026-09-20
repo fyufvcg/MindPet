@@ -1,7 +1,11 @@
 package service;
 
+import model.RetrievalDebugResult;
+import model.RetrievalMode;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import util.Logger;
 
 import java.sql.Timestamp;
@@ -12,7 +16,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class PgVectorMemoryService {
@@ -154,36 +162,151 @@ public class PgVectorMemoryService {
             List<MemoryResult> keywordResults = keywordSearch(userId, query, 20);
 
             // 3. RRF 融合
-            java.util.Map<String, Double> rrfScores = new java.util.LinkedHashMap<>();
-            double k = 60;
-            for (int i = 0; i < semanticResults.size(); i++) {
-                rrfScores.merge(contentId(semanticResults.get(i)), 1.0 / (k + i + 1), Double::sum);
-            }
-            for (int i = 0; i < keywordResults.size(); i++) {
-                rrfScores.merge(contentId(keywordResults.get(i)), 1.0 / (k + i + 1), Double::sum);
-            }
+            Map<String, Double> rrfScores = mergeRrf(semanticResults, keywordResults);
 
-            // 4. Reranking：RRF 0.5 + 时间衰减 0.2 + 情感 0.15 + 重要性 0.1 + 层级 0.05
-            var allResults = new java.util.ArrayList<>(semanticResults);
-            allResults.addAll(keywordResults);
-            var byContent = allResults.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                    r -> contentId(r), r -> r, (a, b) -> a));
-
-            List<MemoryResult> ranked = byContent.values().stream()
-                .sorted((a, b) -> {
-                    double sa = rerankScore(a, rrfScores.getOrDefault(contentId(a), 0.0));
-                    double sb = rerankScore(b, rrfScores.getOrDefault(contentId(b), 0.0));
-                    return Double.compare(sb, sa);
-                })
-                .limit(topK)
-                .toList();
+            // 4. The existing full score; emotion/layer have no direct score term.
+            List<MemoryResult> ranked = rankFullCandidates(semanticResults, keywordResults, rrfScores, topK, null);
             touchAccessed(userId, ranked);
             return ranked;
         } catch (Exception e) {
             logger.log("WARN", "PgVector search failed: " + e.getMessage());
             return List.of();
         }
+    }
+
+    /** Isolated SELECT-only path. Production search signatures and side effects are unchanged. */
+    @Transactional(readOnly = true)
+    public RetrievalDebugResult searchForEvaluation(String userId, String query, RetrievalMode mode, int topK) {
+        if (!"eval_test_user".equals(userId)) throw new SecurityException("Only eval_test_user is allowed");
+        if (query == null || query.isBlank() || mode == null || !Set.of(1, 3, 5, 10).contains(topK)) {
+            throw new IllegalArgumentException("Invalid evaluation search parameters");
+        }
+        float[] vec = mode == RetrievalMode.KEYWORD_ONLY ? null : evaluationEmbedding(query);
+        try {
+            List<MemoryResult> semantic = mode == RetrievalMode.KEYWORD_ONLY
+                ? List.of() : semanticSearchStrict(userId, vec, 20);
+            List<MemoryResult> keyword = mode == RetrievalMode.VECTOR_ONLY
+                ? List.of() : keywordSearchStrict(userId, query, 20);
+            Map<String, Double> rrf = mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
+                ? mergeRrf(semantic, keyword) : null;
+            Map<String, RerankComponents> observedScores = new HashMap<>();
+            List<MemoryResult> selected = switch (mode) {
+                case KEYWORD_ONLY -> keyword.stream().limit(topK).toList();
+                case VECTOR_ONLY -> semantic.stream().limit(topK).toList();
+                case RRF -> mergeCandidates(semantic, keyword).values().stream()
+                    .sorted((a, b) -> Double.compare(rrf.get(contentId(b)), rrf.get(contentId(a))))
+                    .limit(topK).toList();
+                case FULL -> rankFullCandidates(semantic, keyword, rrf, topK, observedScores);
+            };
+            Map<String, Integer> vectorRanks = ranks(semantic);
+            Map<String, Integer> keywordRanks = ranks(keyword);
+            Map<String, MemoryResult> semanticById = mergeCandidates(semantic, List.of());
+            List<RetrievalDebugResult.Entry> entries = selected.stream().map(r -> {
+                String id = contentId(r);
+                Integer keywordRank = keywordRanks.get(id);
+                Double keywordScore = keywordRank == null ? null : matchScore(r.content(), query);
+                RerankComponents score = mode == RetrievalMode.FULL
+                    ? observedScores.computeIfAbsent(id, ignored -> calculateRerankComponents(r, rrf.get(id)))
+                    : null;
+                Double finalScore = switch (mode) {
+                    case KEYWORD_ONLY -> keywordScore;
+                    case VECTOR_ONLY -> null;
+                    case RRF -> rrf.get(id);
+                    case FULL -> score.finalScore();
+                };
+                return new RetrievalDebugResult.Entry(
+                    r.id(), r.content(), vectorRanks.get(id), keywordRank, keywordScore,
+                    semanticById.containsKey(id) ? semanticById.get(id).distance() : null,
+                    rrf == null ? null : rrf.get(id), r.importance(), r.confidence(), r.layer(), r.emotion(),
+                    r.createdAt() == null ? null : r.createdAt().toInstant().toString(),
+                    score == null ? null : score.timeScore(),
+                    score == null ? null : score.importanceContribution(),
+                    score == null ? null : score.confidenceContribution(),
+                    score == null ? null : score.highImportanceBonus(), finalScore);
+            }).toList();
+            return new RetrievalDebugResult("OK", mode.wireName(), topK, entries);
+        } catch (DataAccessException e) {
+            throw new EvaluationFailure("SQL_FAILED", "PostgreSQL/pgvector retrieval failed", e);
+        } catch (RuntimeException e) {
+            throw new EvaluationFailure("RETRIEVAL_FAILED", "Evaluation retrieval failed", e);
+        }
+    }
+
+    private float[] evaluationEmbedding(String query) {
+        float[] vec;
+        try {
+            vec = embedService.embed(query);
+        } catch (RuntimeException e) {
+            throw new EvaluationFailure("EMBEDDING_FAILED", "Query embedding failed", e);
+        }
+        if (vec == null) throw new EvaluationFailure("EMBEDDING_FAILED", "Query embedding failed", null);
+        if (vec.length != 1024) {
+            throw new EvaluationFailure("INVALID_EMBEDDING", "A 1024-dimensional query embedding is required", null);
+        }
+        boolean nonzero = false;
+        for (float value : vec) {
+            if (!Float.isFinite(value)) {
+                throw new EvaluationFailure("INVALID_EMBEDDING", "Query embedding contains non-finite values", null);
+            }
+            nonzero |= value != 0;
+        }
+        if (!nonzero) throw new EvaluationFailure("INVALID_EMBEDDING", "Query embedding is a zero vector", null);
+        return vec;
+    }
+
+    public static final class EvaluationFailure extends RuntimeException {
+        private final String code;
+
+        public EvaluationFailure(String code, String message, Throwable cause) {
+            super(message, cause);
+            this.code = code;
+        }
+
+        public String code() { return code; }
+    }
+
+    private Map<String, Double> mergeRrf(List<MemoryResult> semantic, List<MemoryResult> keyword) {
+        Map<String, Double> scores = new LinkedHashMap<>();
+        double k = 60;
+        for (int i = 0; i < semantic.size(); i++) {
+            scores.merge(contentId(semantic.get(i)), 1.0 / (k + i + 1), Double::sum);
+        }
+        for (int i = 0; i < keyword.size(); i++) {
+            scores.merge(contentId(keyword.get(i)), 1.0 / (k + i + 1), Double::sum);
+        }
+        return scores;
+    }
+
+    private Map<String, MemoryResult> mergeCandidates(List<MemoryResult> semantic, List<MemoryResult> keyword) {
+        var allResults = new ArrayList<>(semantic);
+        allResults.addAll(keyword);
+        return allResults.stream().collect(java.util.stream.Collectors.toMap(
+            r -> contentId(r), r -> r, (a, b) -> a));
+    }
+
+    private Map<String, Integer> ranks(List<MemoryResult> results) {
+        Map<String, Integer> ranks = new HashMap<>();
+        for (int i = 0; i < results.size(); i++) ranks.putIfAbsent(contentId(results.get(i)), i + 1);
+        return ranks;
+    }
+
+    private List<MemoryResult> rankFullCandidates(
+        List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
+        int topK, Map<String, RerankComponents> observedScores
+    ) {
+        return mergeCandidates(semantic, keyword).values().stream()
+            .sorted((a, b) -> {
+                double sa = observedRerankScore(a, rrf.getOrDefault(contentId(a), 0.0), observedScores);
+                double sb = observedRerankScore(b, rrf.getOrDefault(contentId(b), 0.0), observedScores);
+                return Double.compare(sb, sa);
+            }).limit(topK).toList();
+    }
+
+    private double observedRerankScore(MemoryResult r, double rrf, Map<String, RerankComponents> observed) {
+        if (observed == null) return rerankScore(r, rrf);
+        RerankComponents components = calculateRerankComponents(r, rrf);
+        observed.put(contentId(r), components);
+        return components.finalScore();
     }
 
     private List<MemoryResult> semanticSearch(String userId, String query, int limit) {
@@ -193,8 +316,13 @@ public class PgVectorMemoryService {
     private List<MemoryResult> semanticSearch(String userId, float[] vec, int limit) {
         if (vec == null) return List.of();
         try {
-            String vecStr = EmbeddingService.toPgVectorString(vec);
-            return jdbc.query(
+            return semanticSearchStrict(userId, vec, limit);
+        } catch (Exception e) { return List.of(); }
+    }
+
+    private List<MemoryResult> semanticSearchStrict(String userId, float[] vec, int limit) {
+        String vecStr = EmbeddingService.toPgVectorString(vec);
+        return jdbc.query(
                 "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, "
                 + "embedding <=> ?::vector AS distance FROM long_term_memory WHERE user_id = ? "
                 + "AND importance * EXP(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at))) / 3600.0 "
@@ -206,14 +334,18 @@ public class PgVectorMemoryService {
                     rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
                     rs.getString("event_timezone"), rs.getString("event_precision"), rs.getDouble("distance"),
                     rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"), rs.getInt("layer"), 1.0)
-            );
-        } catch (Exception e) { return List.of(); }
+        );
     }
 
     /** 关键词匹配：中文子串 + 2-4字分词匹配 */
     private List<MemoryResult> keywordSearch(String userId, String query, int limit) {
         try {
-            return jdbc.query(
+            return keywordSearchStrict(userId, query, limit);
+        } catch (Exception e) { return List.of(); }
+    }
+
+    private List<MemoryResult> keywordSearchStrict(String userId, String query, int limit) {
+        return jdbc.query(
                 "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, 0.5 AS distance "
                 + "FROM long_term_memory WHERE user_id = ? "
                 + "AND importance * EXP(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at))) / 3600.0 "
@@ -227,7 +359,6 @@ public class PgVectorMemoryService {
             ).stream().filter(r -> matchScore(r.content(), query) > 0)
               .sorted((a, b) -> Double.compare(matchScore(b.content(), query), matchScore(a.content(), query)))
               .limit(limit).toList();
-        } catch (Exception e) { return List.of(); }
     }
 
     /** 简单关键词匹配分 */
@@ -246,13 +377,26 @@ public class PgVectorMemoryService {
     }
 
     private double rerankScore(MemoryResult r, double rrfScore) {
+        return calculateRerankComponents(r, rrfScore).finalScore();
+    }
+
+    private RerankComponents calculateRerankComponents(MemoryResult r, double rrfScore) {
         long elapsed = System.currentTimeMillis() - (r.createdAt() != null ? r.createdAt().getTime() : 0);
         double hours = elapsed / 3600000.0;
         double strength = r.importance() >= 0.6 ? 5.0 : 1.0;
         double timeDecay = Math.exp(-hours / (strength * 24 + 1));
-        return rrfScore * 0.5 + timeDecay * 0.2 + r.importance() * 0.2
-            + r.confidence() * 0.05 + (r.importance() >= 0.6 ? 0.05 : 0);
+        double importanceContribution = r.importance() * 0.2;
+        double confidenceContribution = r.confidence() * 0.05;
+        double highImportanceBonus = r.importance() >= 0.6 ? 0.05 : 0;
+        double finalScore = rrfScore * 0.5 + timeDecay * 0.2 + importanceContribution
+            + confidenceContribution + highImportanceBonus;
+        return new RerankComponents(timeDecay, importanceContribution, confidenceContribution,
+            highImportanceBonus, finalScore);
     }
+
+    private record RerankComponents(double timeScore, double importanceContribution,
+                                    double confidenceContribution, double highImportanceBonus,
+                                    double finalScore) {}
 
     private void touchAccessed(String userId, List<MemoryResult> results) {
         for (MemoryResult result : results) {
