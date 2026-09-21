@@ -1,4 +1,4 @@
-"""Run one read-only 40-query x 4-mode MindPet retrieval ablation."""
+"""Run one read-only MindPet retrieval ablation over the frozen 40-query benchmark."""
 
 from __future__ import annotations
 
@@ -15,15 +15,16 @@ from pathlib import Path
 from typing import Any
 
 
-MODES = ["keyword_only", "vector_only", "rrf", "mindpet_full"]
+DEFAULT_MODES = ["keyword_only", "vector_only", "rrf", "mindpet_full"]
+SUPPORTED_MODES = [*DEFAULT_MODES, "mindpet_full_rrf_norm"]
 TOP_K = 10
 USER_ID = "eval_test_user"
 DATABASE = "mindpet_eval"
 EXPECTED_MEMORY_COUNT = 120
 EXPECTED_QUERY_COUNT = 40
-EXPECTED_REQUEST_COUNT = 160
 RESULT_FIELDS = [
     "vectorRank", "keywordRank", "keywordScore", "distance", "rrfScore",
+    "rrfNormalized",
     "importance", "confidence", "layer", "emotion", "createdAt", "timeScore",
     "importanceContribution", "confidenceContribution", "highImportanceBonus",
     "finalScore",
@@ -128,6 +129,7 @@ def fetch_state(conn: Any, id_map: dict[str, int]) -> tuple[dict[str, Any], str]
         raise RunFailure("database ids do not exactly match memory_id_map.json")
     if base_count != 1 or not benchmark_base_time:
         raise RunFailure("benchmark_base_time is missing or inconsistent in metadata")
+    reverse_map = {int(value): key for key, value in id_map.items()}
     state = {
         "database": DATABASE,
         "user_id": USER_ID,
@@ -135,6 +137,7 @@ def fetch_state(conn: Any, id_map: dict[str, int]) -> tuple[dict[str, Any], str]
         "rows": [
             {
                 "id": int(memory_id),
+                "benchmark_memory_id": reverse_map[int(memory_id)],
                 "access_count": int(access_count or 0),
                 "last_accessed": last_accessed.isoformat() if last_accessed else None,
             }
@@ -274,6 +277,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise RunFailure(f"cannot read memory map: {exc}") from exc
     validate_inputs(queries, id_map)
+    modes = list(args.modes)
+    if not modes or len(modes) != len(set(modes)) or any(mode not in SUPPORTED_MODES for mode in modes):
+        raise RunFailure(f"modes must be unique supported values: {SUPPORTED_MODES}")
+    expected_request_count = EXPECTED_QUERY_COUNT * len(modes)
     reverse_map = {str(value): key for key, value in id_map.items()}
 
     output_paths = [args.raw_output, args.manifest, args.before_state, args.after_state]
@@ -287,7 +294,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         write_json(args.before_state, before)
         run_started_at = now_utc()
         records: list[dict[str, Any]] = []
-        for mode in MODES:
+        for mode in modes:
             for index, query in enumerate(queries, start=1):
                 http_status, payload = post_search(
                     args.api_url, token, query, mode, args.http_timeout
@@ -296,12 +303,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     normalize_response(query, mode, http_status, payload, reverse_map)
                 )
                 if index == 1 or index % 10 == 0 or index == len(queries):
-                    print(f"request progress: mode={mode} query={index}/40 total={len(records)}/160", flush=True)
+                    print(
+                        f"request progress: mode={mode} query={index}/40 "
+                        f"total={len(records)}/{expected_request_count}", flush=True
+                    )
 
-        if len(records) != EXPECTED_REQUEST_COUNT:
-            raise RunFailure(f"raw record count={len(records)}, expected 160")
+        if len(records) != expected_request_count:
+            raise RunFailure(
+                f"raw record count={len(records)}, expected {expected_request_count}"
+            )
         mode_counts = Counter(record["mode"] for record in records)
-        if mode_counts != Counter({mode: 40 for mode in MODES}):
+        if mode_counts != Counter({mode: 40 for mode in modes}):
             raise RunFailure(f"mode counts are invalid: {dict(mode_counts)}")
 
         after, after_base_time = fetch_state(conn, id_map)
@@ -314,14 +326,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         write_jsonl(args.raw_output, records)
         run_finished_at = now_utc()
         manifest = {
-            "experiment_name": "mindpet_retrieval_ablation_v1",
+            "experiment_name": args.experiment_name,
             "git_commit": commit,
+            "benchmark_version": args.benchmark_version,
             "run_started_at": run_started_at,
             "run_finished_at": run_finished_at,
             "benchmark_base_time": benchmark_base_time,
             "memory_count": EXPECTED_MEMORY_COUNT,
             "query_count": EXPECTED_QUERY_COUNT,
-            "modes": MODES,
+            "memories": EXPECTED_MEMORY_COUNT,
+            "queries": EXPECTED_QUERY_COUNT,
+            "modes": modes,
+            "mode_count": len(modes),
+            "formal_requests": expected_request_count,
+            "topK": TOP_K,
             "topK_requested": TOP_K,
             "metric_K": [1, 3, 5, 10],
             "embedding_model": "bge-m3",
@@ -354,6 +372,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-host", default="127.0.0.1")
     parser.add_argument("--db-port", type=int, default=5432)
     parser.add_argument("--database", default=DATABASE)
+    parser.add_argument("--modes", nargs="+", default=DEFAULT_MODES)
+    parser.add_argument("--experiment-name", default="mindpet_retrieval_ablation_v1")
+    parser.add_argument("--benchmark-version", default="Retrieval Benchmark v1")
     parser.add_argument("--connect-timeout", type=int, default=10)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()

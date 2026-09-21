@@ -1,0 +1,6 @@
+﻿mode,no_answer_query_count,empty_result_count@1,empty_result_rate@1,avg_returned_count@1,empty_result_count@3,empty_result_rate@3,avg_returned_count@3,empty_result_count@5,empty_result_rate@5,avg_returned_count@5,empty_result_count@10,empty_result_rate@10,avg_returned_count@10
+keyword_only,4,1,0.25,0.75,1,0.25,2.25,1,0.25,3.75,1,0.25,7.25
+vector_only,4,0,0,1,0,0,3,0,0,5,0,0,10
+rrf,4,0,0,1,0,0,3,0,0,5,0,0,10
+mindpet_full,4,0,0,1,0,0,3,0,0,5,0,0,10
+mindpet_full_rrf_norm,4,0,0,1,0,0,3,0,0,5,0,0,10

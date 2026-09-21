@@ -24,7 +24,9 @@ from metrics.retrieval_metrics import (  # noqa: E402
 )
 
 
-MODES = ["keyword_only", "vector_only", "rrf", "mindpet_full"]
+BASE_MODES = ["keyword_only", "vector_only", "rrf", "mindpet_full"]
+V2_MODE = "mindpet_full_rrf_norm"
+SUPPORTED_MODES = [*BASE_MODES, V2_MODE]
 QUERY_TYPES = [
     "exact_keyword", "semantic_paraphrase", "hybrid", "multi_candidate",
     "temporal_importance",
@@ -107,15 +109,16 @@ def formatted_row(prefix: dict[str, Any], metrics: dict[str, float]) -> dict[str
 
 def validate_run(
     raw: list[dict[str, Any]], queries: list[dict[str, Any]], id_map: dict[str, int],
-    manifest: dict[str, Any], before: dict[str, Any], after: dict[str, Any],
+    manifest: dict[str, Any], before: dict[str, Any], after: dict[str, Any], modes: list[str],
 ) -> dict[str, Any]:
-    if len(raw) != 160:
-        raise EvaluationFailure(f"raw rows={len(raw)}, expected 160")
+    expected_rows = 40 * len(modes)
+    if len(raw) != expected_rows:
+        raise EvaluationFailure(f"raw rows={len(raw)}, expected {expected_rows}")
     expected_query_ids = [f"q{index:03d}" for index in range(1, 41)]
     if len(queries) != 40 or [row.get("query_id") for row in queries] != expected_query_ids:
         raise EvaluationFailure("queries are not exactly q001..q040")
     query_by_id = {row["query_id"]: row for row in queries}
-    expected_pairs = {(query_id, mode) for query_id in expected_query_ids for mode in MODES}
+    expected_pairs = {(query_id, mode) for query_id in expected_query_ids for mode in modes}
     seen_pairs: set[tuple[str, str]] = set()
     mode_counts: Counter[str] = Counter()
     reverse_map = {str(value): key for key, value in id_map.items()}
@@ -147,9 +150,20 @@ def validate_run(
             database_id = str(result.get("db_memory_id"))
             if benchmark_id not in id_map or reverse_map.get(database_id) != benchmark_id:
                 raise EvaluationFailure(f"{query_id} {mode}: invalid DB/benchmark mapping")
+            required_debug = {
+                "vectorRank", "keywordRank", "keywordScore", "distance", "rrfScore",
+                "rrfNormalized", "importance", "confidence", "layer", "timeScore",
+                "importanceContribution", "confidenceContribution", "highImportanceBonus",
+                "finalScore",
+            }
+            if not required_debug.issubset(result):
+                raise EvaluationFailure(f"{query_id} {mode}: debug fields are incomplete")
+            normalized = result.get("rrfNormalized")
+            if mode == V2_MODE and (not isinstance(normalized, (int, float)) or not 0 <= normalized <= 1):
+                raise EvaluationFailure(f"{query_id} {mode}: invalid rrfNormalized")
 
-    if seen_pairs != expected_pairs or mode_counts != Counter({mode: 40 for mode in MODES}):
-        raise EvaluationFailure("raw data is not an exact 40 x 4 Cartesian product")
+    if seen_pairs != expected_pairs or mode_counts != Counter({mode: 40 for mode in modes}):
+        raise EvaluationFailure(f"raw data is not an exact 40 x {len(modes)} Cartesian product")
     no_answer_count = sum(row["query_type"] == "no_answer" for row in queries)
     core_query_count = len(queries) - no_answer_count
     if no_answer_count != 4 or core_query_count != 36:
@@ -160,8 +174,13 @@ def validate_run(
         raise EvaluationFailure("state snapshots are not from mindpet_eval")
     if before.get("rows") != after.get("rows") or len(before.get("rows", [])) != 120:
         raise EvaluationFailure("before/after memory state differs")
-    if manifest.get("successful_requests") != 160 or manifest.get("failed_requests") != 0:
+    if manifest.get("successful_requests") != expected_rows or manifest.get("failed_requests") != 0:
         raise EvaluationFailure("run manifest request counts are invalid")
+    expected_memory_ids = {f"m{index:03d}" for index in range(1, 121)}
+    for state in (before, after):
+        rows = state.get("rows", [])
+        if {row.get("benchmark_memory_id") for row in rows} != expected_memory_ids:
+            raise EvaluationFailure("state snapshot benchmark ids are incomplete")
     return {
         "raw_rows": len(raw),
         "mode_counts": dict(mode_counts),
@@ -172,9 +191,9 @@ def validate_run(
     }
 
 
-def no_answer_rows(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def no_answer_rows(raw: list[dict[str, Any]], modes: list[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for mode in MODES:
+    for mode in modes:
         records = [
             record for record in raw
             if record["mode"] == mode and record["query_type"] == "no_answer"
@@ -197,12 +216,58 @@ def markdown_table(rows: list[dict[str, Any]], columns: list[str]) -> list[str]:
     return lines
 
 
+def first_relevant_rank(record: dict[str, Any]) -> int:
+    relevant = set(record["relevant_memory_ids"])
+    for result in record["results"][:10]:
+        if result["benchmark_memory_id"] in relevant:
+            return int(result["rank"])
+    return 11
+
+
+def rank_comparison_rows(
+    raw: list[dict[str, Any]], queries: list[dict[str, Any]], reference: str, candidate: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    by_pair = {(row["query_id"], row["mode"]): row for row in raw}
+    rows: list[dict[str, Any]] = []
+    counts: Counter[str] = Counter()
+    deltas: list[int] = []
+    for query in queries:
+        if query["query_type"] == "no_answer":
+            continue
+        left = first_relevant_rank(by_pair[(query["query_id"], reference)])
+        right = first_relevant_rank(by_pair[(query["query_id"], candidate)])
+        delta = right - left
+        classification = "improved" if delta < 0 else "degraded" if delta > 0 else "unchanged"
+        counts[classification] += 1
+        deltas.append(delta)
+        rows.append({
+            "query_id": query["query_id"],
+            "query": query["query"],
+            "query_type": query["query_type"],
+            "difficulty": query["difficulty"],
+            "relevant_memory_ids": "|".join(query["relevant_memory_ids"]),
+            "reference_mode": reference,
+            "reference_first_relevant_rank": left,
+            "candidate_mode": candidate,
+            "candidate_first_relevant_rank": right,
+            "rank_delta": delta,
+            "classification": classification,
+        })
+    return rows, {
+        "improved": counts["improved"],
+        "unchanged": counts["unchanged"],
+        "degraded": counts["degraded"],
+        "avg_rank_delta": mean(deltas),
+    }
+
+
 def build_report(
     manifest: dict[str, Any], overall: list[dict[str, Any]], by_type: list[dict[str, Any]],
     diagnostics: list[dict[str, Any]], raw: list[dict[str, Any]], validation: dict[str, Any],
+    modes: list[str], v1_v2: dict[str, Any] | None, rrf_v2: dict[str, Any] | None,
 ) -> str:
     lines = [
-        "# MindPet Retrieval Ablation Run",
+        "# MindPet Retrieval Ablation — RRF Normalization V2",
         "",
         "## 1. 环境与 Benchmark",
         "",
@@ -215,7 +280,7 @@ def build_report(
         "",
         "## 2. 模式与指标定义",
         "",
-        "比较 keyword_only、vector_only、rrf、mindpet_full。每个 query/mode 只请求一次 Top10，K=1/3/5/10 均由同一排名切片得到。主排名指标仅统计 36 条有答案查询。Precision@K 的分母固定为 K；Recall@K 以 ground truth 数量为分母；MRR@10 取前十首个相关结果的倒数排名；nDCG 使用二元相关性。",
+        "比较 keyword_only、vector_only、rrf、mindpet_full、mindpet_full_rrf_norm。每个 query/mode 只请求一次 Top10，K=1/3/5/10 均由同一排名切片得到。主排名指标仅统计 36 条有答案查询。Precision@K 的分母固定为 K；Recall@K 以 ground truth 数量为分母；MRR@10 取前十首个相关结果的倒数排名；nDCG 使用二元相关性。",
         "",
         "## 3. 总体结果",
         "",
@@ -227,7 +292,7 @@ def build_report(
     lines.extend(markdown_table(diagnostics, ["mode", "no_answer_query_count", "empty_result_count@1", "empty_result_rate@1", "avg_returned_count@10"]))
 
     misses: list[str] = []
-    for mode in MODES:
+    for mode in modes:
         missed = [
             record["query_id"] for record in raw
             if record["mode"] == mode and record["query_type"] != "no_answer"
@@ -242,11 +307,22 @@ def build_report(
         "", "## 7. 异常与未命中查询", "",
         "HTTP/JSON/映射/一致性失败：无。以下仅列出有答案查询的 Top10 未命中，不等同于运行错误：",
         *misses,
-        "", "## 8. 已知限制", "",
+    ])
+    if v1_v2 is not None and rrf_v2 is not None:
+        lines.extend([
+            "", "## 8. Query-level Rank Comparison", "",
+            f"- Full V1 → Full V2：improved={v1_v2['improved']}，unchanged={v1_v2['unchanged']}，degraded={v1_v2['degraded']}，avg rank delta={v1_v2['avg_rank_delta']:.6f}。",
+            f"- RRF → Full V2：improved={rrf_v2['improved']}，unchanged={rrf_v2['unchanged']}，degraded={rrf_v2['degraded']}，avg rank delta={rrf_v2['avg_rank_delta']:.6f}。",
+        ])
+    lines.extend([
+        "", "## 9. H1 结论边界", "",
+        "H1 是否成立必须以本报告中的实际 P@1、MRR@10、nDCG@10、R@10、query-level rank delta 和 query_type MRR 为依据；本脚本不预设结论。",
+        "", "## 10. 已知限制", "",
         "- 单用户、中文、120 条人工 Benchmark，不能代表真实用户总体分布。",
         "- 相关性为二元标注，尚无多标注者一致性或分级 gain。",
         "- No-answer 没有拒答阈值，因此只能报告返回数量诊断。",
-        "- 本报告如实记录第一轮固定算法结果，不包含调参、删样本或图表。",
+        "- 本轮仍使用开发阶段已经观察过的 Benchmark v1，因此不能作为最终独立泛化证明。",
+        "- 本报告不包含调参、删样本、grid search 或重复请求择优。",
         "",
     ])
     return "\n".join(lines)
@@ -261,16 +337,20 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     after = read_json(args.after_state)
     raw_map = read_json(args.memory_map)
     id_map = {str(key): int(value) for key, value in raw_map.items()}
-    validation = validate_run(raw, queries, id_map, manifest, before, after)
+    modes = manifest.get("modes")
+    if not isinstance(modes, list) or not modes or len(modes) != len(set(modes)) \
+            or any(mode not in SUPPORTED_MODES for mode in modes):
+        raise EvaluationFailure("manifest modes are invalid")
+    validation = validate_run(raw, queries, id_map, manifest, before, after, modes)
 
     core = [record for record in raw if record["query_type"] != "no_answer"]
     overall = [
         formatted_row({"mode": mode}, metric_row([r for r in core if r["mode"] == mode]))
-        for mode in MODES
+        for mode in modes
     ]
     by_type: list[dict[str, Any]] = []
     for query_type in QUERY_TYPES:
-        for mode in MODES:
+        for mode in modes:
             records = [r for r in core if r["query_type"] == query_type and r["mode"] == mode]
             by_type.append(
                 formatted_row(
@@ -280,7 +360,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             )
     by_difficulty: list[dict[str, Any]] = []
     for difficulty in DIFFICULTIES:
-        for mode in MODES:
+        for mode in modes:
             records = [r for r in core if r["difficulty"] == difficulty and r["mode"] == mode]
             if records:
                 by_difficulty.append(
@@ -289,7 +369,14 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                         metric_row(records),
                     )
                 )
-    diagnostics = no_answer_rows(raw)
+    diagnostics = no_answer_rows(raw, modes)
+    v1_v2_rows: list[dict[str, Any]] = []
+    rrf_v2_rows: list[dict[str, Any]] = []
+    v1_v2 = None
+    rrf_v2 = None
+    if V2_MODE in modes:
+        v1_v2_rows, v1_v2 = rank_comparison_rows(raw, queries, "mindpet_full", V2_MODE)
+        rrf_v2_rows, rrf_v2 = rank_comparison_rows(raw, queries, "rrf", V2_MODE)
 
     write_csv(args.metrics, ["mode", *METRIC_COLUMNS], overall)
     write_csv(args.by_type, ["query_type", "mode", "query_count", *METRIC_COLUMNS], by_type)
@@ -300,7 +387,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         )
     ]
     write_csv(args.no_answer, diagnostic_columns, diagnostics)
-    write_text(args.report, build_report(manifest, overall, by_type, diagnostics, raw, validation))
+    comparison_columns = [
+        "query_id", "query", "query_type", "difficulty", "relevant_memory_ids",
+        "reference_mode", "reference_first_relevant_rank", "candidate_mode",
+        "candidate_first_relevant_rank", "rank_delta", "classification",
+    ]
+    if V2_MODE in modes:
+        write_csv(args.v1_v2, comparison_columns, v1_v2_rows)
+        write_csv(args.rrf_v2, comparison_columns, rrf_v2_rows)
+    write_text(args.report, build_report(
+        manifest, overall, by_type, diagnostics, raw, validation, modes, v1_v2, rrf_v2
+    ))
     return {
         "validation": validation,
         "overall": overall,
@@ -308,7 +405,10 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "outputs": [
             str(args.metrics), str(args.by_type), str(args.by_difficulty),
             str(args.no_answer), str(args.report),
+            *(str(path) for path in ([args.v1_v2, args.rrf_v2] if V2_MODE in modes else [])),
         ],
+        "v1_vs_v2": v1_v2,
+        "rrf_vs_v2": rrf_v2,
     }
 
 
@@ -326,6 +426,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--by-type", type=Path, default=table_dir / "retrieval_metrics_by_type.csv")
     parser.add_argument("--by-difficulty", type=Path, default=table_dir / "retrieval_metrics_by_difficulty.csv")
     parser.add_argument("--no-answer", type=Path, default=table_dir / "no_answer_diagnostics.csv")
+    parser.add_argument("--v1-v2", type=Path, default=table_dir / "v1_vs_v2_rank_comparison.csv")
+    parser.add_argument("--rrf-v2", type=Path, default=table_dir / "rrf_vs_v2_rank_comparison.csv")
     parser.add_argument("--report", type=Path, default=EVAL_ROOT / "reports/retrieval-ablation-run.md")
     return parser.parse_args()
 
