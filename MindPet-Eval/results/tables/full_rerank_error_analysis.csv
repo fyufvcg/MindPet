@@ -1,0 +1,37 @@
+﻿query_id,query,query_type,relevant_memory_ids,rrf_first_relevant_memory_id,rrf_first_relevant_rank,rrf_relevant_ranks,full_first_relevant_memory_id,full_first_relevant_rank,full_relevant_ranks,rank_delta,classification
+q001,最喜欢的运动 羽毛球,exact_keyword,"[""m001""]",m001,1,"{""m001"": 1}",m001,1,"{""m001"": 1}",0,unchanged
+q002,香菜,exact_keyword,"[""m012""]",m012,1,"{""m012"": 1}",m012,1,"{""m012"": 1}",0,unchanged
+q003,四十五分钟,exact_keyword,"[""m024""]",m024,1,"{""m024"": 1}",m024,3,"{""m024"": 3}",2,degraded
+q004,Todoist,exact_keyword,"[""m033""]",m033,1,"{""m033"": 1}",m033,3,"{""m033"": 3}",2,degraded
+q005,DBeaver,exact_keyword,"[""m049""]",m049,1,"{""m049"": 1}",m049,7,"{""m049"": 7}",6,degraded
+q006,提前十五分钟,exact_keyword,"[""m057""]",m057,1,"{""m057"": 1}",m057,4,"{""m057"": 4}",3,degraded
+q007,王老师,exact_keyword,"[""m066""]",m066,1,"{""m066"": 1}",m066,4,"{""m066"": 4}",3,degraded
+q008,杭州,exact_keyword,"[""m075""]",m075,1,"{""m075"": 1}",m075,9,"{""m075"": 9}",8,degraded
+q009,我平时最爱做什么运动？,semantic_paraphrase,"[""m001""]",m001,1,"{""m001"": 1}",m001,1,"{""m001"": 1}",0,unchanged
+q010,哪一种异国料理最合我的口味？,semantic_paraphrase,"[""m011""]",m011,6,"{""m011"": 6}",m011,9,"{""m011"": 9}",3,degraded
+q011,要长时间安静自习，我通常会去哪儿？,semantic_paraphrase,"[""m027""]",m027,1,"{""m027"": 1}",m027,4,"{""m027"": 4}",3,degraded
+q012,一天里哪段时间最适合我处理高专注任务？,semantic_paraphrase,"[""m031""]",m031,1,"{""m031"": 1}",m031,1,"{""m031"": 1}",0,unchanged
+q013,写 Java 工程时我顺手的集成开发环境是哪款？,semantic_paraphrase,"[""m042""]",m042,1,"{""m042"": 1}",m042,1,"{""m042"": 1}",0,unchanged
+q014,休息日没有安排时，我一般几点才起床？,semantic_paraphrase,"[""m052""]",m052,1,"{""m052"": 1}",m052,6,"{""m052"": 6}",5,degraded
+q015,大学里认识的哪位朋友常约我一起打球？,semantic_paraphrase,"[""m062""]",m062,1,"{""m062"": 1}",m062,6,"{""m062"": 6}",5,degraded
+q016,想找家安静的小店聊天，我最可能选哪里？,semantic_paraphrase,"[""m071""]",m071,2,"{""m071"": 2}",m071,11,"{""m071"": 11}",9,degraded
+q017,承担日常工作的那台笔记本是什么型号？,semantic_paraphrase,"[""m081""]",m081,1,"{""m081"": 1}",m081,2,"{""m081"": 2}",1,degraded
+q018,这个助手把可长期召回的内容存在哪种技术里？,semantic_paraphrase,"[""m092""]",m092,2,"{""m092"": 2}",m092,2,"{""m092"": 2}",0,unchanged
+q019,周末复习数据库时我会看什么？,hybrid,"[""m023""]",m023,1,"{""m023"": 1}",m023,6,"{""m023"": 6}",5,degraded
+q020,写前端代码时常用哪个编辑器？,hybrid,"[""m041""]",m041,2,"{""m041"": 2}",m041,6,"{""m041"": 6}",4,degraded
+q021,每月什么时候整理账单预算？,hybrid,"[""m056""]",m056,1,"{""m056"": 1}",m056,3,"{""m056"": 3}",2,degraded
+q022,妈妈的生日具体是哪一天？,hybrid,"[""m064""]",m064,1,"{""m064"": 1}",m064,1,"{""m064"": 1}",0,unchanged
+q023,我平常去哪里跑步？,hybrid,"[""m073""]",m073,1,"{""m073"": 1}",m073,5,"{""m073"": 5}",4,degraded
+q024,重要资料每周备份到什么设备？,hybrid,"[""m090""]",m090,1,"{""m090"": 1}",m090,6,"{""m090"": 6}",5,degraded
+q025,MindPet 桌面界面用了哪些前端技术？,hybrid,"[""m094""]",m094,2,"{""m094"": 2}",m094,3,"{""m094"": 3}",1,degraded
+q026,我每天主要乘什么交通工具上班？,hybrid,"[""m106""]",m106,1,"{""m106"": 1}",m106,6,"{""m106"": 6}",5,degraded
+q027,碰到紧急需求时，我要求先用什么方式确认范围？,multi_candidate,"[""m035""]",m035,1,"{""m035"": 1}",m035,2,"{""m035"": 2}",1,degraded
+q028,要探索数据并快速画图，我会打开哪个 Python 工具？,multi_candidate,"[""m044""]",m044,1,"{""m044"": 1}",m044,11,"{""m044"": 11}",10,degraded
+q029,我会分别去哪里跑步和打羽毛球？,multi_candidate,"[""m073"", ""m074""]",m074,1,"{""m073"": 4, ""m074"": 1}",m074,4,"{""m073"": 6, ""m074"": 4}",3,degraded
+q030,桌面上常用的键盘和鼠标分别是什么？,multi_candidate,"[""m082"", ""m083""]",m082,1,"{""m082"": 1, ""m083"": 2}",m083,9,"{""m082"": 11, ""m083"": 9}",8,degraded
+q031,MindPet 分别用什么保存长期和短期记忆？,multi_candidate,"[""m092"", ""m093""]",m092,1,"{""m092"": 1, ""m093"": 2}",m092,2,"{""m092"": 2, ""m093"": 3}",1,degraded
+q032,我有哪些会亲自动手创作的周末爱好？,multi_candidate,"[""m114"", ""m119""]",m114,1,"{""m114"": 1, ""m119"": 2}",m114,2,"{""m114"": 2, ""m119"": 11}",1,degraded
+q033,我现在常住哪座城市？,temporal_importance,"[""m101""]",m101,1,"{""m101"": 1}",m101,1,"{""m101"": 1}",0,unchanged
+q034,现在通勤路上主要听什么内容？,temporal_importance,"[""m111""]",m111,1,"{""m111"": 1}",m111,4,"{""m111"": 4}",3,degraded
+q035,目前项目最重要的评测目标是什么？,temporal_importance,"[""m096""]",m096,1,"{""m096"": 1}",m096,1,"{""m096"": 1}",0,unchanged
+q036,现在周末主要坚持哪项创作活动？,temporal_importance,"[""m114""]",m114,1,"{""m114"": 1}",m114,2,"{""m114"": 2}",1,degraded
