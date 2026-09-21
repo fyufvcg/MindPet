@@ -21,6 +21,7 @@ public record RetrievalDebugResult(
         Double keywordScore,
         Double distance,
         Double rrfScore,
+        Double rrfNormalized,
         double importance,
         double confidence,
         int layer,

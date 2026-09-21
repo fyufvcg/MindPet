@@ -107,7 +107,7 @@ class EvalMemoryControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"keyword_only", "vector_only", "rrf", "mindpet_full"})
+    @ValueSource(strings = {"keyword_only", "vector_only", "rrf", "mindpet_full", "mindpet_full_rrf_norm"})
     void acceptsExactWireModes(String wire) throws Exception {
         RetrievalMode mode = RetrievalMode.fromWireName(wire);
         when(service.searchForEvaluation(anyString(), anyString(), eq(mode), eq(10)))
@@ -148,12 +148,13 @@ class EvalMemoryControllerTest {
 
     @Test
     void debugJsonPreservesExplicitNullEvenWithGlobalNonNullSetting() throws Exception {
-        var entry = new RetrievalDebugResult.Entry("1", "content", 1, null, null, .1, null,
+        var entry = new RetrievalDebugResult.Entry("1", "content", 1, null, null, .1, null, null,
             .5, 1, 3, "neutral", null, null, null, null, null, null);
         ObjectMapper mapper = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL);
         var json = mapper.readTree(mapper.writeValueAsString(new RetrievalDebugResult("OK", "vector_only", 1, List.of(entry))))
             .get("results").get(0);
         assertTrue(json.has("rrfScore") && json.get("rrfScore").isNull());
+        assertTrue(json.has("rrfNormalized") && json.get("rrfNormalized").isNull());
         assertTrue(json.has("finalScore") && json.get("finalScore").isNull());
         assertTrue(json.has("keywordRank") && json.get("keywordRank").isNull());
         assertFalse(json.has("retentionRate"));

@@ -83,6 +83,11 @@ class PgVectorMemoryServiceEvaluationTest {
         assertTrue(sqlCalls.stream().allMatch(sql -> sql.startsWith("SELECT ")));
     }
 
+    private boolean usesBothLanes(RetrievalMode mode) {
+        return mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
+            || mode == RetrievalMode.FULL_RRF_NORM;
+    }
+
     @Test
     void keywordUsesRealMatchingAndNeverEmbedsOrLeaksPlaceholderDistance() throws Exception {
         var result = evaluate(RetrievalMode.KEYWORD_ONLY, 3);
@@ -93,6 +98,7 @@ class PgVectorMemoryServiceEvaluationTest {
             assertNull(entry.vectorRank());
             assertNull(entry.distance());
             assertNull(entry.rrfScore());
+            assertNull(entry.rrfNormalized());
             assertNull(entry.timeScore());
             assertEquals(entry.keywordScore(), entry.finalScore());
         }
@@ -116,6 +122,7 @@ class PgVectorMemoryServiceEvaluationTest {
             assertNull(entry.keywordRank());
             assertNull(entry.keywordScore());
             assertNull(entry.rrfScore());
+            assertNull(entry.rrfNormalized());
             assertNull(entry.finalScore());
             assertNull(entry.importanceContribution());
         }
@@ -136,6 +143,7 @@ class PgVectorMemoryServiceEvaluationTest {
         assertEquals(1, first.keywordRank());
         assertEquals(1.0 / 63 + 1.0 / 61, first.rrfScore(), 1e-12);
         assertEquals(first.rrfScore(), first.finalScore());
+        assertNull(first.rrfNormalized());
         assertNull(first.timeScore());
         assertNull(first.highImportanceBonus());
         assertNull(result.results().get(2).keywordScore());
@@ -148,6 +156,7 @@ class PgVectorMemoryServiceEvaluationTest {
         var result = evaluate(RetrievalMode.FULL, 10);
         assertEquals(List.of("2", "1", "3"), ids(result));
         for (var entry : result.results()) {
+            assertNull(entry.rrfNormalized());
             assertEquals(entry.importance() * .2, entry.importanceContribution(), 1e-12);
             assertEquals(entry.confidence() * .05, entry.confidenceContribution(), 1e-12);
             assertEquals(entry.importance() >= .6 ? .05 : 0, entry.highImportanceBonus(), 1e-12);
@@ -158,11 +167,72 @@ class PgVectorMemoryServiceEvaluationTest {
         assertSelectOnly(2);
     }
 
+    @Test
+    void normalizedModeUsesDocumentedRrfMaximumAndDualLaneRankOne() {
+        assertEquals(2.0 / 61.0, PgVectorMemoryService.RRF_MAX, 0.0);
+        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 3600000),
+            .1, .5, .8, "neutral", 3);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        var entry = evaluate(RetrievalMode.FULL_RRF_NORM, 1).results().get(0);
+        assertEquals(1, entry.vectorRank());
+        assertEquals(1, entry.keywordRank());
+        assertEquals(2.0 / 61.0, entry.rrfScore(), 1e-12);
+        assertEquals(1.0, entry.rrfNormalized(), 1e-12);
+        assertSelectOnly(2);
+    }
+
+    @Test
+    void normalizedModeMapsSingleLaneRankOneToHalf() {
+        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 3600000),
+            .1, .5, .8, "neutral", 3);
+        semantic = List.of(candidate);
+        keyword = List.of();
+
+        var entry = evaluate(RetrievalMode.FULL_RRF_NORM, 1).results().get(0);
+        assertEquals(1, entry.vectorRank());
+        assertNull(entry.keywordRank());
+        assertEquals(1.0 / 61.0, entry.rrfScore(), 1e-12);
+        assertEquals(.5, entry.rrfNormalized(), 1e-12);
+        assertSelectOnly(2);
+    }
+
+    @Test
+    void normalizedRrfIsClampedToUnitInterval() {
+        assertEquals(0.0, PgVectorMemoryService.normalizeRrfScore(-1), 0.0);
+        assertEquals(0.0, PgVectorMemoryService.normalizeRrfScore(0), 0.0);
+        assertEquals(.5, PgVectorMemoryService.normalizeRrfScore(1.0 / 61.0), 1e-12);
+        assertEquals(1.0, PgVectorMemoryService.normalizeRrfScore(PgVectorMemoryService.RRF_MAX), 0.0);
+        assertEquals(1.0, PgVectorMemoryService.normalizeRrfScore(1), 0.0);
+    }
+
+    @Test
+    void normalizedModeFinalScoreMatchesIndependentHandCalculation() {
+        Timestamp at = new Timestamp(System.currentTimeMillis() - 72 * 3600000L);
+        var candidate = memory("10", "羽毛球", at, .1, .7, .8, "positive", 2);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        long before = System.currentTimeMillis();
+        var entry = evaluate(RetrievalMode.FULL_RRF_NORM, 1).results().get(0);
+        long after = System.currentTimeMillis();
+        double upper = .5 + Math.exp(-((before - at.getTime()) / 3600000.0) / 121) * .2
+            + .7 * .2 + .8 * .05 + .05;
+        double lower = .5 + Math.exp(-((after - at.getTime()) / 3600000.0) / 121) * .2
+            + .7 * .2 + .8 * .05 + .05;
+        assertTrue(entry.finalScore() >= lower - 1e-12 && entry.finalScore() <= upper + 1e-12);
+        assertEquals(entry.timeScore() * .2 + entry.importanceContribution()
+            + entry.confidenceContribution() + entry.highImportanceBonus() + .5,
+            entry.finalScore(), 1e-12);
+        assertSelectOnly(2);
+    }
+
     @ParameterizedTest
     @EnumSource(RetrievalMode.class)
     void everyModeAppliesFinalTopKWithoutWriting(RetrievalMode mode) {
         assertEquals(1, evaluate(mode, 1).results().size());
-        assertSelectOnly(mode == RetrievalMode.RRF || mode == RetrievalMode.FULL ? 2 : 1);
+        assertSelectOnly(usesBothLanes(mode) ? 2 : 1);
     }
 
     @ParameterizedTest
@@ -173,11 +243,11 @@ class PgVectorMemoryServiceEvaluationTest {
         var result = evaluate(mode, 10);
         assertEquals("OK", result.status());
         assertTrue(result.results().isEmpty());
-        assertSelectOnly(mode == RetrievalMode.RRF || mode == RetrievalMode.FULL ? 2 : 1);
+        assertSelectOnly(usesBothLanes(mode) ? 2 : 1);
     }
 
     @ParameterizedTest
-    @EnumSource(value = RetrievalMode.class, names = {"VECTOR_ONLY", "RRF", "FULL"})
+    @EnumSource(value = RetrievalMode.class, names = {"VECTOR_ONLY", "RRF", "FULL", "FULL_RRF_NORM"})
     void nullEmbeddingIsFailureBeforeSql(RetrievalMode mode) {
         when(embedding.embed(anyString())).thenReturn(null);
         var error = assertThrows(PgVectorMemoryService.EvaluationFailure.class, () -> evaluate(mode, 3));

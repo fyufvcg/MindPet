@@ -5,7 +5,8 @@ public enum RetrievalMode {
     KEYWORD_ONLY("keyword_only"),
     VECTOR_ONLY("vector_only"),
     RRF("rrf"),
-    FULL("mindpet_full");
+    FULL("mindpet_full"),
+    FULL_RRF_NORM("mindpet_full_rrf_norm");
 
     private final String wireName;
 

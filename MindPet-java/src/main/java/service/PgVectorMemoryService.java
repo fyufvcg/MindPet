@@ -27,6 +27,7 @@ public class PgVectorMemoryService {
 
     private static final int PRUNE_THRESHOLD = 500; // 超过此数量时触发清理
     private static final double RETENTION_MIN = 0.1; // 保留率低于此值的记忆视为"已遗忘"
+    static final double RRF_MAX = 2.0 / 61.0; // Evaluation-only normalization ceiling for k=60.
 
     private final JdbcTemplate jdbc;
     private final EmbeddingService embedService;
@@ -188,8 +189,10 @@ public class PgVectorMemoryService {
             List<MemoryResult> keyword = mode == RetrievalMode.VECTOR_ONLY
                 ? List.of() : keywordSearchStrict(userId, query, 20);
             Map<String, Double> rrf = mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
+                || mode == RetrievalMode.FULL_RRF_NORM
                 ? mergeRrf(semantic, keyword) : null;
             Map<String, RerankComponents> observedScores = new HashMap<>();
+            Map<String, NormalizedRerankComponents> observedNormalizedScores = new HashMap<>();
             List<MemoryResult> selected = switch (mode) {
                 case KEYWORD_ONLY -> keyword.stream().limit(topK).toList();
                 case VECTOR_ONLY -> semantic.stream().limit(topK).toList();
@@ -197,6 +200,8 @@ public class PgVectorMemoryService {
                     .sorted((a, b) -> Double.compare(rrf.get(contentId(b)), rrf.get(contentId(a))))
                     .limit(topK).toList();
                 case FULL -> rankFullCandidates(semantic, keyword, rrf, topK, observedScores);
+                case FULL_RRF_NORM -> rankFullRrfNormalizedCandidates(
+                    semantic, keyword, rrf, topK, observedNormalizedScores);
             };
             Map<String, Integer> vectorRanks = ranks(semantic);
             Map<String, Integer> keywordRanks = ranks(keyword);
@@ -208,21 +213,30 @@ public class PgVectorMemoryService {
                 RerankComponents score = mode == RetrievalMode.FULL
                     ? observedScores.computeIfAbsent(id, ignored -> calculateRerankComponents(r, rrf.get(id)))
                     : null;
+                NormalizedRerankComponents normalizedScore = mode == RetrievalMode.FULL_RRF_NORM
+                    ? observedNormalizedScores.computeIfAbsent(id,
+                        ignored -> calculateNormalizedRerankComponents(r, rrf.get(id)))
+                    : null;
                 Double finalScore = switch (mode) {
                     case KEYWORD_ONLY -> keywordScore;
                     case VECTOR_ONLY -> null;
                     case RRF -> rrf.get(id);
                     case FULL -> score.finalScore();
+                    case FULL_RRF_NORM -> normalizedScore.finalScore();
                 };
+                RerankComponents displayedScore = score != null ? score
+                    : normalizedScore == null ? null : normalizedScore.base();
                 return new RetrievalDebugResult.Entry(
                     r.id(), r.content(), vectorRanks.get(id), keywordRank, keywordScore,
                     semanticById.containsKey(id) ? semanticById.get(id).distance() : null,
-                    rrf == null ? null : rrf.get(id), r.importance(), r.confidence(), r.layer(), r.emotion(),
+                    rrf == null ? null : rrf.get(id),
+                    normalizedScore == null ? null : normalizedScore.rrfNormalized(),
+                    r.importance(), r.confidence(), r.layer(), r.emotion(),
                     r.createdAt() == null ? null : r.createdAt().toInstant().toString(),
-                    score == null ? null : score.timeScore(),
-                    score == null ? null : score.importanceContribution(),
-                    score == null ? null : score.confidenceContribution(),
-                    score == null ? null : score.highImportanceBonus(), finalScore);
+                    displayedScore == null ? null : displayedScore.timeScore(),
+                    displayedScore == null ? null : displayedScore.importanceContribution(),
+                    displayedScore == null ? null : displayedScore.confidenceContribution(),
+                    displayedScore == null ? null : displayedScore.highImportanceBonus(), finalScore);
             }).toList();
             return new RetrievalDebugResult("OK", mode.wireName(), topK, entries);
         } catch (DataAccessException e) {
@@ -308,6 +322,48 @@ public class PgVectorMemoryService {
         observed.put(contentId(r), components);
         return components.finalScore();
     }
+
+    /** Evaluation-only H1 ranking. Production and existing FULL ranking do not call this path. */
+    private List<MemoryResult> rankFullRrfNormalizedCandidates(
+        List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
+        int topK, Map<String, NormalizedRerankComponents> observedScores
+    ) {
+        return mergeCandidates(semantic, keyword).values().stream()
+            .sorted((a, b) -> {
+                double sa = observedNormalizedRerankScore(
+                    a, rrf.getOrDefault(contentId(a), 0.0), observedScores);
+                double sb = observedNormalizedRerankScore(
+                    b, rrf.getOrDefault(contentId(b), 0.0), observedScores);
+                return Double.compare(sb, sa);
+            }).limit(topK).toList();
+    }
+
+    private double observedNormalizedRerankScore(
+        MemoryResult r, double rrf, Map<String, NormalizedRerankComponents> observed
+    ) {
+        NormalizedRerankComponents components = calculateNormalizedRerankComponents(r, rrf);
+        observed.put(contentId(r), components);
+        return components.finalScore();
+    }
+
+    static double normalizeRrfScore(double rrfScore) {
+        return Math.max(0.0, Math.min(1.0, rrfScore / RRF_MAX));
+    }
+
+    private NormalizedRerankComponents calculateNormalizedRerankComponents(
+        MemoryResult r, double rrfScore
+    ) {
+        RerankComponents base = calculateRerankComponents(r, rrfScore);
+        double rrfNormalized = normalizeRrfScore(rrfScore);
+        double finalScore = rrfNormalized * 0.5 + base.timeScore() * 0.2
+            + base.importanceContribution() + base.confidenceContribution()
+            + base.highImportanceBonus();
+        return new NormalizedRerankComponents(rrfNormalized, base, finalScore);
+    }
+
+    private record NormalizedRerankComponents(
+        double rrfNormalized, RerankComponents base, double finalScore
+    ) {}
 
     private List<MemoryResult> semanticSearch(String userId, String query, int limit) {
         return semanticSearch(userId, embedService.embed(query), limit);
