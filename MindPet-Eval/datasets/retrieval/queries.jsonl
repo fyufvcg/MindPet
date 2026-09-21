@@ -1,0 +1,40 @@
+{"query_id":"q001","query":"最喜欢的运动 羽毛球","relevant_memory_ids":["m001"],"query_type":"exact_keyword","difficulty":"easy","notes":"偏好关系和答案词均精确出现，ground truth 唯一。"}
+{"query_id":"q002","query":"香菜","relevant_memory_ids":["m012"],"query_type":"exact_keyword","difficulty":"easy","notes":"直接命中饮食禁忌。"}
+{"query_id":"q003","query":"四十五分钟","relevant_memory_ids":["m024"],"query_type":"exact_keyword","difficulty":"easy","notes":"中文时长原词命中。"}
+{"query_id":"q004","query":"Todoist","relevant_memory_ids":["m033"],"query_type":"exact_keyword","difficulty":"easy","notes":"产品名精确命中。"}
+{"query_id":"q005","query":"DBeaver","relevant_memory_ids":["m049"],"query_type":"exact_keyword","difficulty":"easy","notes":"工具名精确命中。"}
+{"query_id":"q006","query":"提前十五分钟","relevant_memory_ids":["m057"],"query_type":"exact_keyword","difficulty":"easy","notes":"日程设置原词命中。"}
+{"query_id":"q007","query":"王老师","relevant_memory_ids":["m066"],"query_type":"exact_keyword","difficulty":"easy","notes":"人物称谓精确命中。"}
+{"query_id":"q008","query":"杭州","relevant_memory_ids":["m075"],"query_type":"exact_keyword","difficulty":"easy","notes":"地点名精确命中。"}
+{"query_id":"q009","query":"我平时最爱做什么运动？","relevant_memory_ids":["m001"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"用‘最爱做’改写‘最喜欢的运动’。"}
+{"query_id":"q010","query":"哪一种异国料理最合我的口味？","relevant_memory_ids":["m011"],"query_type":"semantic_paraphrase","difficulty":"hard","notes":"不出现日料或寿司字样。"}
+{"query_id":"q011","query":"要长时间安静自习，我通常会去哪儿？","relevant_memory_ids":["m027"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"通过学习场景召回地点。"}
+{"query_id":"q012","query":"一天里哪段时间最适合我处理高专注任务？","relevant_memory_ids":["m031"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"深度工作语义改写。"}
+{"query_id":"q013","query":"写 Java 工程时我顺手的集成开发环境是哪款？","relevant_memory_ids":["m042"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"IDE 全称未在查询中出现。"}
+{"query_id":"q014","query":"休息日没有安排时，我一般几点才起床？","relevant_memory_ids":["m052"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"周末作息语义改写。"}
+{"query_id":"q015","query":"大学里认识的哪位朋友常约我一起打球？","relevant_memory_ids":["m062"],"query_type":"semantic_paraphrase","difficulty":"hard","notes":"人际关系与运动联合语义。"}
+{"query_id":"q016","query":"想找家安静的小店聊天，我最可能选哪里？","relevant_memory_ids":["m071"],"query_type":"semantic_paraphrase","difficulty":"hard","notes":"避免直接出现咖啡馆名称。"}
+{"query_id":"q017","query":"承担日常工作的那台笔记本是什么型号？","relevant_memory_ids":["m081"],"query_type":"semantic_paraphrase","difficulty":"medium","notes":"主力设备语义改写。"}
+{"query_id":"q018","query":"这个助手把可长期召回的内容存在哪种技术里？","relevant_memory_ids":["m092"],"query_type":"semantic_paraphrase","difficulty":"hard","notes":"长期记忆技术栈的抽象问法。"}
+{"query_id":"q019","query":"周末复习数据库时我会看什么？","relevant_memory_ids":["m023"],"query_type":"hybrid","difficulty":"medium","notes":"数据库关键词配合笔记语义。"}
+{"query_id":"q020","query":"写前端代码时常用哪个编辑器？","relevant_memory_ids":["m041"],"query_type":"hybrid","difficulty":"medium","notes":"前端词面与工具语义结合。"}
+{"query_id":"q021","query":"每月什么时候整理账单预算？","relevant_memory_ids":["m056"],"query_type":"hybrid","difficulty":"medium","notes":"账单预算关键词与具体时间。"}
+{"query_id":"q022","query":"妈妈的生日具体是哪一天？","relevant_memory_ids":["m064"],"query_type":"hybrid","difficulty":"easy","notes":"人物、生日关键词与日期答案。"}
+{"query_id":"q023","query":"我平常去哪里跑步？","relevant_memory_ids":["m073"],"query_type":"hybrid","difficulty":"medium","notes":"跑步词面与地点槽位。"}
+{"query_id":"q024","query":"重要资料每周备份到什么设备？","relevant_memory_ids":["m090"],"query_type":"hybrid","difficulty":"medium","notes":"备份关键词与设备语义。"}
+{"query_id":"q025","query":"MindPet 桌面界面用了哪些前端技术？","relevant_memory_ids":["m094"],"query_type":"hybrid","difficulty":"medium","notes":"项目名与技术栈共同约束。"}
+{"query_id":"q026","query":"我每天主要乘什么交通工具上班？","relevant_memory_ids":["m106"],"query_type":"hybrid","difficulty":"medium","notes":"通勤场景与交通方式。"}
+{"query_id":"q027","query":"碰到紧急需求时，我要求先用什么方式确认范围？","relevant_memory_ids":["m035"],"query_type":"multi_candidate","difficulty":"hard","notes":"m036 是沟通偏好的近邻干扰项。"}
+{"query_id":"q028","query":"要探索数据并快速画图，我会打开哪个 Python 工具？","relevant_memory_ids":["m044"],"query_type":"multi_candidate","difficulty":"hard","notes":"m043 同属 Python 工具，是困难负例。"}
+{"query_id":"q029","query":"我会分别去哪里跑步和打羽毛球？","relevant_memory_ids":["m073","m074"],"query_type":"multi_candidate","difficulty":"hard","notes":"一个查询需要召回两个运动地点。"}
+{"query_id":"q030","query":"桌面上常用的键盘和鼠标分别是什么？","relevant_memory_ids":["m082","m083"],"query_type":"multi_candidate","difficulty":"hard","notes":"需要完整召回两种桌面外设。"}
+{"query_id":"q031","query":"MindPet 分别用什么保存长期和短期记忆？","relevant_memory_ids":["m092","m093"],"query_type":"multi_candidate","difficulty":"hard","notes":"需要区分并完整召回两类存储。"}
+{"query_id":"q032","query":"我有哪些会亲自动手创作的周末爱好？","relevant_memory_ids":["m114","m119"],"query_type":"multi_candidate","difficulty":"hard","notes":"街头摄影与偶尔速写均相关。"}
+{"query_id":"q033","query":"我现在常住哪座城市？","relevant_memory_ids":["m101"],"query_type":"temporal_importance","difficulty":"hard","notes":"m102 的苏州是历史地点，不能覆盖当前南京。"}
+{"query_id":"q034","query":"现在通勤路上主要听什么内容？","relevant_memory_ids":["m111"],"query_type":"temporal_importance","difficulty":"hard","notes":"m118 是已经很少发生的旧习惯。"}
+{"query_id":"q035","query":"目前项目最重要的评测目标是什么？","relevant_memory_ids":["m096"],"query_type":"temporal_importance","difficulty":"hard","notes":"旧天气项目 m097 是主题近邻但非当前目标。"}
+{"query_id":"q036","query":"现在周末主要坚持哪项创作活动？","relevant_memory_ids":["m114"],"query_type":"temporal_importance","difficulty":"hard","notes":"m119 是降低频率的旧习惯。"}
+{"query_id":"q037","query":"我会演奏哪一种乐器？","relevant_memory_ids":[],"query_type":"no_answer","difficulty":"hard","notes":"记忆中没有任何乐器事实。"}
+{"query_id":"q038","query":"我养的宠物叫什么名字？","relevant_memory_ids":[],"query_type":"no_answer","difficulty":"hard","notes":"记忆中没有宠物信息。"}
+{"query_id":"q039","query":"我的汽车是什么品牌？","relevant_memory_ids":[],"query_type":"no_answer","difficulty":"hard","notes":"记忆中没有汽车信息。"}
+{"query_id":"q040","query":"我最喜欢的滑雪场是哪一家？","relevant_memory_ids":[],"query_type":"no_answer","difficulty":"hard","notes":"记忆中没有滑雪场偏好。"}

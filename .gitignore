@@ -89,6 +89,9 @@ temp/
 *.orig
 *.rej
 
+# === MindPet-Eval 本机数据库 ID 映射 ===
+MindPet-Eval/results/memory_id_map.json
+
 # === 压缩包 ===
 *.zip
 *.tar.gz
