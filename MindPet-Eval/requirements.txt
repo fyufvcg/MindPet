@@ -1,5 +1,6 @@
-# Planned dependencies only; not installed or validated in this scaffold phase.
-# Freeze a verified environment before running real experiments.
+# Dependencies used by the validated MindPet retrieval benchmark and experiment pipeline.
+# Keep version ranges reproducible; freeze the concrete runtime in each run manifest.
 PyYAML>=6.0,<7
 requests>=2.31,<3
 matplotlib>=3.8,<4
+psycopg[binary]>=3.2,<4
