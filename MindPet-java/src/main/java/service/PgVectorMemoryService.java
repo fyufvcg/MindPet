@@ -189,10 +189,11 @@ public class PgVectorMemoryService {
             List<MemoryResult> keyword = mode == RetrievalMode.VECTOR_ONLY
                 ? List.of() : keywordSearchStrict(userId, query, 20);
             Map<String, Double> rrf = mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
-                || mode == RetrievalMode.FULL_RRF_NORM
+                || isNormalizedEvaluationMode(mode)
                 ? mergeRrf(semantic, keyword) : null;
             Map<String, RerankComponents> observedScores = new HashMap<>();
             Map<String, NormalizedRerankComponents> observedNormalizedScores = new HashMap<>();
+            Map<String, NormalizedRerankComponents> observedAblationScores = new HashMap<>();
             List<MemoryResult> selected = switch (mode) {
                 case KEYWORD_ONLY -> keyword.stream().limit(topK).toList();
                 case VECTOR_ONLY -> semantic.stream().limit(topK).toList();
@@ -202,6 +203,9 @@ public class PgVectorMemoryService {
                 case FULL -> rankFullCandidates(semantic, keyword, rrf, topK, observedScores);
                 case FULL_RRF_NORM -> rankFullRrfNormalizedCandidates(
                     semantic, keyword, rrf, topK, observedNormalizedScores);
+                case RRF_NORM_ONLY, RRF_NORM_TIME, RRF_NORM_IMPORTANCE,
+                     RRF_NORM_IMPORTANCE_BONUS -> rankMetadataAblationCandidates(
+                    semantic, keyword, rrf, topK, mode, observedAblationScores);
             };
             Map<String, Integer> vectorRanks = ranks(semantic);
             Map<String, Integer> keywordRanks = ranks(keyword);
@@ -216,13 +220,17 @@ public class PgVectorMemoryService {
                 NormalizedRerankComponents normalizedScore = mode == RetrievalMode.FULL_RRF_NORM
                     ? observedNormalizedScores.computeIfAbsent(id,
                         ignored -> calculateNormalizedRerankComponents(r, rrf.get(id)))
+                    : isMetadataAblationMode(mode)
+                    ? observedAblationScores.computeIfAbsent(id,
+                        ignored -> calculateMetadataAblationComponents(r, rrf.get(id), mode))
                     : null;
                 Double finalScore = switch (mode) {
                     case KEYWORD_ONLY -> keywordScore;
                     case VECTOR_ONLY -> null;
                     case RRF -> rrf.get(id);
                     case FULL -> score.finalScore();
-                    case FULL_RRF_NORM -> normalizedScore.finalScore();
+                    case FULL_RRF_NORM, RRF_NORM_ONLY, RRF_NORM_TIME,
+                         RRF_NORM_IMPORTANCE, RRF_NORM_IMPORTANCE_BONUS -> normalizedScore.finalScore();
                 };
                 RerankComponents displayedScore = score != null ? score
                     : normalizedScore == null ? null : normalizedScore.base();
@@ -346,6 +354,40 @@ public class PgVectorMemoryService {
         return components.finalScore();
     }
 
+    /** Evaluation-only H2 ranking; candidate retrieval and existing modes remain unchanged. */
+    private List<MemoryResult> rankMetadataAblationCandidates(
+        List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
+        int topK, RetrievalMode mode, Map<String, NormalizedRerankComponents> observedScores
+    ) {
+        return mergeCandidates(semantic, keyword).values().stream()
+            .sorted((a, b) -> {
+                double sa = observedMetadataAblationScore(
+                    a, rrf.getOrDefault(contentId(a), 0.0), mode, observedScores);
+                double sb = observedMetadataAblationScore(
+                    b, rrf.getOrDefault(contentId(b), 0.0), mode, observedScores);
+                return Double.compare(sb, sa);
+            }).limit(topK).toList();
+    }
+
+    private double observedMetadataAblationScore(
+        MemoryResult r, double rrf, RetrievalMode mode,
+        Map<String, NormalizedRerankComponents> observed
+    ) {
+        NormalizedRerankComponents components = calculateMetadataAblationComponents(r, rrf, mode);
+        observed.put(contentId(r), components);
+        return components.finalScore();
+    }
+
+    private boolean isNormalizedEvaluationMode(RetrievalMode mode) {
+        return mode == RetrievalMode.FULL_RRF_NORM || isMetadataAblationMode(mode);
+    }
+
+    private boolean isMetadataAblationMode(RetrievalMode mode) {
+        return mode == RetrievalMode.RRF_NORM_ONLY || mode == RetrievalMode.RRF_NORM_TIME
+            || mode == RetrievalMode.RRF_NORM_IMPORTANCE
+            || mode == RetrievalMode.RRF_NORM_IMPORTANCE_BONUS;
+    }
+
     static double normalizeRrfScore(double rrfScore) {
         return Math.max(0.0, Math.min(1.0, rrfScore / RRF_MAX));
     }
@@ -358,6 +400,22 @@ public class PgVectorMemoryService {
         double finalScore = rrfNormalized * 0.5 + base.timeScore() * 0.2
             + base.importanceContribution() + base.confidenceContribution()
             + base.highImportanceBonus();
+        return new NormalizedRerankComponents(rrfNormalized, base, finalScore);
+    }
+
+    private NormalizedRerankComponents calculateMetadataAblationComponents(
+        MemoryResult r, double rrfScore, RetrievalMode mode
+    ) {
+        RerankComponents base = calculateRerankComponents(r, rrfScore);
+        double rrfNormalized = normalizeRrfScore(rrfScore);
+        double finalScore = switch (mode) {
+            case RRF_NORM_ONLY -> rrfNormalized;
+            case RRF_NORM_TIME -> rrfNormalized * 0.5 + base.timeScore() * 0.2;
+            case RRF_NORM_IMPORTANCE -> rrfNormalized * 0.5 + base.importanceContribution();
+            case RRF_NORM_IMPORTANCE_BONUS -> rrfNormalized * 0.5
+                + base.importanceContribution() + base.highImportanceBonus();
+            default -> throw new IllegalArgumentException("Not an H2 metadata ablation mode");
+        };
         return new NormalizedRerankComponents(rrfNormalized, base, finalScore);
     }
 

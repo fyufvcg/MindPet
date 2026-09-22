@@ -84,8 +84,7 @@ class PgVectorMemoryServiceEvaluationTest {
     }
 
     private boolean usesBothLanes(RetrievalMode mode) {
-        return mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
-            || mode == RetrievalMode.FULL_RRF_NORM;
+        return mode != RetrievalMode.KEYWORD_ONLY && mode != RetrievalMode.VECTOR_ONLY;
     }
 
     @Test
@@ -228,6 +227,68 @@ class PgVectorMemoryServiceEvaluationTest {
         assertSelectOnly(2);
     }
 
+    @Test
+    void h2RrfNormOnlyUsesNormalizedRetrievalWithoutMetadata() {
+        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+            .1, .7, .8, "positive", 2);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        var entry = evaluate(RetrievalMode.RRF_NORM_ONLY, 1).results().get(0);
+        assertEquals(2.0 / 61.0, entry.rrfScore(), 1e-12);
+        assertEquals(1.0, entry.rrfNormalized(), 1e-12);
+        assertEquals(1.0, entry.finalScore(), 1e-12);
+        assertEquals(.14, entry.importanceContribution(), 1e-12);
+        assertEquals(.04, entry.confidenceContribution(), 1e-12);
+        assertEquals(.05, entry.highImportanceBonus(), 1e-12);
+        assertSelectOnly(2);
+    }
+
+    @Test
+    void h2RrfNormTimeAddsOnlyTimeContribution() {
+        Timestamp at = new Timestamp(System.currentTimeMillis() - 72 * 3600000L);
+        var candidate = memory("10", "羽毛球", at, .1, .7, .8, "positive", 2);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        long before = System.currentTimeMillis();
+        var entry = evaluate(RetrievalMode.RRF_NORM_TIME, 1).results().get(0);
+        long after = System.currentTimeMillis();
+        double upper = .5 + Math.exp(-((before - at.getTime()) / 3600000.0) / 121) * .2;
+        double lower = .5 + Math.exp(-((after - at.getTime()) / 3600000.0) / 121) * .2;
+        assertTrue(entry.finalScore() >= lower - 1e-12 && entry.finalScore() <= upper + 1e-12);
+        assertEquals(.5 + entry.timeScore() * .2, entry.finalScore(), 1e-12);
+        assertSelectOnly(2);
+    }
+
+    @Test
+    void h2RrfNormImportanceAddsImportanceWithoutBonus() {
+        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+            .1, .7, .8, "positive", 2);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        var entry = evaluate(RetrievalMode.RRF_NORM_IMPORTANCE, 1).results().get(0);
+        assertEquals(.5 + .7 * .2, entry.finalScore(), 1e-12);
+        assertEquals(.14, entry.importanceContribution(), 1e-12);
+        assertEquals(.05, entry.highImportanceBonus(), 1e-12);
+        assertSelectOnly(2);
+    }
+
+    @Test
+    void h2RrfNormImportanceBonusAddsThresholdBonus() {
+        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+            .1, .7, .8, "positive", 2);
+        semantic = List.of(candidate);
+        keyword = List.of(candidate);
+
+        var entry = evaluate(RetrievalMode.RRF_NORM_IMPORTANCE_BONUS, 1).results().get(0);
+        assertEquals(.5 + .7 * .2 + .05, entry.finalScore(), 1e-12);
+        assertEquals(.14, entry.importanceContribution(), 1e-12);
+        assertEquals(.05, entry.highImportanceBonus(), 1e-12);
+        assertSelectOnly(2);
+    }
+
     @ParameterizedTest
     @EnumSource(RetrievalMode.class)
     void everyModeAppliesFinalTopKWithoutWriting(RetrievalMode mode) {
@@ -247,7 +308,8 @@ class PgVectorMemoryServiceEvaluationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = RetrievalMode.class, names = {"VECTOR_ONLY", "RRF", "FULL", "FULL_RRF_NORM"})
+    @EnumSource(value = RetrievalMode.class, names = {"VECTOR_ONLY", "RRF", "FULL", "FULL_RRF_NORM",
+        "RRF_NORM_ONLY", "RRF_NORM_TIME", "RRF_NORM_IMPORTANCE", "RRF_NORM_IMPORTANCE_BONUS"})
     void nullEmbeddingIsFailureBeforeSql(RetrievalMode mode) {
         when(embedding.embed(anyString())).thenReturn(null);
         var error = assertThrows(PgVectorMemoryService.EvaluationFailure.class, () -> evaluate(mode, 3));

@@ -107,7 +107,9 @@ class EvalMemoryControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"keyword_only", "vector_only", "rrf", "mindpet_full", "mindpet_full_rrf_norm"})
+    @ValueSource(strings = {"keyword_only", "vector_only", "rrf", "mindpet_full", "mindpet_full_rrf_norm",
+        "mindpet_rrf_norm_only", "mindpet_rrf_norm_time", "mindpet_rrf_norm_importance",
+        "mindpet_rrf_norm_importance_bonus"})
     void acceptsExactWireModes(String wire) throws Exception {
         RetrievalMode mode = RetrievalMode.fromWireName(wire);
         when(service.searchForEvaluation(anyString(), anyString(), eq(mode), eq(10)))
