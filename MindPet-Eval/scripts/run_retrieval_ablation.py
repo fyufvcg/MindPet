@@ -16,7 +16,9 @@ from typing import Any
 
 
 DEFAULT_MODES = ["keyword_only", "vector_only", "rrf", "mindpet_full"]
-SUPPORTED_MODES = [*DEFAULT_MODES, "mindpet_full_rrf_norm"]
+SUPPORTED_MODES = [*DEFAULT_MODES, "mindpet_full_rrf_norm",
+    "mindpet_rrf_norm_only", "mindpet_rrf_norm_time",
+    "mindpet_rrf_norm_importance", "mindpet_rrf_norm_importance_bonus"]
 TOP_K = 10
 USER_ID = "eval_test_user"
 DATABASE = "mindpet_eval"
@@ -217,6 +219,7 @@ def normalize_response(
         entry = {
             "rank": rank,
             "benchmark_memory_id": benchmark_id,
+            "memoryId": database_id,
             "db_memory_id": database_id,
             "content": result.get("content"),
         }
@@ -326,9 +329,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         write_jsonl(args.raw_output, records)
         run_finished_at = now_utc()
         manifest = {
+            "experiment": args.experiment_name,
             "experiment_name": args.experiment_name,
             "git_commit": commit,
             "benchmark_version": args.benchmark_version,
+            "start_time": run_started_at,
+            "end_time": run_finished_at,
             "run_started_at": run_started_at,
             "run_finished_at": run_finished_at,
             "benchmark_base_time": benchmark_base_time,
@@ -345,10 +351,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "embedding_model": "bge-m3",
             "embedding_dimension": 1024,
             "database": DATABASE,
+            "user": USER_ID,
             "user_id": USER_ID,
             "java_api_url": args.api_url,
             "successful_requests": len(records),
+            "success_count": len(records),
             "failed_requests": 0,
+            "failure_count": 0,
             "read_only_state_verified": True,
         }
         write_json(args.manifest, manifest)

@@ -1,0 +1,13 @@
+﻿comparison,query_id,query_type,classification,reference_rank,candidate_rank,role,benchmark_memory_id,content,rank,rrfNormalized,timeScore,importanceContribution,highImportanceBonus,confidenceContribution,finalScore
+norm_only_vs_time,q025,hybrid,degraded,2,3,correct,m094,MindPet 桌面界面基于 Electron 和 React。,3,0.9841269841269842,0.6751911862346421,0.17200000000000001,0.05,0.0495,0.6271017293104205
+norm_only_vs_time,q025,hybrid,degraded,2,3,wrong_above,m093,MindPet 的短期会话记忆保存在 Redis。,2,0.9760624679979518,0.6978845869444864,0.18000000000000002,0.05,0.05,0.6276081513878732
+norm_only_vs_time,q030,multi_candidate,degraded,1,2,correct,m082,桌面键盘是一把矮轴机械键盘。,2,1.0,0.5537138901438793,0.13,0.05,0.0485,0.6107427780287759
+norm_only_vs_time,q030,multi_candidate,degraded,1,2,wrong_above,m094,MindPet 桌面界面基于 Electron 和 React。,1,0.961166253101737,0.6751907320772707,0.17200000000000001,0.05,0.0495,0.6156212729663226
+norm_only_vs_importance,q025,hybrid,degraded,2,3,correct,m094,MindPet 桌面界面基于 Electron 和 React。,3,0.9841269841269842,0.6751874475830527,0.17200000000000001,0.05,0.0495,0.6640634920634921
+norm_only_vs_importance,q025,hybrid,degraded,2,3,wrong_above,m093,MindPet 的短期会话记忆保存在 Redis。,2,0.9760624679979518,0.6978807226355714,0.18000000000000002,0.05,0.05,0.6680312339989759
+norm_only_vs_importance,q029,multi_candidate,degraded,1,2,correct,m074,我去城北体育馆打羽毛球。,2,1.0,0.6751870585288734,0.16000000000000003,0.05,0.0495,0.66
+norm_only_vs_importance,q029,multi_candidate,degraded,1,2,wrong_above,m001,我最喜欢的运动是羽毛球。,1,0.9606894841269841,0.6751870585288734,0.18000000000000002,0.05,0.05,0.660344742063492
+norm_only_vs_full_v2,q025,hybrid,degraded,2,3,correct,m094,MindPet 桌面界面基于 Electron 和 React。,3,0.9841269841269842,0.6751797905420102,0.17200000000000001,0.05,0.0495,0.8985994501718942
+norm_only_vs_full_v2,q025,hybrid,degraded,2,3,wrong_above,m093,MindPet 的短期会话记忆保存在 Redis。,2,0.9760624679979518,0.6978728082388285,0.18000000000000002,0.05,0.05,0.9076057956467417
+norm_only_vs_full_v2,q029,multi_candidate,degraded,1,2,correct,m074,我去城北体育馆打羽毛球。,2,1.0,0.6751794154422307,0.16000000000000003,0.05,0.0495,0.8945358830884462
+norm_only_vs_full_v2,q029,multi_candidate,degraded,1,2,wrong_above,m001,我最喜欢的运动是羽毛球。,1,0.9606894841269841,0.6751794154422307,0.18000000000000002,0.05,0.05,0.8953806251519383
