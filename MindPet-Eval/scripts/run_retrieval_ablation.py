@@ -192,7 +192,7 @@ def post_search(
 
 def normalize_response(
     query: dict[str, Any], mode: str, http_status: int, payload: dict[str, Any],
-    reverse_map: dict[str, str],
+    reverse_map: dict[str, str], evaluation_as_of: str,
 ) -> dict[str, Any]:
     if http_status != 200 or payload.get("status") != "OK":
         raise RunFailure(
@@ -235,6 +235,7 @@ def normalize_response(
         "relevant_memory_ids": query["relevant_memory_ids"],
         "mode": mode,
         "topK": TOP_K,
+        "asOf": evaluation_as_of,
         "http_status": http_status,
         "status": payload["status"],
         "results": normalized,
@@ -311,7 +312,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     args.api_url, token, query, mode, args.http_timeout, benchmark_base_time
                 )
                 records.append(
-                    normalize_response(query, mode, http_status, payload, reverse_map)
+                    normalize_response(
+                        query, mode, http_status, payload, reverse_map, benchmark_base_time
+                    )
                 )
                 if index == 1 or index % 10 == 0 or index == len(queries):
                     print(
@@ -359,6 +362,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "topK_requested": TOP_K,
             "metric_K": [1, 3, 5, 10],
             "embedding_model": "bge-m3",
+            "embedding": "bge-m3",
             "embedding_dimension": 1024,
             "database": DATABASE,
             "user": USER_ID,
