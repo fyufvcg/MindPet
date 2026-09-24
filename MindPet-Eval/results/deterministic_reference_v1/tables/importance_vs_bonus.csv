@@ -1,0 +1,37 @@
+﻿query_id,query,query_type,difficulty,relevant_memory_ids,reference_mode,reference_first_relevant_rank,candidate_mode,candidate_first_relevant_rank,rank_delta,classification
+q001,最喜欢的运动 羽毛球,exact_keyword,easy,m001,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q002,香菜,exact_keyword,easy,m012,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q003,四十五分钟,exact_keyword,easy,m024,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q004,Todoist,exact_keyword,easy,m033,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q005,DBeaver,exact_keyword,easy,m049,mindpet_rrf_norm_importance,2,mindpet_rrf_norm_importance_bonus,2,0,unchanged
+q006,提前十五分钟,exact_keyword,easy,m057,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q007,王老师,exact_keyword,easy,m066,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q008,杭州,exact_keyword,easy,m075,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q009,我平时最爱做什么运动？,semantic_paraphrase,medium,m001,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q010,哪一种异国料理最合我的口味？,semantic_paraphrase,hard,m011,mindpet_rrf_norm_importance,7,mindpet_rrf_norm_importance_bonus,7,0,unchanged
+q011,要长时间安静自习，我通常会去哪儿？,semantic_paraphrase,medium,m027,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q012,一天里哪段时间最适合我处理高专注任务？,semantic_paraphrase,medium,m031,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q013,写 Java 工程时我顺手的集成开发环境是哪款？,semantic_paraphrase,medium,m042,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q014,休息日没有安排时，我一般几点才起床？,semantic_paraphrase,medium,m052,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q015,大学里认识的哪位朋友常约我一起打球？,semantic_paraphrase,hard,m062,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q016,想找家安静的小店聊天，我最可能选哪里？,semantic_paraphrase,hard,m071,mindpet_rrf_norm_importance,2,mindpet_rrf_norm_importance_bonus,2,0,unchanged
+q017,承担日常工作的那台笔记本是什么型号？,semantic_paraphrase,medium,m081,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q018,这个助手把可长期召回的内容存在哪种技术里？,semantic_paraphrase,hard,m092,mindpet_rrf_norm_importance,2,mindpet_rrf_norm_importance_bonus,2,0,unchanged
+q019,周末复习数据库时我会看什么？,hybrid,medium,m023,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q020,写前端代码时常用哪个编辑器？,hybrid,medium,m041,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q021,每月什么时候整理账单预算？,hybrid,medium,m056,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q022,妈妈的生日具体是哪一天？,hybrid,easy,m064,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q023,我平常去哪里跑步？,hybrid,medium,m073,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q024,重要资料每周备份到什么设备？,hybrid,medium,m090,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q025,MindPet 桌面界面用了哪些前端技术？,hybrid,medium,m094,mindpet_rrf_norm_importance,3,mindpet_rrf_norm_importance_bonus,3,0,unchanged
+q026,我每天主要乘什么交通工具上班？,hybrid,medium,m106,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q027,碰到紧急需求时，我要求先用什么方式确认范围？,multi_candidate,hard,m035,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q028,要探索数据并快速画图，我会打开哪个 Python 工具？,multi_candidate,hard,m044,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q029,我会分别去哪里跑步和打羽毛球？,multi_candidate,hard,m073|m074,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q030,桌面上常用的键盘和鼠标分别是什么？,multi_candidate,hard,m082|m083,mindpet_rrf_norm_importance,2,mindpet_rrf_norm_importance_bonus,2,0,unchanged
+q031,MindPet 分别用什么保存长期和短期记忆？,multi_candidate,hard,m092|m093,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q032,我有哪些会亲自动手创作的周末爱好？,multi_candidate,hard,m114|m119,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q033,我现在常住哪座城市？,temporal_importance,hard,m101,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q034,现在通勤路上主要听什么内容？,temporal_importance,hard,m111,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q035,目前项目最重要的评测目标是什么？,temporal_importance,hard,m096,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
+q036,现在周末主要坚持哪项创作活动？,temporal_importance,hard,m114,mindpet_rrf_norm_importance,1,mindpet_rrf_norm_importance_bonus,1,0,unchanged
