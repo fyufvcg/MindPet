@@ -12,6 +12,9 @@
 # === 敏感配置文件 ===
 .env
 .env.*
+# 模板必须入库，否则评委拿不到 docker\.env.example
+!/.env.example
+!/docker/.env.example
 *.log
 logs/
 config.properties

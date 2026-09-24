@@ -108,7 +108,7 @@ export interface TokenLog {
 
 export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa' | 'memory_gallery'
 export type AgentSubTab = 'skills' | 'memory' | 'knowledge' | 'cron' | 'mcp'
-export type SettingsSubTab = 'keys' | 'storage' | 'avatar'
+export type SettingsSubTab = 'backend' | 'keys' | 'storage' | 'avatar'
 
 export interface AttachedFile {
   name: string
@@ -121,6 +121,38 @@ export interface AttachedFile {
 interface CachedContextMessage {
   signature: string
   tokens: number
+}
+
+/** Embedding 三态模式：AUTO 优先 Ollama 自动降级；OLLAMA / DOUBAO 强制指定 */
+export type EmbeddingMode = 'AUTO' | 'OLLAMA' | 'DOUBAO'
+
+/** Embedding 配置的安全副本（渲染进程永远拿不到明文 Key） */
+export interface EmbeddingConfigState {
+  mode: EmbeddingMode
+  apiKey: string
+  endpoint: string
+  model: string
+  hasApiKey: boolean
+}
+
+/** 后端返回的 Embedding 运行时状态 */
+export interface EmbeddingStatus {
+  status?: string
+  mode?: string
+  activeProvider?: string | null
+  activeProviderDescription?: string | null
+  reason?: string
+  hint?: string
+  unreachable?: boolean
+  message?: string
+  ollama?: {
+    endpoint: string
+    model: string
+    reachable: boolean
+    modelPresent: boolean
+    detail?: string
+  }
+  doubao?: { endpoint: string; model: string; configured: boolean }
 }
 
 /** LLM 连通性测试结果。区分 idle / testing / ok / error 四态，错误时携带上游状态码与详情。 */
@@ -330,6 +362,15 @@ export const useAppStoreRaw = create<any>((set) => ({
     }
     return { provider: 'gemini', apiKey: '', hasApiKey: false, baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: '', temperature: 0.7, maxTokens: undefined }
   })(),
+  embeddingConfig: {
+    mode: 'AUTO' as EmbeddingMode,
+    apiKey: '',
+    endpoint: 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
+    model: 'doubao-embedding-vision-251215',
+    hasApiKey: false
+  } as EmbeddingConfigState,
+  embeddingStatus: null as EmbeddingStatus | null,
+  embeddingBusy: false,
   mcpConfig: (() => {
     const saved = localStorage.getItem('mindpet_mcp_config') || localStorage.getItem('agentself_mcp_config')
     let loadedFromLocalStorage = false
@@ -448,6 +489,9 @@ export const useAppStoreRaw = create<any>((set) => ({
     sendingSessionIds: typeof val === 'function' ? val(state.sendingSessionIds) : val
   })),
   setLlmConfig: (val: any) => set({ llmConfig: val }),
+  setEmbeddingConfig: (val: any) => set({ embeddingConfig: val }),
+  setEmbeddingStatus: (val: any) => set({ embeddingStatus: val }),
+  setEmbeddingBusy: (val: boolean) => set({ embeddingBusy: val }),
   setMcpConfig: (val: any) => set({ mcpConfig: val }),
   setCronTasks: (val: any) => set((state: any) => {
     const cronTasks = typeof val === 'function' ? val(state.cronTasks) : val
@@ -630,6 +674,9 @@ export function useAppStore() {
     autoSaveHistory, setAutoSaveHistory,
     contextRounds, setContextRounds,
     testStatus, setTestStatus,
+    embeddingConfig, setEmbeddingConfig,
+    embeddingStatus, setEmbeddingStatus,
+    embeddingBusy, setEmbeddingBusy,
     isSessionSwitching, setIsSessionSwitching,
     isSessionsInitialized, setIsSessionsInitialized
   } = store
@@ -1703,6 +1750,61 @@ export function useAppStore() {
   useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef })
 
 
+  // ==================== Embedding 配置（三态 + 豆包 Key）====================
+
+  /** 读取本地配置与后端运行时状态。打开设置页时调用一次。 */
+  const handleLoadEmbedding = async (): Promise<void> => {
+    try {
+      const cfg = await window.api.getEmbeddingConfig()
+      if (cfg) setEmbeddingConfig({ ...cfg, apiKey: '' })
+    } catch (e) {
+      console.error('[Embedding] 读取配置失败', e)
+    }
+    await handleRefreshEmbedding()
+  }
+
+  /**
+   * 保存配置。Key 由主进程加密落盘，随后同步给后端并立即重新决策 provider。
+   * @param input 留空 apiKey 表示不修改；clearApiKey=true 表示显式清除
+   */
+  const handleSaveEmbedding = async (input: Partial<EmbeddingConfigState> & { clearApiKey?: boolean }): Promise<void> => {
+    setEmbeddingBusy(true)
+    try {
+      const res = await window.api.syncEmbeddingConfig(input as Record<string, unknown>)
+      if (res?.config) setEmbeddingConfig({ ...res.config, apiKey: '' })
+      if (res?.backend?.status === 'ok') {
+        setEmbeddingStatus(res.backend as EmbeddingStatus)
+        showToast('Embedding 配置已保存', 'success')
+      } else if (res?.backend?.unreachable || res?.backend?.status === 'error') {
+        // 配置已落盘，但后端未生效 —— 明确告知，避免"以为改了其实没改"
+        showToast(
+          `Embedding 配置已保存，但后端未生效：${res?.backend?.message || '后端未启动'}`,
+          'error'
+        )
+        await handleRefreshEmbedding()
+      } else {
+        await handleRefreshEmbedding()
+      }
+    } catch (e: any) {
+      showToast(`保存失败：${e?.message || e}`, 'error')
+    } finally {
+      setEmbeddingBusy(false)
+    }
+  }
+
+  /** 重新探测 Ollama 并拉取最新状态（不修改配置） */
+  const handleRefreshEmbedding = async (): Promise<void> => {
+    try {
+      const st = await window.api.refreshEmbedding()
+      setEmbeddingStatus((st || null) as EmbeddingStatus | null)
+    } catch (e: any) {
+      setEmbeddingStatus({
+        unreachable: true,
+        message: `无法连接后端服务：${e?.message || e}`
+      })
+    }
+  }
+
   const handleTestConnection = async (): Promise<void> => {
     setTestStatus({ state: 'testing' })
     try {
@@ -2050,6 +2152,9 @@ export function useAppStore() {
     llmConfig, saveLlmConfig,
     handleFetchModels, handleTestConnection,
     testStatus,
+    // embedding
+    embeddingConfig, embeddingStatus, embeddingBusy,
+    handleLoadEmbedding, handleSaveEmbedding, handleRefreshEmbedding,
     // cron
     cronTasks,
     handleToggleCronTask, handleDeleteCronTask, handleClearCronLogs, handleAddCronTask, handleEditCronTask,

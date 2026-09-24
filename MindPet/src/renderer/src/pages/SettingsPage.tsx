@@ -1,6 +1,6 @@
 import React from 'react'
 import { DEFAULT_MODELS } from '../utils/helpers'
-import type { AppStore, LlmTestResult } from '../hooks/useAppStore'
+import type { AppStore, LlmTestResult, EmbeddingMode } from '../hooks/useAppStore'
 import { getProviderIcon, getModelIcon } from '../utils/modelIcons'
 import {
   AudioLines,
@@ -16,6 +16,7 @@ import {
   Plug,
   RotateCcw,
   Save,
+  Server,
   Settings2,
   Sparkles,
   Trash2,
@@ -23,6 +24,18 @@ import {
   Volume2,
   X
 } from 'lucide-react'
+
+/** 后端连通性探测结果（与主进程 backend-endpoint.ts 的 BackendProbeResult 对齐） */
+interface BackendProbeView {
+  ok: boolean
+  url: string
+  httpStatus?: number
+  elapsedMs: number
+  service?: string
+  version?: string
+  detail?: string
+  error?: string
+}
 
 interface SettingsPageProps {
   store: AppStore
@@ -39,6 +52,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     dropdownRef,
     handleFetchModels, handleTestConnection,
     testStatus,
+    // embedding
+    embeddingConfig: embConfig, embeddingStatus: embStatus, embeddingBusy: embBusy,
+    handleLoadEmbedding, handleSaveEmbedding, handleRefreshEmbedding,
     // storage
     storageInputPath, setStorageInputPath,
     actualStoragePath, storageSaveStatus,
@@ -55,6 +71,23 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
   // 连通性测试结果：store 里是宽类型，这里收窄以便安全访问状态码等字段
   const test = testStatus as LlmTestResult
 
+  // Embedding 面板：Key 输入与模式选择的本地草稿（保存后才进 store）
+  const [embKeyInput, setEmbKeyInput] = React.useState('')
+  const [embMode, setEmbMode] = React.useState<EmbeddingMode>('AUTO')
+
+  // 配置与后端状态只在打开设置页时拉一次，避免每次渲染都发请求
+  const embeddingLoadedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (embeddingLoadedRef.current) return
+    embeddingLoadedRef.current = true
+    void handleLoadEmbedding()
+  }, [handleLoadEmbedding])
+
+  // store 里的模式变化时同步到本地草稿（手动切换草稿时不覆盖）
+  React.useEffect(() => {
+    if (embConfig?.mode) setEmbMode(embConfig.mode)
+  }, [embConfig?.mode])
+
   // 虚拟体编辑弹窗状态
   const [showEditAvatarModal, setShowEditAvatarModal] = React.useState(false)
   const [editingAvatar, setEditingAvatar] = React.useState<any>(null)
@@ -70,6 +103,14 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
   const [isSavingApiKey, setIsSavingApiKey] = React.useState(false)
   const [toolCacheStats, setToolCacheStats] = React.useState({ fileCount: 0, totalBytes: 0 })
   const [isLoadingToolCache, setIsLoadingToolCache] = React.useState(false)
+
+  // ── 后端地址（本地部署 / 云端部署）──
+  const [backendUrlInput, setBackendUrlInput] = React.useState('')
+  const [activeBackendUrl, setActiveBackendUrl] = React.useState('')
+  const [defaultBackendUrl, setDefaultBackendUrl] = React.useState('http://127.0.0.1:8080')
+  const [backendProbe, setBackendProbe] = React.useState<BackendProbeView | null>(null)
+  const [isTestingBackend, setIsTestingBackend] = React.useState(false)
+  const [isSavingBackend, setIsSavingBackend] = React.useState(false)
 
   const formatBytes = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
@@ -109,6 +150,63 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     }
   }
 
+  // ── 后端地址：加载 / 测试 / 保存 ──
+  const loadBackendEndpoint = React.useCallback(async (): Promise<void> => {
+    try {
+      const cfg = await window.api.getBackendEndpoint()
+      setActiveBackendUrl(cfg.url)
+      setDefaultBackendUrl(cfg.defaultUrl)
+      setBackendUrlInput((prev) => (prev ? prev : cfg.url))
+    } catch (error) {
+      console.error('读取后端地址失败:', error)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (settingsSubTab === 'backend') void loadBackendEndpoint()
+  }, [loadBackendEndpoint, settingsSubTab])
+
+  const handleTestBackend = async (): Promise<void> => {
+    const target = backendUrlInput.trim()
+    if (!target) {
+      showToast('请输入后端地址', 'info')
+      return
+    }
+    setIsTestingBackend(true)
+    try {
+      setBackendProbe(await window.api.testBackendEndpoint(target))
+    } catch (error: any) {
+      setBackendProbe({
+        ok: false,
+        url: target,
+        elapsedMs: 0,
+        error: error?.message || String(error)
+      })
+    } finally {
+      setIsTestingBackend(false)
+    }
+  }
+
+  const handleSaveBackend = async (rawValue?: string): Promise<void> => {
+    setIsSavingBackend(true)
+    try {
+      const saved = await window.api.setBackendEndpoint(rawValue ?? backendUrlInput.trim())
+      setActiveBackendUrl(saved.url)
+      setBackendUrlInput(saved.url)
+      setBackendProbe(saved.probe)
+      showToast(
+        saved.probe?.ok
+          ? `后端地址已保存并生效：${saved.url}`
+          : `后端地址已保存（${saved.url}），但当前探测不可达，请确认服务已启动`,
+        saved.probe?.ok ? 'success' : 'info'
+      )
+    } catch (error: any) {
+      showToast(`保存后端地址失败：${error?.message || error}`, 'error')
+    } finally {
+      setIsSavingBackend(false)
+    }
+  }
+
   const handleSaveApiKey = async (): Promise<void> => {
     if (!apiKeyDraft) {
       showToast('请输入要安全保存的 API 密钥', 'info')
@@ -144,6 +242,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     <div className="settings-page-shell" style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       {/* Sub Nav */}
       <div className="sub-tab-nav settings-sub-tab-nav">
+        <div className={`sub-tab-item ${settingsSubTab === 'backend' ? 'active' : ''}`} onClick={() => setSettingsSubTab('backend')}>
+          后端连接
+        </div>
         <div className={`sub-tab-item ${settingsSubTab === 'keys' ? 'active' : ''}`} onClick={() => setSettingsSubTab('keys')}>
           模型配置
         </div>
@@ -157,6 +258,85 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
 
       {/* Sub Panel */}
       <div className="sub-content-panel settings-content-panel">
+
+        {/* ── 后端连接（本地部署 / 云端部署）── */}
+        {settingsSubTab === 'backend' && (
+          <div className="settings-sub-panel settings-panel-card">
+            <div className="form-desc-text">
+              MindPet 的大脑（LLM 调用、长期记忆、会话）运行在 Java 后端上。
+              <b>本地部署</b>时后端跑在这台电脑上（docker compose），保持默认地址即可；
+              <b>云端部署</b>时把地址改成服务器地址。
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">当前生效地址</label>
+              <div className="storage-path-display">{activeBackendUrl || '正在读取...'}</div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">后端地址</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder={defaultBackendUrl}
+                value={backendUrlInput}
+                onChange={(e) => {
+                  setBackendUrlInput(e.target.value)
+                  setBackendProbe(null)
+                }}
+                spellCheck={false}
+              />
+              <div className="system-prompt-footer" style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                可填 <code>http://127.0.0.1:8080</code>（本机）、<code>http://192.168.1.10:8080</code>（局域网）
+                或 <code>https://你的域名</code>（云端）。不写协议时默认按 http 处理。
+              </div>
+            </div>
+
+            <div className="action-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-primary" disabled={isSavingBackend} onClick={() => void handleSaveBackend()}>
+                <Save size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                {isSavingBackend ? '保存中...' : '保存并生效'}
+              </button>
+              <button className="btn-secondary" disabled={isTestingBackend} onClick={() => void handleTestBackend()}>
+                <Plug size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                {isTestingBackend ? '测试中...' : '测试连接'}
+              </button>
+              <button
+                className="btn-secondary"
+                disabled={isSavingBackend}
+                onClick={() => void handleSaveBackend(defaultBackendUrl)}
+              >
+                <RotateCcw size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                恢复默认（本机）
+              </button>
+            </div>
+
+            {backendProbe && (
+              <div className={`test-res-box ${backendProbe.ok ? 'success' : 'failed'}`} style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 600 }}>
+                  {backendProbe.ok ? '✅ 后端可达' : '❌ 后端不可达'} · {backendProbe.url}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 11.5 }}>
+                  {backendProbe.ok
+                    ? `服务标识 ${backendProbe.service || '未知'}${backendProbe.version ? ` v${backendProbe.version}` : ''} · ${backendProbe.elapsedMs}ms`
+                    : backendProbe.detail || backendProbe.error || '未知错误'}
+                </div>
+              </div>
+            )}
+
+            <div style={{
+              marginTop: 16, padding: '10px 12px', borderRadius: 6, fontSize: 11.5, lineHeight: 1.7,
+              background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+              color: 'var(--text-secondary)'
+            }}>
+              <Server size={13} strokeWidth={2} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />
+              提示：连接到<b>远程后端</b>时，「操作本机电脑」类能力（截屏、终端、Office 生成、RPA）不可用——
+              工具是由后端发起的，远程后端无法访问你电脑上的本地工具服务。聊天、记忆、知识图谱不受影响。
+              切换地址后建议重启一次客户端，确保所有模块都用新地址。
+            </div>
+          </div>
+        )}
+
         {/* ── 模型配置 ── */}
         {settingsSubTab === 'keys' && (
           <div className="settings-sub-panel settings-panel-card">
@@ -422,6 +602,154 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                 </div>
               )
             })()}
+          </div>
+        )}
+
+
+        {/* ── Embedding（向量模型）── */}
+        {settingsSubTab === 'keys' && (
+          <div className="settings-sub-panel settings-panel-card" style={{ marginTop: 16 }}>
+            <div className="form-desc-text">
+              长期记忆依赖 Embedding 模型把对话转成向量。<b>注意：Embedding 不可用时后端不会报错，
+              只会静默停止记忆功能</b>，请以下方状态为准。
+            </div>
+
+            {/* 当前生效状态 */}
+            {embStatus && (() => {
+              const active = embStatus.activeProvider
+              const isOk = Boolean(active)
+              const color = embStatus.unreachable ? '#f59e0b' : isOk ? '#10b981' : '#f87171'
+              return (
+                <div style={{
+                  marginTop: 10, padding: '10px 14px', borderRadius: 6, fontSize: '12.5px',
+                  color, background: isOk ? 'rgba(16,185,129,0.05)' : 'rgba(248,113,113,0.05)',
+                  border: `1px solid ${isOk ? 'rgba(16,185,129,0.2)' : 'rgba(248,113,113,0.2)'}`,
+                  wordBreak: 'break-all'
+                }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {embStatus.unreachable
+                      ? '后端不可用'
+                      : isOk
+                        ? `当前使用：${embStatus.activeProviderDescription}`
+                        : '长期记忆当前不可用'}
+                  </div>
+                  {embStatus.unreachable
+                    ? <div style={{ marginTop: 2 }}>{embStatus.message}</div>
+                    : embStatus.hint && <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{embStatus.hint}</div>}
+                  {embStatus.ollama && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                      本地 Ollama：{embStatus.ollama.reachable ? '服务在线' : '未连接'}
+                      {embStatus.ollama.reachable
+                        ? `，模型 ${embStatus.ollama.model}${embStatus.ollama.modelPresent ? ' 已就绪' : ' 未下载'}`
+                        : ''}
+                      {embStatus.ollama.detail ? `（${embStatus.ollama.detail}）` : ''}
+                    </div>
+                  )}
+                  {embStatus.doubao && (
+                    <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>
+                      豆包云端：{embStatus.doubao.configured ? `已配置（${embStatus.doubao.model}）` : '未配置 API Key'}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* 三态开关 */}
+            <div className="form-field" style={{ marginTop: 14 }}>
+              <label className="form-label">工作模式</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {([
+                  { key: 'AUTO', label: '自动（推荐）', desc: '优先本地 Ollama，不可用时自动降级豆包' },
+                  { key: 'OLLAMA', label: '强制本地', desc: '仅用 Ollama，数据不出本机；不可用则记忆停用' },
+                  { key: 'DOUBAO', label: '强制云端', desc: '仅用豆包，无需本地模型' }
+                ] as const).map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={embMode === m.key ? 'btn-primary' : 'btn-secondary'}
+                    title={m.desc}
+                    onClick={() => setEmbMode(m.key)}
+                    style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div className="system-prompt-footer" style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                {embMode === 'AUTO'
+                  ? '优先使用本地 Ollama；未安装或未下载模型时，自动改用豆包 Embedding。'
+                  : embMode === 'OLLAMA'
+                    ? '强制使用 Ollama。服务未启动或模型 bge-m3 未下载时，长期记忆将停用并提示。'
+                    : '强制使用豆包云端 Embedding，无需本地模型。'}
+              </div>
+            </div>
+
+            {/* 豆包 Key */}
+            <div className="form-field" style={{ marginTop: 12 }}>
+              <label className="form-label">
+                豆包 Embedding API Key
+                {embConfig.hasApiKey && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: '#10b981' }}>已保存（加密存储）</span>
+                )}
+              </label>
+              <input
+                className="mcp-input-fancy"
+                type="password"
+                placeholder={embConfig.hasApiKey ? '已保存，留空则不修改' : '粘贴方舟平台的 API Key'}
+                value={embKeyInput}
+                onChange={(e) => setEmbKeyInput(e.target.value)}
+              />
+              <div className="system-prompt-footer" style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                仅在选择「自动/强制云端」且本地 Ollama 不可用时才需要。Key 加密保存在本机，不会明文落盘。
+              </div>
+            </div>
+
+            <div className="action-row" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <button
+                className="btn-primary"
+                disabled={embBusy}
+                onClick={() => {
+                  void handleSaveEmbedding({
+                    mode: embMode,
+                    apiKey: embKeyInput.trim() || undefined,
+                    endpoint: embConfig.endpoint,
+                    model: embConfig.model
+                  })
+                  setEmbKeyInput('')
+                }}
+              >
+                {embBusy ? '保存中...' : <><Save size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />保存并重新检测</>}
+              </button>
+              <button
+                className="btn-secondary"
+                disabled={embBusy}
+                onClick={() => void handleRefreshEmbedding()}
+              >
+                <RotateCcw size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />重新检测
+              </button>
+              {embConfig.hasApiKey && (
+                <button
+                  className="btn-secondary"
+                  disabled={embBusy}
+                  onClick={() => {
+                    if (confirm('确认清除已保存的豆包 Embedding API Key？')) {
+                      void handleSaveEmbedding({ mode: embMode, clearApiKey: true })
+                    }
+                  }}
+                >
+                  <Trash2 size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />清除密钥
+                </button>
+              )}
+            </div>
+
+            <div style={{
+              marginTop: 12, padding: '8px 12px', borderRadius: 6, fontSize: 11.5,
+              background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+              color: 'var(--text-secondary)'
+            }}>
+              ⚠️ 切换 Embedding 模型后，<b>已存的记忆向量与新查询向量不在同一语义空间</b>，
+              旧记忆的检索会变得不可靠（但不会报错）。如需干净切换，建议先导出或清空长期记忆。
+            </div>
           </div>
         )}
 

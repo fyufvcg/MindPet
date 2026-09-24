@@ -1,0 +1,4 @@
+# 构建上下文仅本目录，只允许 jar 进镜像
+*
+!weather-wechat-bot-1.0.0.jar
+!Dockerfile

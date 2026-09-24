@@ -38,18 +38,24 @@ public class DesktopController {
     private final service.McpManager mcpManager;
     private final config.SkillStore skillStore;
     private final DynamicChatClientFactory chatClientFactory;
+    private final service.EmbeddingService embeddingService;
+    private final config.EmbeddingConfig embeddingConfig;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Logger logger;
 
     @Autowired
     public DesktopController(AiService aiService, DynamicLlmConfig dynamicLlmConfig,
                              service.McpManager mcpManager, config.SkillStore skillStore,
-                             DynamicChatClientFactory chatClientFactory, Logger logger) {
+                             DynamicChatClientFactory chatClientFactory,
+                             service.EmbeddingService embeddingService,
+                             config.EmbeddingConfig embeddingConfig, Logger logger) {
         this.aiService = aiService;
         this.dynamicLlmConfig = dynamicLlmConfig;
         this.mcpManager = mcpManager;
         this.skillStore = skillStore;
         this.chatClientFactory = chatClientFactory;
+        this.embeddingService = embeddingService;
+        this.embeddingConfig = embeddingConfig;
         this.logger = logger;
     }
 
@@ -288,6 +294,58 @@ public class DesktopController {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    /**
+     * Embedding 连通性测试 — 部署校验用。
+     *
+     * <p>为什么必须有这个接口：{@code EmbeddingService.embed()} 会吞掉所有异常并返回 null，
+     * 配置错误（Ollama 未启动、模型未拉取、Key 无效）只会让长期记忆静默失效，
+     * 而后端 {@code /health} 与聊天依旧完全正常。部署后必须用本接口确认真实可用。
+     *
+     * <p>返回示例：{@code {"ok":true,"dim":1024,"provider":"Ollama/bge-m3","elapsedMs":312}}
+     */
+    @PostMapping("/embedding-test")
+    public Map<String, Object> embeddingTest(@RequestBody(required = false) Map<String, Object> body) {
+        long startedAt = System.currentTimeMillis();
+        String text = (body == null ? "" : str(body.get("text")));
+        if (text.isBlank()) text = "MindPet embedding connectivity check";
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("text", text);
+        result.put("provider", embeddingService.activeProviderDescription());
+        result.put("activeProvider", embeddingService.getActiveProvider());
+        result.put("mode", embeddingConfig.getMode());
+        result.put("reason", embeddingService.getReason().name());
+
+        float[] vec = embeddingService.embed(text);
+        long elapsed = System.currentTimeMillis() - startedAt;
+        result.put("elapsedMs", elapsed);
+
+        if (vec == null) {
+            // embed() 已把真实原因写进日志，这里只能给出排查方向
+            result.put("ok", false);
+            result.put("message", "Embedding 返回空。常见原因："
+                + "Ollama 未启动 / 模型 bge-m3 未拉取 / endpoint 配错 / 云端 Key 无效或额度不足。"
+                + "请查看后端日志中 'Embedding failed' 一行获取真实异常。");
+            result.put("hint", "检查 app.embedding.use-ollama 与实际 provider 是否一致，"
+                + "以及 application.yml（或环境变量 APP_EMBEDDING_*）中的 endpoint 是否可达。");
+            logger.log("ERROR", "[Desktop] Embedding 测试失败（返回空向量）");
+            return result;
+        }
+
+        int dim = vec.length;
+        result.put("ok", true);
+        result.put("dim", dim);
+        // 维度必须与数据库 vector(N) 一致，否则写入会报错
+        boolean dimMatchesDb = dim == 1024;
+        result.put("dimMatchesDbSchema", dimMatchesDb);
+        if (!dimMatchesDb) {
+            result.put("message", "向量维度 " + dim + " 与建表语句的 vector(1024) 不一致，"
+                + "记忆写入将失败。请更换模型或修改 docker/init/01-schema.sql。");
+        }
+        logger.log("INFO", "[Desktop] Embedding 测试成功 dim=" + dim + " 耗时=" + elapsed + "ms");
+        return result;
+    }
+
     /** 从异常链里挖上游 HTTP 状态码。Spring AI 内部异常类型随版本变动，故用反射。 */    private Integer extractHttpStatus(Throwable throwable) {
         for (Throwable t = throwable; t != null; t = t.getCause()) {
             try {
@@ -340,6 +398,81 @@ public class DesktopController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("status", "ok", "service", "mindpet-desktop-api");
+    }
+
+    /**
+     * Embedding 运行时状态 — 供设置页展示"当前用哪条通路、为什么降级、怎么修"。
+     *
+     * <p>返回 {@code mode}(AUTO/OLLAMA/DOUBAO)、{@code activeProvider}、{@code reason}、
+     * {@code hint}，以及 ollama / doubao 两个子对象。前端不应自行推断，一律以本接口为准。
+     */
+    @GetMapping("/embedding-status")
+    public Map<String, Object> embeddingStatus() {
+        return embeddingService.status();
+    }
+
+    /** 读取 Embedding 配置（不回传明文 Key，只回传是否已配置） */
+    @GetMapping("/embedding-config")
+    public Map<String, Object> getEmbeddingConfig() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "ok");
+        result.put("mode", embeddingConfig.getMode());
+        result.put("hasDoubaoApiKey", embeddingService.hasDoubaoApiKey());
+        result.put("doubaoEndpoint", embeddingConfig.getDoubaoEndpoint());
+        result.put("doubaoModel", embeddingConfig.getDoubaoModel());
+        return result;
+    }
+
+    /**
+     * 保存 Embedding 配置并立即重新决策 provider。
+     *
+     * <p>请求体：{@code {"mode":"AUTO|OLLAMA|DOUBAO","apiKey":"...","endpoint":"...","model":"..."}}
+     * <ul>
+     *   <li>{@code mode} 为三态开关：AUTO 优先 Ollama 自动降级；OLLAMA / DOUBAO 强制指定</li>
+     *   <li>{@code apiKey} 由 Electron 主进程从加密存储解密后传入；留空表示不修改</li>
+     *   <li>{@code clearApiKey=true} 显式清除</li>
+     * </ul>
+     * 保存后立刻 {@code refresh()}，前端无需重启即可看到新状态。
+     */
+    @PostMapping("/embedding-config")
+    public Map<String, Object> saveEmbeddingConfig(@RequestBody(required = false) Map<String, Object> body) {
+        try {
+            if (body == null) body = Map.of();
+            String mode = str(body.get("mode"));
+            if (!mode.isBlank() && !config.EmbeddingConfig.isValidMode(mode)) {
+                return Map.of("status", "error",
+                    "message", "mode 必须是 AUTO / OLLAMA / DOUBAO 之一，收到: " + mode);
+            }
+            if (Boolean.parseBoolean(String.valueOf(body.getOrDefault("clearApiKey", "false")))) {
+                embeddingConfig.clearDoubaoApiKey();
+            }
+            embeddingConfig.update(
+                mode,
+                str(body.get("apiKey")),
+                str(body.get("endpoint")),
+                str(body.get("model"))
+            );
+            Map<String, Object> status = embeddingService.refresh();
+            logger.log("INFO", "[Desktop] Embedding 配置已更新 mode=" + embeddingConfig.getMode()
+                + " provider=" + embeddingService.activeProviderDescription());
+            Map<String, Object> result = new LinkedHashMap<>(status);
+            result.put("status", "ok");
+            return result;
+        } catch (Exception e) {
+            logger.log("ERROR", "[Desktop] Embedding 配置保存失败: " + e.getMessage());
+            return Map.of("status", "error", "message", e.getMessage());
+        }
+    }
+
+    /** 重新探测 Ollama 并决策 provider（不修改配置） */
+    @PostMapping("/embedding-refresh")
+    public Map<String, Object> refreshEmbedding() {
+        Map<String, Object> status = embeddingService.refresh();
+        logger.log("INFO", "[Desktop] Embedding 重新探测 → "
+            + embeddingService.activeProviderDescription() + " (" + embeddingService.getReason() + ")");
+        Map<String, Object> result = new LinkedHashMap<>(status);
+        result.put("status", "ok");
+        return result;
     }
 
     /**

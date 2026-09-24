@@ -12,6 +12,8 @@
  * 未来可扩展支持 tool_call / tool_result 等事件。
  */
 
+import { backendUrl } from './backend-endpoint'
+
 /** Java 后端返回的 NDJSON 事件 */
 interface BackendEvent {
   type: 'text_delta' | 'text' | 'error' | 'token_usage' | string
@@ -68,8 +70,10 @@ interface BackendMessage {
   images?: string[]  // base64 encoded images
 }
 
-/** 后端 API 基地址 */
-const BACKEND_BASE_URL = process.env.XIAOQING_API_URL || 'http://127.0.0.1:8080'
+/**
+ * 后端 API 基地址 — 运行时解析，支持本地/云端两种部署形态。
+ * 地址来源优先级见 backend-endpoint.ts（命令行 > 环境变量 > server.json > 默认本机）。
+ */
 const DESKTOP_USER_ID = 'desktop-user'
 
 export interface DesktopNotification {
@@ -82,7 +86,7 @@ export interface DesktopNotification {
 
 async function acknowledgeDesktopNotification(notificationId: string): Promise<boolean> {
   const response = await fetch(
-    `${BACKEND_BASE_URL}/api/desktop/notifications/${encodeURIComponent(notificationId)}/ack?userId=${encodeURIComponent(DESKTOP_USER_ID)}`,
+    `${backendUrl('/api/desktop/notifications')}/${encodeURIComponent(notificationId)}/ack?userId=${encodeURIComponent(DESKTOP_USER_ID)}`,
     { method: 'POST', signal: AbortSignal.timeout?.(10_000) }
   )
   return response.ok
@@ -113,7 +117,7 @@ export function startDesktopNotificationPolling(
     inFlight = true
     try {
       const response = await fetch(
-        `${BACKEND_BASE_URL}/api/desktop/notifications?userId=${encodeURIComponent(DESKTOP_USER_ID)}&limit=20`,
+        `${backendUrl('/api/desktop/notifications')}?userId=${encodeURIComponent(DESKTOP_USER_ID)}&limit=20`,
         { signal: AbortSignal.timeout?.(10_000) }
       )
       if (!response.ok) throw new Error(`Java backend returned ${response.status}`)
@@ -215,7 +219,7 @@ export async function* callJavaBackend(
     history: backendMessages.slice(0, -1)
   })
 
-  const url = `${BACKEND_BASE_URL}/api/desktop/chat/stream`
+  const url = backendUrl('/api/desktop/chat/stream')
 
   console.log('[BackendAPI] POST', url, 'userId:', userId)
 
@@ -314,7 +318,7 @@ export async function callJavaBackendSimple(
   sessionId: string,
   activeSkills?: string[]
 ): Promise<string> {
-  const url = `${BACKEND_BASE_URL}/api/desktop/chat`
+  const url = backendUrl('/api/desktop/chat')
 
   const response = await fetch(url, {
     method: 'POST',

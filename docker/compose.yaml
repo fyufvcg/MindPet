@@ -1,0 +1,170 @@
+# ============================================================
+# MindPet 后端基础设施 — 一键部署
+# ============================================================
+# 快速开始（在仓库根目录执行）：
+#
+#   1) 复制环境变量模板并填入密钥
+#        copy docker\.env.example docker\.env
+#
+#   2) 构建后端 jar 并放进构建上下文
+#        scripts\build-backend.bat
+#
+#   3) 启动
+#        docker compose -f docker\compose.yaml up -d
+#
+#   4) 校验（含 Embedding 连通性断言）
+#        scripts\check.bat
+#
+# ------------------------------------------------------------
+# 两种 Embedding 模式，用 profile 切换：
+#
+#   云端模式（默认，不启 Ollama，省约 1.5GB 内存）
+#       docker compose -f docker\compose.yaml up -d
+#       需在 .env 里配 EMBEDDING_DOUBao_API_KEY（或复用 LLM Key）
+#
+#   本地隐私模式（含 Ollama + bge-m3，数据不出本机）
+#       docker compose -f docker\compose.yaml --profile local-embedding up -d
+#       首次需拉模型：docker exec mindpet-ollama ollama pull bge-m3
+#
+#   注：Electron 桌面端不进容器（GUI 应用），在宿主机运行并连接
+#       http://localhost:8080。
+# ============================================================
+
+name: mindpet
+
+services:
+
+  # ---------------- PostgreSQL + pgvector ----------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mindpet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mindpet}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?必须在 .env 中设置 POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    # 只绑定回环，不对局域网暴露数据库
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次启动自动执行建表（后端不会自动创建这 4 张表，详见该文件注释）
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mindpet}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # ---------------- Redis ----------------
+  redis:
+    image: redis:7-alpine
+    container_name: mindpet-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ---------------- Ollama（仅本地隐私模式）----------------
+  # 默认不启动。启用：--profile local-embedding
+  ollama:
+    image: ollama/ollama:0.5.7
+    container_name: mindpet-ollama
+    restart: unless-stopped
+    profiles: ["local-embedding"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      # 模型（bge-m3 约 1.1GB）持久化在此卷，不随容器重建丢失
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---------------- Spring Boot 后端 ----------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: mindpet-backend:latest
+    container_name: mindpet-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+
+      # ---- 容器内地址：localhost → 服务名 ----
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-mindpet}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?必须在 .env 中设置 POSTGRES_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+
+      # ---- LLM（必填）----
+      LLM_API_KEY: ${LLM_API_KEY:?必须在 .env 中设置 LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      SPRING_AI_OPENAI_API_KEY: ${LLM_API_KEY}
+      SPRING_AI_OPENAI_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL: ${LLM_MODEL:-deepseek-chat}
+
+      # ---- Embedding ----
+      # 三态模式（AUTO / OLLAMA / DOUBAO）与豆包 Key 由【设置页】控制，持久化在
+      # backenddata 卷的 embedding-config.json 中，此处只提供两条通路的目标地址。
+      # 默认 AUTO：优先 Ollama；未启用 local-embedding profile 或模型未拉取时，
+      # 会自动降级到豆包（需在设置页填 Key，或让 DOUBAO_EMBEDDING_API_KEY 回退到 LLM Key）。
+      # Ollama 服务名固定为 ollama，与下面 profile 的服务名一致。
+      APP_EMBEDDING_OLLAMA_ENDPOINT: http://ollama:11434/api/embed
+      APP_EMBEDDING_OLLAMA_MODEL: ${OLLAMA_EMBED_MODEL:-bge-m3}
+      APP_EMBEDDING_DOUBAO_ENDPOINT: ${DOUBAO_EMBEDDING_ENDPOINT:-https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal}
+      APP_EMBEDDING_DOUBAO_MODEL: ${DOUBAO_EMBEDDING_MODEL:-doubao-embedding-vision-251215}
+      APP_EMBEDDING_DOUBAO_API_KEY: ${DOUBAO_EMBEDDING_API_KEY:-}
+
+      # ---- 可选能力：留空即该功能不可用，不影响启动 ----
+      TENCENT_MAP_API_KEY: ${TENCENT_MAP_API_KEY:-}
+      DIDI_MCP_KEY: ${DIDI_MCP_KEY:-}
+      DIDI_MCP_SANDBOX: ${DIDI_MCP_SANDBOX:-true}
+
+      # 容器内无法执行宿主机命令，本地文件/浏览器等能力由 Electron 端提供
+      BROWSER_AUTOMATION_ENABLED: "false"
+
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx${BACKEND_MAX_HEAP:-768m}"
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      # 运行时可写配置（LLM 动态配置、技能内容）持久化
+      - backenddata:/app
+    extra_hosts:
+      # 便于容器内访问宿主机（例如宿主机上的自建 MCP 服务）
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # temurin JRE 镜像不含 curl，这里只做「端口可连接」的最小探测。
+      # 完整的业务校验（含 Embedding 连通性）由 scripts\check.bat 在宿主机执行。
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+      # 若基础镜像无 bash 导致该探测恒失败，改成 test: ["CMD", "true"] 即可
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama:
+  backenddata:

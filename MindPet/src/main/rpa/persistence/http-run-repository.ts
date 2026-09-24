@@ -19,10 +19,13 @@ import type {
   UpdateRpaRunStatusInput
 } from './run-repository'
 
-const BACKEND = 'http://127.0.0.1:8080/api/desktop/rpa'
+import { backendUrl } from '../../backend-endpoint'
+
+/** RPA 运行记录接口路径（地址在每次请求时解析，支持运行中切换后端） */
+const RPA_BACKEND_PATH = '/api/desktop/rpa'
 
 async function post(path: string, body: unknown): Promise<any> {
-  const res = await fetch(`${BACKEND}${path}`, {
+  const res = await fetch(backendUrl(`${RPA_BACKEND_PATH}${path}`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -31,12 +34,12 @@ async function post(path: string, body: unknown): Promise<any> {
 }
 
 async function get(path: string): Promise<any> {
-  const res = await fetch(`${BACKEND}${path}`)
+  const res = await fetch(backendUrl(`${RPA_BACKEND_PATH}${path}`))
   return res.json()
 }
 
 async function put(path: string, body: unknown): Promise<any> {
-  const res = await fetch(`${BACKEND}${path}`, {
+  const res = await fetch(backendUrl(`${RPA_BACKEND_PATH}${path}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)

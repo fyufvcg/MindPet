@@ -13,6 +13,7 @@ import http from 'http'
 import { toolRegistry } from '../core/tool-registry'
 import { unifiedToolExecutor } from '../core/tool-executor'
 import type { ToolContext, ToolApi } from '../core/types'
+import { backendBaseUrl } from '../../backend-endpoint'
 
 export const MCP_SERVER_PORT = 9339
 export const MCP_SERVER_ID = 'desktop-tools'
@@ -39,7 +40,7 @@ interface JsonRpcResponse {
 function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:8080',
+    'Access-Control-Allow-Origin': backendBaseUrl(),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
   })

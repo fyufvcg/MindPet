@@ -38,6 +38,7 @@ import { sshManager } from './tools/builtin/terminal/ssh-manager'
 import { ModelRuntimeFactory } from './model-runtime'
 import { localMeetingRuntime } from './local-meeting-runtime'
 import { callJavaBackend, startDesktopNotificationPolling } from './backend-api'
+import { backendBaseUrl, backendUrl, DEFAULT_BACKEND_BASE_URL, endpointFilePath, setBackendBaseUrl, probeBackend } from './backend-endpoint'
 
 
 
@@ -132,6 +133,11 @@ import {
   saveSecureSystemLlmConfig
 } from './security/secure-llm-config'
 import { DEFAULT_LLM_CONFIG, type RuntimeLlmConfig } from './security/llm-config-store'
+import {
+  loadSecureEmbeddingConfig,
+  sanitizeEmbeddingConfig,
+  saveSecureEmbeddingConfig
+} from './security/secure-embedding-config'
 import {
   clearPaddleOcrToken,
   hasPaddleOcrToken,
@@ -1034,12 +1040,50 @@ app.whenReady().then(() => {
   const merged = { servers: [...filtered, desktopMcpConfig] }
   systemMcpConfig = mcpManager.saveSystemMcpConfig(merged)
   // 同步到 Java 后端（后端可能尚未启动，失败时静默忽略；mcp-manager 已保护 desktop-tools 不被覆盖）
-  fetch('http://127.0.0.1:8080/api/desktop/mcp-config', {
+  fetch(backendUrl('/api/desktop/mcp-config'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(systemMcpConfig),
   }).then(() => console.log('[MCP] ✅ Desktop 工具配置已同步到后端'))
     .catch(() => console.warn('[MCP] ⏳ 后端未就绪，前端 MCP 同步时会补推'))
+
+  // ==================== Embedding 配置：启动同步（带重试）====================
+  // 后端可能在 Electron 之后才起来（Docker 部署尤其常见），一次性 fetch 会必然失败，
+  // 因此这里做有限重试；渲染进程获取状态时也会兜底再同步一次。
+  const syncEmbeddingConfigToBackend = async (): Promise<boolean> => {
+    let cfg
+    try {
+      cfg = loadSecureEmbeddingConfig()
+    } catch (e) {
+      console.warn('[Embedding] 读取本地配置失败:', e)
+      return false
+    }
+    try {
+      const res = await fetch(backendUrl('/api/desktop/embedding-config'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: cfg.mode,
+          apiKey: cfg.apiKey,
+          endpoint: cfg.endpoint,
+          model: cfg.model
+        })
+      })
+      if (!res.ok) return false
+      console.log('[Embedding] ✅ 配置已同步到后端，mode=' + cfg.mode)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  void (async () => {
+    for (let attempt = 1; attempt <= 12; attempt++) {
+      if (await syncEmbeddingConfigToBackend()) return
+      if (attempt < 12) await new Promise((r) => setTimeout(r, 5000))
+    }
+    console.warn('[Embedding] ⏳ 后端长时间未就绪，配置未同步；打开设置页时会重试')
+  })()
 
   // Set app user model id for windows
   electronApp.setAppUserModelId(windowsAppUserModelId)
@@ -2885,13 +2929,13 @@ app.whenReady().then(() => {
 
   const loadSessionsFromRedis = async (): Promise<any[]> => {
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/desktop/sessions?userId=desktop-user')
+      const res = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user')
       if (!res.ok) return []
       const data = await res.json() as any
       const sessions = (data.sessions || []) as any[]
       const result: any[] = []
       for (const s of sessions) {
-        const msgsRes = await fetch(`http://127.0.0.1:8080/api/desktop/sessions/${encodeURIComponent(s.id)}/messages?userId=desktop-user&limit=50`)
+        const msgsRes = await fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(s.id)}/messages?userId=desktop-user&limit=50`)
         const msgsData = msgsRes.ok ? await msgsRes.json() as any : { messages: [] }
         result.push({
           id: s.id, name: s.name || '(未命名)',
@@ -2945,7 +2989,7 @@ app.whenReady().then(() => {
         (session.pinned || isRemote) ? 1 : 0, session.userId || 'system', createdAt)
       }
       // 同步到后端 Redis
-      fetch('http://127.0.0.1:8080/api/desktop/sessions?userId=desktop-user', {
+      fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2992,7 +3036,7 @@ app.whenReady().then(() => {
       await database.run(sql, ...values)
       }
       // 同步到后端 Redis
-      const backendResponse = await fetch('http://127.0.0.1:8080/api/desktop/sessions?userId=desktop-user', {
+      const backendResponse = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: sessionId, ...updates })
@@ -3066,7 +3110,7 @@ app.whenReady().then(() => {
       const database = await getDB()
       await database.run('DELETE FROM sessions WHERE id = ?', sessionId)
       // 同步删除后端 Redis 会话
-      fetch(`http://127.0.0.1:8080/api/desktop/sessions/${encodeURIComponent(sessionId)}?userId=desktop-user`, { method: 'DELETE' }).catch(() => {})
+      fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(sessionId)}?userId=desktop-user`, { method: 'DELETE' }).catch(() => {})
 
       // 如果删除的是微信会话，同步从微信活跃好友列表中清除该记录
       if (sessionId.startsWith('wechat:') && wechatBotManager) {
@@ -3203,7 +3247,7 @@ app.whenReady().then(() => {
       await database.run('COMMIT')
       await Promise.all([...summarizedBySession].map(async ([sessionId, summarizedMessages]) => {
         const response = await fetch(
-          `http://127.0.0.1:8080/api/desktop/sessions/${encodeURIComponent(sessionId)}/messages/summarized?userId=desktop-user`,
+          `${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(sessionId)}/messages/summarized?userId=desktop-user`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3246,8 +3290,8 @@ app.whenReady().then(() => {
   })
 
   // ===== 记忆 API → Java 后端 =====
-  const BACKEND = 'http://127.0.0.1:8080/api/desktop/memory'
-  const KNOWLEDGE_GRAPH_BACKEND = 'http://127.0.0.1:8080/api/desktop/knowledge-graph'
+  const BACKEND = backendUrl('/api/desktop/memory')
+  const KNOWLEDGE_GRAPH_BACKEND = backendUrl('/api/desktop/knowledge-graph')
 
   ipcMain.handle('api:get-knowledge-graph', async (_, query?: string, limit?: number) => {
     try {
@@ -3610,7 +3654,7 @@ app.whenReady().then(() => {
 
       // 自动同步到后端
       if (Object.keys(skillMap).length > 0) {
-        fetch('http://127.0.0.1:8080/api/desktop/skills', {
+        fetch(backendUrl('/api/desktop/skills'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(skillMap)
@@ -3627,7 +3671,7 @@ app.whenReady().then(() => {
   // 获取工具目录（从后端拉取，含 Java + MCP 工具）
   ipcMain.handle('api:get-tool-catalog', async () => {
     try {
-      const resp = await fetch('http://127.0.0.1:8080/api/desktop/tools/catalog')
+      const resp = await fetch(backendUrl('/api/desktop/tools/catalog'))
       if (!resp.ok) throw new Error('HTTP ' + resp.status)
       const data = await resp.json()
       return data
@@ -3640,7 +3684,7 @@ app.whenReady().then(() => {
   // 调用后端 LLM 生成 SKILL.md
   ipcMain.handle('api:generate-skill', async (_, skillName: string, description: string) => {
     try {
-      const resp = await fetch('http://127.0.0.1:8080/api/desktop/skills/generate', {
+      const resp = await fetch(backendUrl('/api/desktop/skills/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skillName, description })
@@ -4235,11 +4279,33 @@ app.whenReady().then(() => {
     return callLlmInternal(config, messages, workspacePath, event)
   })
 
+  // ==================== 后端地址（本地部署 / 云端部署切换）====================
+  // 读取当前生效地址与来源，设置页用于展示
+  ipcMain.handle('api:get-backend-endpoint', () => {
+    return {
+      url: backendBaseUrl(),
+      defaultUrl: DEFAULT_BACKEND_BASE_URL,
+      file: endpointFilePath()
+    }
+  })
+
+  // 连通性测试：不落盘、只探测，返回真实耗时与后端标识
+  ipcMain.handle('api:test-backend-endpoint', async (_, url: string) => {
+    return probeBackend(url, 6000)
+  })
+
+  // 保存地址：写入 server.json 并立即生效（传空 = 恢复默认本机地址）
+  ipcMain.handle('api:set-backend-endpoint', async (_, url: string) => {
+    const saved = setBackendBaseUrl(url || '')
+    const probe = await probeBackend(saved.url, 6000)
+    return { ...saved, probe }
+  })
+
   // LLM 连通性测试 — 走后端轻量接口，如实返回上游状态码（429/503...），不降级成"累"话术
   ipcMain.handle('api:test-llm', async (_, config) => {
     const startedAt = Date.now()
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/desktop/llm-test', {
+      const res = await fetch(backendUrl('/api/desktop/llm-test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4255,7 +4321,7 @@ app.whenReady().then(() => {
       return {
         ok: false,
         unreachable: true,
-        message: `无法连接后端服务 (127.0.0.1:8080): ${e?.message || e}`,
+        message: `无法连接后端服务 (${backendBaseUrl()}): ${e?.message || e}`,
         elapsedMs: Date.now() - startedAt
       }
     }
@@ -4303,6 +4369,67 @@ app.whenReady().then(() => {
   ipcMain.handle('api:qq-forget-credentials', () => qqBotManager?.forgetCredentials() ?? false)
   ipcMain.handle('api:qq-get-status', () => qqBotManager?.getState() ?? null)
 
+  // ==================== Embedding 配置（三态 + 豆包 Key）====================
+  // Key 走与系统 LLM Key 相同的加密通道；主进程解密后随配置同步给后端。
+  ipcMain.handle('api:get-embedding-config', () => {
+    return sanitizeEmbeddingConfig(loadSecureEmbeddingConfig())
+  })
+
+  ipcMain.handle('api:sync-embedding-config', async (_, input) => {
+    const saved = saveSecureEmbeddingConfig(input || {})
+    // 后端未启动时静默忽略，与 MCP / Skills 同步保持一致的行为
+    let backendResult: any = null
+    try {
+      const res = await fetch(backendUrl('/api/desktop/embedding-config'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: saved.mode,
+          apiKey: saved.apiKey, // 仅主进程→后端，绝不进渲染进程
+          endpoint: saved.endpoint,
+          model: saved.model,
+          clearApiKey: (input as any)?.clearApiKey === true
+        })
+      })
+      backendResult = await res.json()
+    } catch {
+      backendResult = { status: 'error', message: '后端未启动，配置已保存，将在下次同步时生效' }
+    }
+    return { config: sanitizeEmbeddingConfig(saved), backend: backendResult }
+  })
+
+  // 后端 embedding 运行时状态（当前 provider / 降级原因 / 修复提示）
+  ipcMain.handle('api:get-embedding-status', async () => {
+    try {
+      const res = await fetch(backendUrl('/api/desktop/embedding-status'))
+      return await res.json()
+    } catch (e: any) {
+      return {
+        status: 'error',
+        unreachable: true,
+        message: `无法连接后端服务 (${backendBaseUrl()}): ${e?.message || e}`
+      }
+    }
+  })
+
+  // 重新探测 Ollama 并决策 provider
+  ipcMain.handle('api:refresh-embedding', async () => {
+    try {
+      const res = await fetch(backendUrl('/api/desktop/embedding-refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      })
+      return await res.json()
+    } catch (e: any) {
+      return {
+        status: 'error',
+        unreachable: true,
+        message: `无法连接后端服务 (${backendBaseUrl()}): ${e?.message || e}`
+      }
+    }
+  })
+
   ipcMain.handle('api:get-system-llm-config', () => {
     return sanitizeSystemLlmConfig(systemLlmConfig)
   })
@@ -4330,7 +4457,7 @@ app.whenReady().then(() => {
 
     // 同步到 Java 后端
     try {
-      await fetch('http://127.0.0.1:8080/api/desktop/llm-config', {
+      await fetch(backendUrl('/api/desktop/llm-config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4350,7 +4477,7 @@ app.whenReady().then(() => {
   // 技能同步到后端
   ipcMain.handle('api:sync-skills', async (_, skills: Record<string, string>) => {
     try {
-      const res = await fetch('http://127.0.0.1:8080/api/desktop/skills', {
+      const res = await fetch(backendUrl('/api/desktop/skills'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(skills)
@@ -4364,7 +4491,7 @@ app.whenReady().then(() => {
     const sanitized = mcpManager.getSanitizedSystemMcpConfig()
 
     // 同步到 Java 后端（发原始配置，含 apiKey）
-    fetch('http://127.0.0.1:8080/api/desktop/mcp-config', {
+    fetch(backendUrl('/api/desktop/mcp-config'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(systemMcpConfig)
@@ -4522,7 +4649,7 @@ app.whenReady().then(() => {
       )
     },
     ensureSession: async (sessionId, name) => {
-      const response = await fetch('http://127.0.0.1:8080/api/desktop/sessions?userId=desktop-user', {
+      const response = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: sessionId, name, pinned: true })

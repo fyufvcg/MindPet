@@ -1,0 +1,30 @@
+# 默认自动检测文本文件
+* text=auto
+
+# Windows 脚本必须保持 CRLF，否则 cmd.exe 解析异常
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 容器内 / Linux 侧脚本与配置必须 LF
+# （Dockerfile 若含 CRLF，构建时会出现 "no such file or directory" 一类诡异错误）
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf
+
+# 二进制文件不要做行尾转换
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.zip binary
+*.docx binary
+*.xlsx binary
+*.pdf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary

@@ -57,6 +57,38 @@ const api = {
   getActiveSkillsPrompt: (enabledSkillNames: string[]): Promise<string> =>
     ipcRenderer.invoke('api:get-active-skills-prompt', enabledSkillNames),
   getToolCatalog: (): Promise<any> => ipcRenderer.invoke('api:get-tool-catalog'),
+
+  // ---- Embedding 配置（AUTO / OLLAMA / DOUBAO 三态 + 豆包 Key）----
+  getEmbeddingConfig: (): Promise<{
+    mode: 'AUTO' | 'OLLAMA' | 'DOUBAO'
+    apiKey: string
+    endpoint: string
+    model: string
+    hasApiKey: boolean
+  }> => ipcRenderer.invoke('api:get-embedding-config'),
+  syncEmbeddingConfig: (input: Record<string, unknown>): Promise<{
+    config: {
+      mode: 'AUTO' | 'OLLAMA' | 'DOUBAO'
+      apiKey: string
+      endpoint: string
+      model: string
+      hasApiKey: boolean
+    }
+    backend: any
+  }> => ipcRenderer.invoke('api:sync-embedding-config', input),
+  getEmbeddingStatus: (): Promise<{
+    status?: string
+    mode?: string
+    activeProvider?: string | null
+    activeProviderDescription?: string | null
+    reason?: string
+    hint?: string
+    unreachable?: boolean
+    message?: string
+    ollama?: { endpoint: string; model: string; reachable: boolean; modelPresent: boolean; detail?: string }
+    doubao?: { endpoint: string; model: string; configured: boolean }
+  }> => ipcRenderer.invoke('api:get-embedding-status'),
+  refreshEmbedding: (): Promise<any> => ipcRenderer.invoke('api:refresh-embedding'),
   generateSkill: (skillName: string, description: string): Promise<any> =>
     ipcRenderer.invoke('api:generate-skill', skillName, description),
   saveGeneratedSkill: (name: string, content: string): Promise<any[]> =>
@@ -184,6 +216,13 @@ const api = {
   },
   setStoragePath: (pathStr: string): Promise<string> => ipcRenderer.invoke('api:set-storage-path', pathStr),
   getStoragePath: (): Promise<string> => ipcRenderer.invoke('api:get-storage-path'),
+  // ── 后端地址（本地部署 / 云端部署切换）──
+  getBackendEndpoint: (): Promise<{ url: string; defaultUrl: string; file: string }> =>
+    ipcRenderer.invoke('api:get-backend-endpoint'),
+  testBackendEndpoint: (url: string): Promise<any> =>
+    ipcRenderer.invoke('api:test-backend-endpoint', url),
+  setBackendEndpoint: (url: string): Promise<{ url: string; file: string; probe: any }> =>
+    ipcRenderer.invoke('api:set-backend-endpoint', url),
   getToolCacheStats: (): Promise<{ fileCount: number; totalBytes: number }> => ipcRenderer.invoke('api:get-tool-cache-stats'),
   clearToolCache: (): Promise<{ success: boolean; deletedDirectories: number }> => ipcRenderer.invoke('api:clear-tool-cache'),
   selectDirectory: (options?: { title?: string }): Promise<string | null> =>

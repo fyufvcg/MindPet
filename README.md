@@ -175,6 +175,51 @@ MindPet 不是封闭系统。通过 MCP 协议和 Skill 规约，**任何人都�
 
 ## 🚀 快速开始
 
+### 方式一：Docker 一键部署（推荐）
+
+只依赖 **Docker Desktop**，无需安装 JDK / Node / PostgreSQL / Redis / Ollama。
+
+```powershell
+# 1. 配置环境变量（填入 LLM API Key 与数据库密码）
+copy docker\.env.example docker\.env
+
+# 2. 启动基础设施（PostgreSQL + pgvector、Redis、后端）
+docker compose -f docker\compose.yaml up -d
+
+# 3. 校验部署（含 Embedding 连通性断言）
+scripts\check.bat
+```
+
+> 已构建好的 jar 随发布包提供，**不需要 Maven**。
+> 若要自行构建：`scripts\build-backend.bat`
+
+**两种 Embedding 模式**（同一份代码，靠 profile 切换）：
+
+| 模式 | 命令 | 说明 |
+|---|---|---|
+| **云端模式**（默认） | `docker compose -f docker\compose.yaml up -d` | 走豆包 Embedding API，不启 Ollama，服务器内存需求更低 |
+| **本地隐私模式** | `scripts\start.bat local` | 额外启动 Ollama + bge-m3，数据完全不出本机 |
+
+本地隐私模式首次需拉取模型（约 1.1GB，一次性）：
+
+```powershell
+docker exec mindpet-ollama ollama pull bge-m3
+```
+
+**桌面客户端**在宿主机运行（GUI 应用，不进容器），会自动连接 `http://localhost:8080`。
+
+停止 / 清空数据：
+
+```powershell
+scripts\stop.bat            # 停止，保留数据
+scripts\stop.bat --purge    # 停止并删除所有数据卷（不可恢复）
+```
+
+### 方式二：源码手动部署（开发者）
+
+<details>
+<summary>展开：需要 JDK 21 + Maven + Node 20 + 本机 PostgreSQL/Redis</summary>
+
 ### 前置依赖
 
 | 依赖 | 版本要求 | 说明 |
@@ -268,6 +313,8 @@ cd MindPet-java
 java -jar target/weather-wechat-bot-1.0.0.jar --mode=bot
 ```
 
+</details>
+
 ---
 
 ## 📁 项目结构
@@ -296,9 +343,23 @@ MINDPET/
 │   │   ├── tool/             # LLM 工具实现
 │   │   └── controller/       # REST API
 │   └── pom.xml
-├── start_bot.bat             # Windows 一键启动脚本
+├── docker/                   # 一键部署
+│   ├── compose.yaml          # PostgreSQL + pgvector / Redis / 后端 / Ollama
+│   ├── .env.example          # 环境变量模板（复制为 .env 后填密钥）
+│   ├── init/01-schema.sql    # 首次启动自动建表
+│   └── backend/Dockerfile
+├── scripts/
+│   ├── build-backend.bat     # 构建 jar 到 Docker 构建上下文
+│   ├── start.bat             # 启动（支持 start.bat local 启用 Ollama）
+│   ├── check.bat             # 部署校验（含 Embedding 连通性断言）
+│   └── stop.bat              # 停止（--purge 清空数据）
+├── start_bot.bat             # 源码模式：后端 + 微信 Bot 一键启动
 └── README.md
 ```
+
+> ⚠️ **部署时必须验证 Embedding**：后端在 Embedding 不可达时会**静默降级**——
+> `/api/desktop/health` 与聊天均正常，但长期记忆完全不工作。
+> 因此请务必运行 `scripts\check.bat`，或手动调用 `POST /api/desktop/embedding-test`。
 
 ---
 

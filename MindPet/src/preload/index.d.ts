@@ -33,6 +33,36 @@ declare global {
       deleteSkill: (name: string) => Promise<any[]>
       getActiveSkillsPrompt: (enabledSkillNames: string[]) => Promise<string>
       getToolCatalog: () => Promise<any>
+      getEmbeddingConfig: () => Promise<{
+        mode: 'AUTO' | 'OLLAMA' | 'DOUBAO'
+        apiKey: string
+        endpoint: string
+        model: string
+        hasApiKey: boolean
+      }>
+      syncEmbeddingConfig: (input: Record<string, unknown>) => Promise<{
+        config: {
+          mode: 'AUTO' | 'OLLAMA' | 'DOUBAO'
+          apiKey: string
+          endpoint: string
+          model: string
+          hasApiKey: boolean
+        }
+        backend: any
+      }>
+      getEmbeddingStatus: () => Promise<{
+        status?: string
+        mode?: string
+        activeProvider?: string | null
+        activeProviderDescription?: string | null
+        reason?: string
+        hint?: string
+        unreachable?: boolean
+        message?: string
+        ollama?: { endpoint: string; model: string; reachable: boolean; modelPresent: boolean; detail?: string }
+        doubao?: { endpoint: string; model: string; configured: boolean }
+      }>
+      refreshEmbedding: () => Promise<any>
       generateSkill: (skillName: string, description: string) => Promise<any>
       saveGeneratedSkill: (name: string, content: string) => Promise<any[]>
       callLLM: (config: any, messages: any[], workspacePath?: string) => Promise<string>
@@ -104,6 +134,32 @@ declare global {
       onTokenUsage: (callback: (data: any) => void) => () => void
       setStoragePath: (pathStr: string) => Promise<string>
       getStoragePath: () => Promise<string>
+      /** 后端地址：本地部署默认 http://127.0.0.1:8080，云端部署由用户填写 */
+      getBackendEndpoint: () => Promise<{ url: string; defaultUrl: string; file: string }>
+      testBackendEndpoint: (url: string) => Promise<{
+        ok: boolean
+        url: string
+        httpStatus?: number
+        elapsedMs: number
+        service?: string
+        version?: string
+        detail?: string
+        error?: string
+      }>
+      setBackendEndpoint: (url: string) => Promise<{
+        url: string
+        file: string
+        probe: {
+          ok: boolean
+          url: string
+          httpStatus?: number
+          elapsedMs: number
+          service?: string
+          version?: string
+          detail?: string
+          error?: string
+        }
+      }>
       getToolCacheStats: () => Promise<{ fileCount: number; totalBytes: number }>
       clearToolCache: () => Promise<{ success: boolean; deletedDirectories: number }>
       selectDirectory: (options?: { title?: string }) => Promise<string | null>
