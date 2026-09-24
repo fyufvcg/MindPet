@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import service.PgVectorMemoryService;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,7 +33,10 @@ class EvalMemoryControllerTest {
     private PgVectorMemoryService service;
     private MockMvc mvc;
     private String token;
-    private static final String BODY = "{\"query\":\"我喜欢什么运动？\",\"mode\":\"rrf\",\"topK\":10,\"userId\":\"eval_test_user\"}";
+    private static final String AS_OF_TEXT = "2026-09-21T08:38:06.750458";
+    private static final LocalDateTime AS_OF = LocalDateTime.parse(AS_OF_TEXT);
+    private static final String BODY = "{\"query\":\"我喜欢什么运动？\",\"mode\":\"rrf\",\"topK\":10,"
+        + "\"userId\":\"eval_test_user\",\"asOf\":\"" + AS_OF_TEXT + "\"}";
 
     @BeforeEach
     void setUp() {
@@ -48,11 +52,13 @@ class EvalMemoryControllerTest {
 
     @Test
     void validRequestInvokesOnlyEvaluationAndEmptyResultsAreOk() throws Exception {
-        when(service.searchForEvaluation("eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, 10))
+        when(service.searchForEvaluation(
+            "eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, 10, AS_OF))
             .thenReturn(new RetrievalDebugResult("OK", "rrf", 10, List.of()));
         mvc.perform(request(BODY)).andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("OK")).andExpect(jsonPath("$.results").isEmpty());
-        verify(service).searchForEvaluation("eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, 10);
+        verify(service).searchForEvaluation(
+            "eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, 10, AS_OF);
         verifyNoMoreInteractions(service);
     }
 
@@ -100,10 +106,12 @@ class EvalMemoryControllerTest {
     @ParameterizedTest
     @ValueSource(ints = {1, 3, 5, 10})
     void acceptsOnlyDocumentedTopK(int k) throws Exception {
-        when(service.searchForEvaluation(anyString(), anyString(), eq(RetrievalMode.RRF), eq(k)))
+        when(service.searchForEvaluation(
+            anyString(), anyString(), eq(RetrievalMode.RRF), eq(k), eq(AS_OF)))
             .thenReturn(new RetrievalDebugResult("OK", "rrf", k, List.of()));
         mvc.perform(request(BODY.replace("\"topK\":10", "\"topK\":" + k))).andExpect(status().isOk());
-        verify(service).searchForEvaluation("eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, k);
+        verify(service).searchForEvaluation(
+            "eval_test_user", "我喜欢什么运动？", RetrievalMode.RRF, k, AS_OF);
     }
 
     @ParameterizedTest
@@ -112,10 +120,10 @@ class EvalMemoryControllerTest {
         "mindpet_rrf_norm_importance_bonus"})
     void acceptsExactWireModes(String wire) throws Exception {
         RetrievalMode mode = RetrievalMode.fromWireName(wire);
-        when(service.searchForEvaluation(anyString(), anyString(), eq(mode), eq(10)))
+        when(service.searchForEvaluation(anyString(), anyString(), eq(mode), eq(10), eq(AS_OF)))
             .thenReturn(new RetrievalDebugResult("OK", wire, 10, List.of()));
         mvc.perform(request(BODY.replace("\"rrf\"", "\"" + wire + "\""))).andExpect(status().isOk());
-        verify(service).searchForEvaluation("eval_test_user", "我喜欢什么运动？", mode, 10);
+        verify(service).searchForEvaluation("eval_test_user", "我喜欢什么运动？", mode, 10, AS_OF);
     }
 
     @Test
@@ -130,20 +138,32 @@ class EvalMemoryControllerTest {
         verifyNoInteractions(service);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "not-a-time", "2026-09-21", "2026-09-21T08:38:06Z",
+        "2026-09-21T08:38:06+08:00"})
+    void rejectsMissingInvalidOrZonedAsOf(String asOf) throws Exception {
+        String body = asOf.isEmpty()
+            ? BODY.replace(",\"asOf\":\"" + AS_OF_TEXT + "\"", "")
+            : BODY.replace(AS_OF_TEXT, asOf);
+        mvc.perform(request(body)).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value("FAILED"));
+        verifyNoInteractions(service);
+    }
+
     @Test
     void sqlAndEmbeddingFailuresAreHttpErrorsNotEmptySuccess() throws Exception {
-        when(service.searchForEvaluation(anyString(), anyString(), any(), anyInt()))
+        when(service.searchForEvaluation(anyString(), anyString(), any(), anyInt(), any()))
             .thenThrow(new PgVectorMemoryService.EvaluationFailure("SQL_FAILED", "PostgreSQL/pgvector retrieval failed", null));
         mvc.perform(request(BODY)).andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.status").value("FAILED")).andExpect(jsonPath("$.code").value("SQL_FAILED"));
         for (String code : List.of("EMBEDDING_FAILED", "INVALID_EMBEDDING")) {
             doThrow(new PgVectorMemoryService.EvaluationFailure(code, "Query embedding failed", null))
-                .when(service).searchForEvaluation(anyString(), anyString(), any(), anyInt());
+                .when(service).searchForEvaluation(anyString(), anyString(), any(), anyInt(), any());
             mvc.perform(request(BODY)).andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.status").value("FAILED")).andExpect(jsonPath("$.code").value(code));
         }
         doThrow(new IllegalStateException("sensitive SQL details"))
-            .when(service).searchForEvaluation(anyString(), anyString(), any(), anyInt());
+            .when(service).searchForEvaluation(anyString(), anyString(), any(), anyInt(), any());
         mvc.perform(request(BODY)).andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.message").value("Evaluation retrieval failed"));
     }
@@ -185,7 +205,7 @@ class EvalMemoryControllerTest {
 
     @Test
     void controllerIsRegisteredOnlyWhenEnabledAndResolvesEnvironmentToken() {
-        when(service.searchForEvaluation(anyString(), anyString(), any(), anyInt()))
+        when(service.searchForEvaluation(anyString(), anyString(), any(), anyInt(), any()))
             .thenReturn(new RetrievalDebugResult("OK", "rrf", 10, List.of()));
         new WebApplicationContextRunner().withUserConfiguration(MvcConfiguration.class)
             .withBean(PgVectorMemoryService.class, () -> service)

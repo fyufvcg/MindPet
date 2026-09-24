@@ -1,0 +1,72 @@
+{
+  "clock_mode": "fixed",
+  "evaluation_as_of": "2026-09-21T08:38:06.750458",
+  "queries": [
+    "q001",
+    "q010",
+    "q020",
+    "q030",
+    "q036"
+  ],
+  "modes": [
+    "rrf",
+    "mindpet_full_rrf_norm"
+  ],
+  "requests_per_run": 10,
+  "total_requests": 20,
+  "ranking_matches": 10,
+  "numeric_matches": 10,
+  "comparisons": [
+    {
+      "query_mode": "q001/rrf",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q001/mindpet_full_rrf_norm",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q010/rrf",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q010/mindpet_full_rrf_norm",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q020/rrf",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q020/mindpet_full_rrf_norm",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q030/rrf",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q030/mindpet_full_rrf_norm",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q036/rrf",
+      "ranking_equal": true,
+      "numeric_equal": true
+    },
+    {
+      "query_mode": "q036/mindpet_full_rrf_norm",
+      "ranking_equal": true,
+      "numeric_equal": true
+    }
+  ],
+  "passed": true
+}

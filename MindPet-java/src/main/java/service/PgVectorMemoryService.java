@@ -177,17 +177,20 @@ public class PgVectorMemoryService {
 
     /** Isolated SELECT-only path. Production search signatures and side effects are unchanged. */
     @Transactional(readOnly = true)
-    public RetrievalDebugResult searchForEvaluation(String userId, String query, RetrievalMode mode, int topK) {
+    public RetrievalDebugResult searchForEvaluation(
+        String userId, String query, RetrievalMode mode, int topK, LocalDateTime evaluationAsOf
+    ) {
         if (!"eval_test_user".equals(userId)) throw new SecurityException("Only eval_test_user is allowed");
-        if (query == null || query.isBlank() || mode == null || !Set.of(1, 3, 5, 10).contains(topK)) {
+        if (query == null || query.isBlank() || mode == null || evaluationAsOf == null
+            || !Set.of(1, 3, 5, 10).contains(topK)) {
             throw new IllegalArgumentException("Invalid evaluation search parameters");
         }
         float[] vec = mode == RetrievalMode.KEYWORD_ONLY ? null : evaluationEmbedding(query);
         try {
             List<MemoryResult> semantic = mode == RetrievalMode.KEYWORD_ONLY
-                ? List.of() : semanticSearchStrict(userId, vec, 20);
+                ? List.of() : semanticSearchForEvaluation(userId, vec, 20, evaluationAsOf);
             List<MemoryResult> keyword = mode == RetrievalMode.VECTOR_ONLY
-                ? List.of() : keywordSearchStrict(userId, query, 20);
+                ? List.of() : keywordSearchForEvaluation(userId, query, 20, evaluationAsOf);
             Map<String, Double> rrf = mode == RetrievalMode.RRF || mode == RetrievalMode.FULL
                 || isNormalizedEvaluationMode(mode)
                 ? mergeRrf(semantic, keyword) : null;
@@ -200,12 +203,13 @@ public class PgVectorMemoryService {
                 case RRF -> mergeCandidates(semantic, keyword).values().stream()
                     .sorted((a, b) -> Double.compare(rrf.get(contentId(b)), rrf.get(contentId(a))))
                     .limit(topK).toList();
-                case FULL -> rankFullCandidates(semantic, keyword, rrf, topK, observedScores);
+                case FULL -> rankFullCandidatesForEvaluation(
+                    semantic, keyword, rrf, topK, evaluationAsOf, observedScores);
                 case FULL_RRF_NORM -> rankFullRrfNormalizedCandidates(
-                    semantic, keyword, rrf, topK, observedNormalizedScores);
+                    semantic, keyword, rrf, topK, evaluationAsOf, observedNormalizedScores);
                 case RRF_NORM_ONLY, RRF_NORM_TIME, RRF_NORM_IMPORTANCE,
                      RRF_NORM_IMPORTANCE_BONUS -> rankMetadataAblationCandidates(
-                    semantic, keyword, rrf, topK, mode, observedAblationScores);
+                    semantic, keyword, rrf, topK, mode, evaluationAsOf, observedAblationScores);
             };
             Map<String, Integer> vectorRanks = ranks(semantic);
             Map<String, Integer> keywordRanks = ranks(keyword);
@@ -215,14 +219,16 @@ public class PgVectorMemoryService {
                 Integer keywordRank = keywordRanks.get(id);
                 Double keywordScore = keywordRank == null ? null : matchScore(r.content(), query);
                 RerankComponents score = mode == RetrievalMode.FULL
-                    ? observedScores.computeIfAbsent(id, ignored -> calculateRerankComponents(r, rrf.get(id)))
+                    ? observedScores.computeIfAbsent(id, ignored ->
+                        calculateEvaluationRerankComponents(r, rrf.get(id), evaluationAsOf))
                     : null;
                 NormalizedRerankComponents normalizedScore = mode == RetrievalMode.FULL_RRF_NORM
                     ? observedNormalizedScores.computeIfAbsent(id,
-                        ignored -> calculateNormalizedRerankComponents(r, rrf.get(id)))
+                        ignored -> calculateNormalizedRerankComponents(r, rrf.get(id), evaluationAsOf))
                     : isMetadataAblationMode(mode)
                     ? observedAblationScores.computeIfAbsent(id,
-                        ignored -> calculateMetadataAblationComponents(r, rrf.get(id), mode))
+                        ignored -> calculateMetadataAblationComponents(
+                            r, rrf.get(id), mode, evaluationAsOf))
                     : null;
                 Double finalScore = switch (mode) {
                     case KEYWORD_ONLY -> keywordScore;
@@ -331,25 +337,51 @@ public class PgVectorMemoryService {
         return components.finalScore();
     }
 
+    private List<MemoryResult> rankFullCandidatesForEvaluation(
+        List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
+        int topK, LocalDateTime evaluationAsOf, Map<String, RerankComponents> observedScores
+    ) {
+        return mergeCandidates(semantic, keyword).values().stream()
+            .sorted((a, b) -> {
+                double sa = observedEvaluationRerankScore(
+                    a, rrf.getOrDefault(contentId(a), 0.0), evaluationAsOf, observedScores);
+                double sb = observedEvaluationRerankScore(
+                    b, rrf.getOrDefault(contentId(b), 0.0), evaluationAsOf, observedScores);
+                return Double.compare(sb, sa);
+            }).limit(topK).toList();
+    }
+
+    private double observedEvaluationRerankScore(
+        MemoryResult r, double rrf, LocalDateTime evaluationAsOf,
+        Map<String, RerankComponents> observed
+    ) {
+        RerankComponents components = calculateEvaluationRerankComponents(r, rrf, evaluationAsOf);
+        observed.put(contentId(r), components);
+        return components.finalScore();
+    }
+
     /** Evaluation-only H1 ranking. Production and existing FULL ranking do not call this path. */
     private List<MemoryResult> rankFullRrfNormalizedCandidates(
         List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
-        int topK, Map<String, NormalizedRerankComponents> observedScores
+        int topK, LocalDateTime evaluationAsOf,
+        Map<String, NormalizedRerankComponents> observedScores
     ) {
         return mergeCandidates(semantic, keyword).values().stream()
             .sorted((a, b) -> {
                 double sa = observedNormalizedRerankScore(
-                    a, rrf.getOrDefault(contentId(a), 0.0), observedScores);
+                    a, rrf.getOrDefault(contentId(a), 0.0), evaluationAsOf, observedScores);
                 double sb = observedNormalizedRerankScore(
-                    b, rrf.getOrDefault(contentId(b), 0.0), observedScores);
+                    b, rrf.getOrDefault(contentId(b), 0.0), evaluationAsOf, observedScores);
                 return Double.compare(sb, sa);
             }).limit(topK).toList();
     }
 
     private double observedNormalizedRerankScore(
-        MemoryResult r, double rrf, Map<String, NormalizedRerankComponents> observed
+        MemoryResult r, double rrf, LocalDateTime evaluationAsOf,
+        Map<String, NormalizedRerankComponents> observed
     ) {
-        NormalizedRerankComponents components = calculateNormalizedRerankComponents(r, rrf);
+        NormalizedRerankComponents components = calculateNormalizedRerankComponents(
+            r, rrf, evaluationAsOf);
         observed.put(contentId(r), components);
         return components.finalScore();
     }
@@ -357,23 +389,25 @@ public class PgVectorMemoryService {
     /** Evaluation-only H2 ranking; candidate retrieval and existing modes remain unchanged. */
     private List<MemoryResult> rankMetadataAblationCandidates(
         List<MemoryResult> semantic, List<MemoryResult> keyword, Map<String, Double> rrf,
-        int topK, RetrievalMode mode, Map<String, NormalizedRerankComponents> observedScores
+        int topK, RetrievalMode mode, LocalDateTime evaluationAsOf,
+        Map<String, NormalizedRerankComponents> observedScores
     ) {
         return mergeCandidates(semantic, keyword).values().stream()
             .sorted((a, b) -> {
                 double sa = observedMetadataAblationScore(
-                    a, rrf.getOrDefault(contentId(a), 0.0), mode, observedScores);
+                    a, rrf.getOrDefault(contentId(a), 0.0), mode, evaluationAsOf, observedScores);
                 double sb = observedMetadataAblationScore(
-                    b, rrf.getOrDefault(contentId(b), 0.0), mode, observedScores);
+                    b, rrf.getOrDefault(contentId(b), 0.0), mode, evaluationAsOf, observedScores);
                 return Double.compare(sb, sa);
             }).limit(topK).toList();
     }
 
     private double observedMetadataAblationScore(
-        MemoryResult r, double rrf, RetrievalMode mode,
+        MemoryResult r, double rrf, RetrievalMode mode, LocalDateTime evaluationAsOf,
         Map<String, NormalizedRerankComponents> observed
     ) {
-        NormalizedRerankComponents components = calculateMetadataAblationComponents(r, rrf, mode);
+        NormalizedRerankComponents components = calculateMetadataAblationComponents(
+            r, rrf, mode, evaluationAsOf);
         observed.put(contentId(r), components);
         return components.finalScore();
     }
@@ -393,9 +427,9 @@ public class PgVectorMemoryService {
     }
 
     private NormalizedRerankComponents calculateNormalizedRerankComponents(
-        MemoryResult r, double rrfScore
+        MemoryResult r, double rrfScore, LocalDateTime evaluationAsOf
     ) {
-        RerankComponents base = calculateRerankComponents(r, rrfScore);
+        RerankComponents base = calculateEvaluationRerankComponents(r, rrfScore, evaluationAsOf);
         double rrfNormalized = normalizeRrfScore(rrfScore);
         double finalScore = rrfNormalized * 0.5 + base.timeScore() * 0.2
             + base.importanceContribution() + base.confidenceContribution()
@@ -404,9 +438,9 @@ public class PgVectorMemoryService {
     }
 
     private NormalizedRerankComponents calculateMetadataAblationComponents(
-        MemoryResult r, double rrfScore, RetrievalMode mode
+        MemoryResult r, double rrfScore, RetrievalMode mode, LocalDateTime evaluationAsOf
     ) {
-        RerankComponents base = calculateRerankComponents(r, rrfScore);
+        RerankComponents base = calculateEvaluationRerankComponents(r, rrfScore, evaluationAsOf);
         double rrfNormalized = normalizeRrfScore(rrfScore);
         double finalScore = switch (mode) {
             case RRF_NORM_ONLY -> rrfNormalized;
@@ -451,6 +485,28 @@ public class PgVectorMemoryService {
         );
     }
 
+    /** Evaluation-only semantic lane: the retention clock is an explicit SQL timestamp. */
+    private List<MemoryResult> semanticSearchForEvaluation(
+        String userId, float[] vec, int limit, LocalDateTime evaluationAsOf
+    ) {
+        String vecStr = EmbeddingService.toPgVectorString(vec);
+        Timestamp asOf = Timestamp.valueOf(evaluationAsOf);
+        return jdbc.query(
+                "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, "
+                + "embedding <=> ?::vector AS distance FROM long_term_memory WHERE user_id = ? "
+                + "AND importance * EXP(-EXTRACT(EPOCH FROM (?::timestamp - COALESCE(last_accessed, created_at))) / 3600.0 "
+                + "  / (CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END * 24 + 1)) > ? "
+                + "ORDER BY embedding <=> ?::vector LIMIT ?",
+                ps -> { ps.setString(1, vecStr); ps.setString(2, userId); ps.setTimestamp(3, asOf);
+                        ps.setDouble(4, RETENTION_MIN); ps.setString(5, vecStr); ps.setInt(6, limit); },
+                (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
+                    rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
+                    rs.getString("event_timezone"), rs.getString("event_precision"), rs.getDouble("distance"),
+                    rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"),
+                    rs.getInt("layer"), 1.0)
+        );
+    }
+
     /** 关键词匹配：中文子串 + 2-4字分词匹配 */
     private List<MemoryResult> keywordSearch(String userId, String query, int limit) {
         try {
@@ -475,6 +531,29 @@ public class PgVectorMemoryService {
               .limit(limit).toList();
     }
 
+    /** Evaluation-only keyword lane: the retention clock is an explicit SQL timestamp. */
+    private List<MemoryResult> keywordSearchForEvaluation(
+        String userId, String query, int limit, LocalDateTime evaluationAsOf
+    ) {
+        Timestamp asOf = Timestamp.valueOf(evaluationAsOf);
+        return jdbc.query(
+                "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, 0.5 AS distance "
+                + "FROM long_term_memory WHERE user_id = ? "
+                + "AND importance * EXP(-EXTRACT(EPOCH FROM (?::timestamp - COALESCE(last_accessed, created_at))) / 3600.0 "
+                + "  / (CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END * 24 + 1)) > ? "
+                + "ORDER BY importance DESC LIMIT 100",
+                ps -> { ps.setString(1, userId); ps.setTimestamp(2, asOf);
+                        ps.setDouble(3, RETENTION_MIN); },
+                (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
+                    rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
+                    rs.getString("event_timezone"), rs.getString("event_precision"), 0.5,
+                    rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"),
+                    rs.getInt("layer"), 1.0)
+            ).stream().filter(r -> matchScore(r.content(), query) > 0)
+              .sorted((a, b) -> Double.compare(matchScore(b.content(), query), matchScore(a.content(), query)))
+              .limit(limit).toList();
+    }
+
     /** 简单关键词匹配分 */
     private double matchScore(String content, String query) {
         String c = content.toLowerCase();
@@ -492,6 +571,25 @@ public class PgVectorMemoryService {
 
     private double rerankScore(MemoryResult r, double rrfScore) {
         return calculateRerankComponents(r, rrfScore).finalScore();
+    }
+
+    /** Evaluation-only equivalent of the production formula with a fixed local timestamp clock. */
+    private RerankComponents calculateEvaluationRerankComponents(
+        MemoryResult r, double rrfScore, LocalDateTime evaluationAsOf
+    ) {
+        long elapsed = r.createdAt() == null
+            ? Timestamp.valueOf(evaluationAsOf).getTime()
+            : Duration.between(r.createdAt().toLocalDateTime(), evaluationAsOf).toMillis();
+        double hours = elapsed / 3600000.0;
+        double strength = r.importance() >= 0.6 ? 5.0 : 1.0;
+        double timeDecay = Math.exp(-hours / (strength * 24 + 1));
+        double importanceContribution = r.importance() * 0.2;
+        double confidenceContribution = r.confidence() * 0.05;
+        double highImportanceBonus = r.importance() >= 0.6 ? 0.05 : 0;
+        double finalScore = rrfScore * 0.5 + timeDecay * 0.2 + importanceContribution
+            + confidenceContribution + highImportanceBonus;
+        return new RerankComponents(timeDecay, importanceContribution, confidenceContribution,
+            highImportanceBonus, finalScore);
     }
 
     private RerankComponents calculateRerankComponents(MemoryResult r, double rrfScore) {

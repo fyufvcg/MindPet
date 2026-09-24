@@ -11,9 +11,6 @@ $jar = Join-Path $projectRoot 'MindPet-java\target\weather-wechat-bot-1.0.0.jar'
 $javaProcess = $null
 
 try {
-    if ((git -C $projectRoot rev-parse HEAD).Trim() -ne '331a379cd788f2e58e61444f7068f3c29cc9badc') {
-        throw 'Unexpected Java H2 commit; formal run cancelled.'
-    }
     if (-not (Test-Path -LiteralPath $jar)) { throw 'H2 Java JAR is missing.' }
     if (Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue) {
         throw 'Port 8082 is already in use.'
@@ -43,6 +40,10 @@ try {
     if ($LASTEXITCODE -ne 0 -or $dbCheck -ne 'mindpet_eval|120|0|0|120') {
         throw "Database safety/integrity check failed: $dbCheck"
     }
+    $asOfSql = "SELECT MIN(metadata->>'benchmark_base_time') FROM public.long_term_memory WHERE user_id='eval_test_user' HAVING COUNT(DISTINCT metadata->>'benchmark_base_time')=1"
+    $evaluationAsOf = (& $docker exec -e PGPASSWORD mindpet-postgres psql `
+        -U $containerEnv['POSTGRES_USER'] -d mindpet_eval -tAc $asOfSql).Trim()
+    if (-not $evaluationAsOf) { throw 'Canonical benchmark evaluationAsOf is unavailable.' }
     Write-Output 'DB preflight: mindpet_eval, 120 memories, embeddings complete.'
 
     $models = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -Method Get -TimeoutSec 10
@@ -88,7 +89,7 @@ try {
 
     $body = [Text.Encoding]::UTF8.GetBytes((@{
         query = '羽毛球'; mode = 'mindpet_rrf_norm_importance'; topK = 1;
-        userId = 'eval_test_user'
+        userId = 'eval_test_user'; asOf = $evaluationAsOf
     } | ConvertTo-Json -Compress))
     $health = Invoke-WebRequest -Uri $apiUrl -Method Post -Body $body `
         -ContentType 'application/json; charset=utf-8' `

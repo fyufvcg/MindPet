@@ -154,10 +154,12 @@ def comparable_state(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def post_search(
-    url: str, token: str, query: dict[str, Any], mode: str, timeout: float
+    url: str, token: str, query: dict[str, Any], mode: str, timeout: float,
+    evaluation_as_of: str,
 ) -> tuple[int, dict[str, Any]]:
     body = json.dumps(
-        {"query": query["query"], "mode": mode, "topK": TOP_K, "userId": USER_ID},
+        {"query": query["query"], "mode": mode, "topK": TOP_K, "userId": USER_ID,
+         "asOf": evaluation_as_of},
         ensure_ascii=False,
     ).encode("utf-8")
     request = urllib.request.Request(
@@ -294,13 +296,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     conn = connect_database(args)
     try:
         before, benchmark_base_time = fetch_state(conn, id_map)
+        try:
+            parsed_as_of = datetime.fromisoformat(benchmark_base_time)
+        except ValueError as exc:
+            raise RunFailure("benchmark_base_time is not an ISO local date-time") from exc
+        if parsed_as_of.tzinfo is not None:
+            raise RunFailure("benchmark_base_time must not contain an offset or timezone")
         write_json(args.before_state, before)
         run_started_at = now_utc()
         records: list[dict[str, Any]] = []
         for mode in modes:
             for index, query in enumerate(queries, start=1):
                 http_status, payload = post_search(
-                    args.api_url, token, query, mode, args.http_timeout
+                    args.api_url, token, query, mode, args.http_timeout, benchmark_base_time
                 )
                 records.append(
                     normalize_response(query, mode, http_status, payload, reverse_map)
@@ -338,6 +346,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "run_started_at": run_started_at,
             "run_finished_at": run_finished_at,
             "benchmark_base_time": benchmark_base_time,
+            "evaluation_as_of": benchmark_base_time,
+            "clock_mode": "fixed",
             "memory_count": EXPECTED_MEMORY_COUNT,
             "query_count": EXPECTED_QUERY_COUNT,
             "memories": EXPECTED_MEMORY_COUNT,

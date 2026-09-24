@@ -16,6 +16,8 @@ import util.Logger;
 
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +27,8 @@ import static org.mockito.Mockito.*;
 
 /** Pure mocks: no Spring application, database, or real embedding server is started. */
 class PgVectorMemoryServiceEvaluationTest {
+    private static final LocalDateTime EVALUATION_AS_OF =
+        LocalDateTime.parse("2026-09-21T08:38:06.750458");
     private JdbcTemplate jdbc;
     private EmbeddingService embedding;
     private PgVectorMemoryService service;
@@ -44,7 +48,7 @@ class PgVectorMemoryServiceEvaluationTest {
         vector = new float[1024];
         vector[0] = 1;
         when(embedding.embed(anyString())).thenReturn(vector);
-        Timestamp now = new Timestamp(System.currentTimeMillis() - 3600000);
+        Timestamp now = Timestamp.valueOf(EVALUATION_AS_OF.minusHours(1));
         var m1 = memory("1", "我最喜欢羽毛球", now, .3, .4, .9, "positive", 3);
         var m2 = memory("2", "喜欢毛球", now, .05, .95, 1, "neutral", 2);
         var m3 = memory("3", "喜欢篮球", now, .01, .1, .1, "negative", 3);
@@ -69,7 +73,11 @@ class PgVectorMemoryServiceEvaluationTest {
     }
 
     private RetrievalDebugResult evaluate(RetrievalMode mode, int k) {
-        return service.searchForEvaluation("eval_test_user", "羽毛球", mode, k);
+        return evaluate(mode, k, EVALUATION_AS_OF);
+    }
+
+    private RetrievalDebugResult evaluate(RetrievalMode mode, int k, LocalDateTime asOf) {
+        return service.searchForEvaluation("eval_test_user", "羽毛球", mode, k, asOf);
     }
 
     private List<String> ids(RetrievalDebugResult result) {
@@ -81,6 +89,8 @@ class PgVectorMemoryServiceEvaluationTest {
             org.mockito.ArgumentMatchers.<RowMapper<PgVectorMemoryService.MemoryResult>>any());
         verifyNoMoreInteractions(jdbc); // No execute/update/count or any other JDBC call.
         assertTrue(sqlCalls.stream().allMatch(sql -> sql.startsWith("SELECT ")));
+        assertTrue(sqlCalls.stream().allMatch(sql -> sql.contains("?::timestamp")));
+        assertTrue(sqlCalls.stream().noneMatch(sql -> sql.contains("NOW()")));
     }
 
     private boolean usesBothLanes(RetrievalMode mode) {
@@ -106,7 +116,8 @@ class PgVectorMemoryServiceEvaluationTest {
         assertTrue(sqlCalls.get(0).contains("COALESCE(last_accessed, created_at)"));
         assertTrue(sqlCalls.get(0).contains("CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END"));
         verify(statements.get(0)).setString(1, "eval_test_user");
-        verify(statements.get(0)).setDouble(2, .1);
+        verify(statements.get(0)).setTimestamp(2, Timestamp.valueOf(EVALUATION_AS_OF));
+        verify(statements.get(0)).setDouble(3, .1);
         assertSelectOnly(1);
     }
 
@@ -127,8 +138,9 @@ class PgVectorMemoryServiceEvaluationTest {
         }
         verify(embedding).embed("羽毛球");
         verify(statements.get(0)).setString(2, "eval_test_user");
-        verify(statements.get(0)).setDouble(3, .1);
-        verify(statements.get(0)).setInt(5, 20);
+        verify(statements.get(0)).setTimestamp(3, Timestamp.valueOf(EVALUATION_AS_OF));
+        verify(statements.get(0)).setDouble(4, .1);
+        verify(statements.get(0)).setInt(6, 20);
         assertTrue(sqlCalls.get(0).contains("ORDER BY embedding <=> ?::vector LIMIT ?"));
         assertSelectOnly(1);
     }
@@ -169,7 +181,7 @@ class PgVectorMemoryServiceEvaluationTest {
     @Test
     void normalizedModeUsesDocumentedRrfMaximumAndDualLaneRankOne() {
         assertEquals(2.0 / 61.0, PgVectorMemoryService.RRF_MAX, 0.0);
-        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 3600000),
+        var candidate = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(1)),
             .1, .5, .8, "neutral", 3);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
@@ -184,7 +196,7 @@ class PgVectorMemoryServiceEvaluationTest {
 
     @Test
     void normalizedModeMapsSingleLaneRankOneToHalf() {
-        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 3600000),
+        var candidate = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(1)),
             .1, .5, .8, "neutral", 3);
         semantic = List.of(candidate);
         keyword = List.of();
@@ -208,19 +220,16 @@ class PgVectorMemoryServiceEvaluationTest {
 
     @Test
     void normalizedModeFinalScoreMatchesIndependentHandCalculation() {
-        Timestamp at = new Timestamp(System.currentTimeMillis() - 72 * 3600000L);
+        Timestamp at = Timestamp.valueOf(EVALUATION_AS_OF.minusHours(72));
         var candidate = memory("10", "羽毛球", at, .1, .7, .8, "positive", 2);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
 
-        long before = System.currentTimeMillis();
         var entry = evaluate(RetrievalMode.FULL_RRF_NORM, 1).results().get(0);
-        long after = System.currentTimeMillis();
-        double upper = .5 + Math.exp(-((before - at.getTime()) / 3600000.0) / 121) * .2
+        double expected = .5 + Math.exp(-72.0 / 121) * .2
             + .7 * .2 + .8 * .05 + .05;
-        double lower = .5 + Math.exp(-((after - at.getTime()) / 3600000.0) / 121) * .2
-            + .7 * .2 + .8 * .05 + .05;
-        assertTrue(entry.finalScore() >= lower - 1e-12 && entry.finalScore() <= upper + 1e-12);
+        assertEquals(Math.exp(-72.0 / 121), entry.timeScore(), 1e-12);
+        assertEquals(expected, entry.finalScore(), 1e-12);
         assertEquals(entry.timeScore() * .2 + entry.importanceContribution()
             + entry.confidenceContribution() + entry.highImportanceBonus() + .5,
             entry.finalScore(), 1e-12);
@@ -228,8 +237,53 @@ class PgVectorMemoryServiceEvaluationTest {
     }
 
     @Test
+    void sameDataAndFixedAsOfAreIdenticalAcrossWallClockProgress() throws Exception {
+        var first = evaluate(RetrievalMode.FULL_RRF_NORM, 3);
+        Thread.sleep(20); // Old System.currentTimeMillis scoring would drift here.
+        var second = evaluate(RetrievalMode.FULL_RRF_NORM, 3);
+
+        assertEquals(first, second);
+        assertSelectOnly(4);
+    }
+
+    @Test
+    void retentionBoundaryAndCandidateSetDependOnlyOnExplicitAsOf() throws Exception {
+        reset(jdbc);
+        sqlCalls.clear();
+        statements.clear();
+        var boundary = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(2)),
+            .1, .11, 1, "neutral", 3);
+        doAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatementSetter setter = invocation.getArgument(1);
+            PreparedStatement ps = mock(PreparedStatement.class);
+            Timestamp[] boundAsOf = new Timestamp[1];
+            doAnswer(call -> { boundAsOf[0] = call.getArgument(1); return null; })
+                .when(ps).setTimestamp(eq(3), any(Timestamp.class));
+            setter.setValues(ps);
+            sqlCalls.add(sql);
+            statements.add(ps);
+            double hours = Duration.between(
+                boundary.createdAt().toLocalDateTime(), boundAsOf[0].toLocalDateTime()).toMillis()
+                / 3600000.0;
+            double retention = boundary.importance() * Math.exp(-hours / 25.0);
+            return retention > .1 ? List.of(boundary) : List.of();
+        }).when(jdbc).query(anyString(), any(PreparedStatementSetter.class),
+            org.mockito.ArgumentMatchers.<RowMapper<PgVectorMemoryService.MemoryResult>>any());
+
+        var early = evaluate(RetrievalMode.VECTOR_ONLY, 1, EVALUATION_AS_OF);
+        var late = evaluate(RetrievalMode.VECTOR_ONLY, 1, EVALUATION_AS_OF.plusHours(2));
+
+        assertEquals(List.of("10"), ids(early));
+        assertTrue(late.results().isEmpty());
+        verify(statements.get(0)).setTimestamp(3, Timestamp.valueOf(EVALUATION_AS_OF));
+        verify(statements.get(1)).setTimestamp(3, Timestamp.valueOf(EVALUATION_AS_OF.plusHours(2)));
+        assertSelectOnly(2);
+    }
+
+    @Test
     void h2RrfNormOnlyUsesNormalizedRetrievalWithoutMetadata() {
-        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+        var candidate = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(72)),
             .1, .7, .8, "positive", 2);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
@@ -246,24 +300,20 @@ class PgVectorMemoryServiceEvaluationTest {
 
     @Test
     void h2RrfNormTimeAddsOnlyTimeContribution() {
-        Timestamp at = new Timestamp(System.currentTimeMillis() - 72 * 3600000L);
+        Timestamp at = Timestamp.valueOf(EVALUATION_AS_OF.minusHours(72));
         var candidate = memory("10", "羽毛球", at, .1, .7, .8, "positive", 2);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
 
-        long before = System.currentTimeMillis();
         var entry = evaluate(RetrievalMode.RRF_NORM_TIME, 1).results().get(0);
-        long after = System.currentTimeMillis();
-        double upper = .5 + Math.exp(-((before - at.getTime()) / 3600000.0) / 121) * .2;
-        double lower = .5 + Math.exp(-((after - at.getTime()) / 3600000.0) / 121) * .2;
-        assertTrue(entry.finalScore() >= lower - 1e-12 && entry.finalScore() <= upper + 1e-12);
+        assertEquals(.5 + Math.exp(-72.0 / 121) * .2, entry.finalScore(), 1e-12);
         assertEquals(.5 + entry.timeScore() * .2, entry.finalScore(), 1e-12);
         assertSelectOnly(2);
     }
 
     @Test
     void h2RrfNormImportanceAddsImportanceWithoutBonus() {
-        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+        var candidate = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(72)),
             .1, .7, .8, "positive", 2);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
@@ -277,7 +327,7 @@ class PgVectorMemoryServiceEvaluationTest {
 
     @Test
     void h2RrfNormImportanceBonusAddsThresholdBonus() {
-        var candidate = memory("10", "羽毛球", new Timestamp(System.currentTimeMillis() - 72 * 3600000L),
+        var candidate = memory("10", "羽毛球", Timestamp.valueOf(EVALUATION_AS_OF.minusHours(72)),
             .1, .7, .8, "positive", 2);
         semantic = List.of(candidate);
         keyword = List.of(candidate);
@@ -360,14 +410,22 @@ class PgVectorMemoryServiceEvaluationTest {
 
     @Test
     void serviceRejectsInvalidInputsWithoutIoAndDeclaresReadOnlyTransaction() throws Exception {
-        assertThrows(SecurityException.class, () -> service.searchForEvaluation("real_user", "x", RetrievalMode.RRF, 3));
-        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation("eval_test_user", " ", RetrievalMode.RRF, 3));
-        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation("eval_test_user", null, RetrievalMode.RRF, 3));
-        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation("eval_test_user", "x", null, 3));
-        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation("eval_test_user", "x", RetrievalMode.RRF, 2));
+        assertThrows(SecurityException.class, () -> service.searchForEvaluation(
+            "real_user", "x", RetrievalMode.RRF, 3, EVALUATION_AS_OF));
+        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation(
+            "eval_test_user", " ", RetrievalMode.RRF, 3, EVALUATION_AS_OF));
+        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation(
+            "eval_test_user", null, RetrievalMode.RRF, 3, EVALUATION_AS_OF));
+        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation(
+            "eval_test_user", "x", null, 3, EVALUATION_AS_OF));
+        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation(
+            "eval_test_user", "x", RetrievalMode.RRF, 2, EVALUATION_AS_OF));
+        assertThrows(IllegalArgumentException.class, () -> service.searchForEvaluation(
+            "eval_test_user", "x", RetrievalMode.RRF, 3, null));
         verifyNoInteractions(jdbc, embedding);
         assertTrue(PgVectorMemoryService.class.getMethod("searchForEvaluation", String.class, String.class,
-            RetrievalMode.class, int.class).getAnnotation(Transactional.class).readOnly());
+            RetrievalMode.class, int.class, LocalDateTime.class)
+            .getAnnotation(Transactional.class).readOnly());
     }
 
     @Test

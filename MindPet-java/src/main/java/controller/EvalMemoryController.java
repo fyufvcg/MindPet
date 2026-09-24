@@ -14,6 +14,9 @@ import service.PgVectorMemoryService;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Set;
 
 /** Opt-in local API; never routes evaluation through the mutating production search. */
@@ -62,8 +65,10 @@ public class EvalMemoryController {
         String query = text(body, "query");
         String wireMode = text(body, "mode");
         String userId = text(body, "userId");
+        String asOfText = text(body, "asOf");
         JsonNode topKNode = body.get("topK");
         if (query == null || query.isBlank() || wireMode == null || userId == null
+            || asOfText == null || asOfText.isBlank()
             || topKNode == null || !topKNode.isIntegralNumber() || !topKNode.canConvertToInt()
             || !TOP_K.contains(topKNode.intValue())) {
             return invalidRequest();
@@ -73,8 +78,11 @@ public class EvalMemoryController {
         }
         try {
             RetrievalMode mode = RetrievalMode.fromWireName(wireMode);
-            return ResponseEntity.ok(memoryService.searchForEvaluation(userId, query, mode, topKNode.intValue()));
-        } catch (IllegalArgumentException e) {
+            LocalDateTime evaluationAsOf = LocalDateTime.parse(
+                asOfText, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            return ResponseEntity.ok(memoryService.searchForEvaluation(
+                userId, query, mode, topKNode.intValue(), evaluationAsOf));
+        } catch (DateTimeParseException | IllegalArgumentException e) {
             return invalidRequest();
         } catch (SecurityException e) {
             return failed(HttpStatus.FORBIDDEN, "USER_NOT_ALLOWED", "Only eval_test_user is allowed");
@@ -102,7 +110,8 @@ public class EvalMemoryController {
 
     private static ResponseEntity<RetrievalDebugResult.Failure> invalidRequest() {
         return failed(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
-            "Required: nonblank query, supported mode, integer topK in [1,3,5,10], and userId");
+            "Required: nonblank query, supported mode, integer topK in [1,3,5,10], "
+                + "userId, and ISO local date-time asOf");
     }
 
     private static ResponseEntity<RetrievalDebugResult.Failure> failed(
