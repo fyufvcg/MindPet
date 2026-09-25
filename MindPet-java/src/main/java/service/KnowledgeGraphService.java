@@ -2,6 +2,7 @@ package service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import model.ImportanceScoreResult;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -95,6 +96,53 @@ public class KnowledgeGraphService {
         this.executor = executor;
         this.logger = logger;
         initializeSchema();
+    }
+
+    /**
+     * Evaluation-only, side-effect-free view of the exact production extraction path.
+     * This deliberately calls neither persist(), appendTurn(), nor any curator workflow.
+     */
+    public ImportanceScoreResult scoreImportanceForEvaluation(
+            String userMessage, String assistantContext) {
+        if (isBlank(userMessage)) {
+            throw new IllegalArgumentException("userMessage must not be blank");
+        }
+        if (!chatClientFactory.isConfigured()) {
+            throw new ImportanceEvaluationFailure(
+                "MODEL_NOT_CONFIGURED", "Production extraction model is not configured", null);
+        }
+        String raw;
+        try {
+            raw = callExtractionModel(userMessage, assistantContext);
+        } catch (Exception e) {
+            throw new ImportanceEvaluationFailure(
+                "MODEL_CALL_FAILED", "Production extraction model call failed", e);
+        }
+        Extraction extraction;
+        try {
+            extraction = parseExtractionResponse(raw);
+        } catch (Exception e) {
+            throw new ImportanceEvaluationFailure(
+                "MODEL_RESPONSE_INVALID", "Production extraction response could not be parsed", e);
+        }
+        return new ImportanceScoreResult(
+            "OK",
+            chatClientFactory.effectiveModel(),
+            extraction.worthRemembering(),
+            extraction.shouldRemember(),
+            extraction.importance(),
+            extraction.confidence(),
+            extraction.importance() >= 0.6,
+            extraction.shouldPersistMemory(),
+            new ImportanceScoreResult.ParseInfo(
+                true,
+                extraction.memoryObjectPresent(),
+                extraction.importanceFallbackUsed(),
+                extraction.confidenceFallbackUsed(),
+                extraction.importanceClamped(),
+                extraction.confidenceClamped()
+            )
+        );
     }
 
     public boolean onCompletedTurn(String userId, String sessionId,
@@ -228,17 +276,33 @@ public class KnowledgeGraphService {
     }
 
     private Extraction extract(String userMessage, String assistantMessage) throws Exception {
+        return parseExtractionResponse(callExtractionModel(userMessage, assistantMessage));
+    }
+
+    private String callExtractionModel(String userMessage, String assistantMessage) {
         String data = "USER MESSAGE:\n" + truncate(userMessage, 5000)
             + "\n\nASSISTANT REPLY (context only):\n" + truncate(assistantMessage, 3000);
         var spec = chatClientFactory.build().prompt().system(EXTRACTION_PROMPT).user(data);
         spec = chatClientFactory.applyCurrentModel(spec);
-        String raw = spec.call().content();
+        return spec.call().content();
+    }
+
+    private Extraction parseExtractionResponse(String raw) throws Exception {
         JsonNode root = mapper.readTree(jsonObject(raw));
         boolean worthRemembering = root.path("worthRemembering").asBoolean(false);
         JsonNode memory = root.path("memory");
+        boolean memoryObjectPresent = memory.isObject();
         boolean shouldRemember = memory.path("shouldRemember").asBoolean(worthRemembering);
+        JsonNode importanceNode = memory.path("importance");
+        JsonNode confidenceNode = memory.path("confidence");
         double importance = parseScore(memory.path("importance"), 0.5);
         double confidence = parseScore(memory.path("confidence"), 0.5);
+        boolean importanceFallbackUsed = !importanceNode.isNumber();
+        boolean confidenceFallbackUsed = !confidenceNode.isNumber();
+        boolean importanceClamped = importanceNode.isNumber()
+            && Double.compare(importanceNode.asDouble(0.5), importance) != 0;
+        boolean confidenceClamped = confidenceNode.isNumber()
+            && Double.compare(confidenceNode.asDouble(0.5), confidence) != 0;
         String evidence = truncate(memory.path("evidence").asText(""), 500);
 
         List<EntityCandidate> entities = new ArrayList<>();
@@ -275,8 +339,10 @@ public class KnowledgeGraphService {
             importance = candidateImportance(entities, relations);
             confidence = candidateConfidence(entities, relations);
         }
-        return new Extraction(worthRemembering && shouldRemember, importance, confidence,
-            evidence, entities, relations);
+        return new Extraction(worthRemembering, worthRemembering && shouldRemember,
+            importance, confidence, evidence, entities, relations, memoryObjectPresent,
+            importanceFallbackUsed, confidenceFallbackUsed,
+            importanceClamped, confidenceClamped);
     }
 
     private double parseScore(JsonNode value, double fallback) {
@@ -726,15 +792,30 @@ public class KnowledgeGraphService {
     private record RelationCandidate(String source, String target, String predicate,
                                      double confidence, double importance) {}
     private record EntityRef(String id, String name) {}
-    private record Extraction(boolean shouldRemember, double importance, double confidence,
-                              String evidence, List<EntityCandidate> entities,
-                              List<RelationCandidate> relations) {
+    private record Extraction(boolean worthRemembering, boolean shouldRemember,
+                              double importance, double confidence, String evidence,
+                              List<EntityCandidate> entities, List<RelationCandidate> relations,
+                              boolean memoryObjectPresent, boolean importanceFallbackUsed,
+                              boolean confidenceFallbackUsed, boolean importanceClamped,
+                              boolean confidenceClamped) {
         static Extraction empty() {
-            return new Extraction(false, 0.0, 0.0, "", List.of(), List.of());
+            return new Extraction(false, false, 0.0, 0.0, "", List.of(), List.of(),
+                false, true, true, false, false);
         }
 
         boolean shouldPersistMemory() {
             return shouldRemember && importance >= 0.35 && confidence >= 0.45;
         }
+    }
+
+    public static final class ImportanceEvaluationFailure extends RuntimeException {
+        private final String code;
+
+        public ImportanceEvaluationFailure(String code, String message, Throwable cause) {
+            super(message, cause);
+            this.code = code;
+        }
+
+        public String code() { return code; }
     }
 }
