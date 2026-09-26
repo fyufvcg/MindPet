@@ -88,8 +88,8 @@ def validate(rows: list[dict[str, Any]]) -> None:
             raise EvaluationFailure(f"{sample_id}: inconsistent human high label")
         if row["ai_high_importance"] != (row["ai_importance"] >= 0.6):
             raise EvaluationFailure(f"{sample_id}: inconsistent AI high label")
-        if row.get("review_status") != "human_confirmed":
-            raise EvaluationFailure(f"{sample_id}: ground truth is not human-confirmed")
+        if row.get("review_status") != "confirmed":
+            raise EvaluationFailure(f"{sample_id}: ground truth is not confirmed")
         if row.get("http_status") != 200 or row.get("api_status") != "OK":
             raise EvaluationFailure(f"{sample_id}: unsuccessful API response")
 

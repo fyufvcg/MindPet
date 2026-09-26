@@ -89,7 +89,7 @@ and 0.9 as positive.
 4. Derive `human_high_importance` mechanically from the score.
 5. Write a concise `annotation_reason` naming the decisive factors, such as stability,
    future utility, confirmation, recurrence, temporariness, uncertainty, or safety.
-6. Change `review_status` from `pending_human_annotation` to `human_confirmed`.
+6. Change `review_status` from `pending_human_annotation` to `confirmed`.
 
 Recommended quality control: two independent annotators, followed by adjudication for
 score disagreements greater than 0.2 or any disagreement on `human_should_remember`.
@@ -101,7 +101,7 @@ The H3-A runner must refuse to score the benchmark until all 100 samples:
 - have a valid human score;
 - have both boolean labels;
 - have a nonblank annotation reason;
-- have `review_status = human_confirmed`;
+- have `review_status = confirmed`;
 - satisfy `human_high_importance == (human_importance >= 0.6)`.
 
 This prevents the production model from becoming its own ground truth.

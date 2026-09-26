@@ -78,8 +78,8 @@ def validate_dataset(rows: list[dict[str, Any]], require_human_labels: bool) -> 
                 raise RunFailure(f"{sample_id}: human_high_importance is inconsistent")
             if not isinstance(row["annotation_reason"], str) or not row["annotation_reason"].strip():
                 raise RunFailure(f"{sample_id}: annotation_reason is missing")
-            if row["review_status"] != "human_confirmed":
-                raise RunFailure(f"{sample_id}: review_status is not human_confirmed")
+            if row["review_status"] != "confirmed":
+                raise RunFailure(f"{sample_id}: review_status is not confirmed")
         elif any(row[field] is not None for field in (
             "human_importance", "human_should_remember", "human_high_importance",
             "annotation_reason",
@@ -234,7 +234,7 @@ def main() -> None:
             "api_url": args.api_url,
             "start_time": started,
             "end_time": now_utc(),
-            "ground_truth": "human_confirmed",
+            "ground_truth": "confirmed",
             "database_writes": False,
         })
         print("H3-A RUN PASSED")
