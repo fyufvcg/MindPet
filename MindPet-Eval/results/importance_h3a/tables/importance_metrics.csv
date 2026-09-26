@@ -1,0 +1,2 @@
+﻿samples,mae,rmse,spearman,pearson,mean_human_importance,mean_ai_importance,mean_signed_error
+100,0.1825,0.22841847561000841,0.7371788309225998,0.5806870848549428,0.488,0.5495,0.06150000000000001

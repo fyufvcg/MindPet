@@ -1,0 +1,17 @@
+{
+  "experiment": "importance_h3a",
+  "git_commit": "427aa1a1a1f4cc325c12ee620600691a18583abc",
+  "dataset_version": "Importance Accuracy Benchmark v1",
+  "dataset_sha256": "b1ba8c81e86d098733c11ef4f4eced3203a0507fadd38277128e2e09d7375d8d",
+  "samples": 100,
+  "formal_requests": 100,
+  "success_count": 100,
+  "failure_count": 0,
+  "production_model": "deepseek-flash",
+  "prompt_sha256": "a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9",
+  "start_time": "2026-09-26T10:31:18.001218+00:00",
+  "end_time": "2026-09-26T10:34:45.400333+00:00",
+  "db_write": false,
+  "ground_truth": "confirmed",
+  "api_url": "http://127.0.0.1:8081/api/eval/importance/score"
+}

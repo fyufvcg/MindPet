@@ -1,0 +1,2 @@
+﻿metric,threshold,accuracy,precision,recall,f1,tp,fp,fn,tn
+wouldPersistMemory,boolean,0.87,0.8679245283018868,0.8846153846153846,0.8761904761904762,46,7,6,41

@@ -1,0 +1,2 @@
+﻿metric,threshold,accuracy,precision,recall,f1,tp,fp,fn,tn
+high_importance,>=0.6,0.9,0.875,0.875,0.875,35,5,5,55

@@ -1,12 +1,15 @@
-"""Run H3-A against the opt-in production importance scoring endpoint."""
+"""Run the formal H3-A benchmark against the production importance scorer."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
+import textwrap
 import urllib.error
 import urllib.request
 from collections import Counter
@@ -16,6 +19,8 @@ from typing import Any
 
 
 EXPECTED_COUNT = 100
+DATASET_VERSION = "Importance Accuracy Benchmark v1"
+EXPERIMENT = "importance_h3a"
 ALLOWED_SCORES = {0.1, 0.3, 0.5, 0.7, 0.9}
 EXPECTED_CATEGORIES = {
     "stable_preference", "active_project", "long_term_goal", "relationship",
@@ -32,6 +37,28 @@ class RunFailure(RuntimeError):
 
 def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def production_prompt(java_source: Path) -> str:
+    """Reconstruct the Java text-block value used as EXTRACTION_PROMPT."""
+    source = java_source.read_text(encoding="utf-8")
+    match = re.search(
+        r'private\s+static\s+final\s+String\s+EXTRACTION_PROMPT\s*=\s*"""\r?\n'
+        r'(.*?)^[ \t]*""";',
+        source,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    if not match:
+        raise RunFailure("cannot locate production EXTRACTION_PROMPT")
+    return textwrap.dedent(match.group(1)).replace("\r\n", "\n")
+
+
+def prompt_sha256(java_source: Path) -> str:
+    return hashlib.sha256(production_prompt(java_source).encode("utf-8")).hexdigest()
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -87,13 +114,15 @@ def validate_dataset(rows: list[dict[str, Any]], require_human_labels: bool) -> 
             raise RunFailure(f"{sample_id}: candidate template contains an unreviewed label")
     return {
         "samples": len(rows),
+        "unique_sample_ids": len({row["sample_id"] for row in rows}),
+        "confirmed": sum(row["review_status"] == "confirmed" for row in rows),
         "categories": dict(sorted(Counter(row["category"] for row in rows).items())),
         "difficulties": dict(sorted(Counter(row["difficulty"] for row in rows).items())),
         "human_labels": "confirmed" if require_human_labels else "pending",
     }
 
 
-def post_score(url: str, token: str, sample: dict[str, Any], timeout: float) -> dict[str, Any]:
+def request_score(url: str, token: str, sample: dict[str, Any], timeout: float) -> tuple[int | None, dict[str, Any]]:
     body = json.dumps({
         "userMessage": sample["user_message"],
         "assistantContext": sample["assistant_context"],
@@ -104,61 +133,118 @@ def post_score(url: str, token: str, sample: dict[str, Any], timeout: float) -> 
     })
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            status = response.status
+            return response.status, json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         try:
             payload = json.loads(exc.read().decode("utf-8"))
         except Exception:
             payload = {"status": "FAILED", "code": "NON_JSON_HTTP_ERROR"}
-        raise RunFailure(
-            f"{sample['sample_id']}: HTTP {exc.code}, code={payload.get('code')}"
-        ) from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RunFailure(f"{sample['sample_id']}: request/JSON failure: {exc}") from exc
-    if status != 200 or payload.get("status") != "OK":
-        raise RunFailure(f"{sample['sample_id']}: HTTP/status failure")
-    return payload
+        return exc.code, payload
+    except Exception as exc:
+        return None, {
+            "status": "FAILED",
+            "code": "REQUEST_ERROR",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
 
 
-def normalized(sample: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    required = {
-        "model", "worthRemembering", "shouldRemember", "importance", "confidence",
-        "highImportance", "wouldPersistMemory", "parse",
+def base_record(sample: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sample_id": sample["sample_id"],
+        "user_message": sample["user_message"],
+        "assistant_context": sample["assistant_context"],
+        "category": sample["category"],
+        "difficulty": sample["difficulty"],
+        "human_importance": sample["human_importance"],
+        "human_should_remember": sample["human_should_remember"],
+        "human_high_importance": sample["human_high_importance"],
+        "annotation_reason": sample["annotation_reason"],
+        "review_status": sample["review_status"],
     }
-    if not required.issubset(payload):
-        raise RunFailure(f"{sample['sample_id']}: response fields are incomplete")
+
+
+def normalize_success(sample: dict[str, Any], http_status: int, payload: dict[str, Any]) -> dict[str, Any]:
+    required = {
+        "status", "model", "worthRemembering", "shouldRemember", "importance",
+        "confidence", "highImportance", "wouldPersistMemory", "parse",
+    }
+    if http_status != 200 or payload.get("status") != "OK" or not required.issubset(payload):
+        raise RunFailure("HTTP/API status or response fields are invalid")
     importance = payload["importance"]
     confidence = payload["confidence"]
-    if not isinstance(importance, (int, float)) or not 0.0 <= importance <= 1.0:
-        raise RunFailure(f"{sample['sample_id']}: invalid AI importance")
-    if not isinstance(confidence, (int, float)) or not 0.0 <= confidence <= 1.0:
-        raise RunFailure(f"{sample['sample_id']}: invalid AI confidence")
-    if payload["highImportance"] != (importance >= 0.6):
-        raise RunFailure(f"{sample['sample_id']}: inconsistent AI highImportance")
-    if not isinstance(payload["model"], str) or not payload["model"].strip():
-        raise RunFailure(f"{sample['sample_id']}: production model name is missing")
-    return {
-        **sample,
-        "http_status": 200,
-        "api_status": payload["status"],
-        "production_model": payload["model"],
-        "worth_remembering": payload["worthRemembering"],
-        "ai_should_remember": payload["shouldRemember"],
-        "ai_importance": importance,
-        "ai_confidence": confidence,
-        "ai_high_importance": payload["highImportance"],
-        "ai_would_persist_memory": payload["wouldPersistMemory"],
-        "parse": payload["parse"],
+    parse = payload["parse"]
+    parse_required = {
+        "succeeded", "memoryObjectPresent", "importanceFallbackUsed",
+        "confidenceFallbackUsed", "importanceClamped", "confidenceClamped",
     }
+    if not isinstance(importance, (int, float)) or not 0.0 <= importance <= 1.0:
+        raise RunFailure("invalid AI importance")
+    if not isinstance(confidence, (int, float)) or not 0.0 <= confidence <= 1.0:
+        raise RunFailure("invalid AI confidence")
+    if not isinstance(parse, dict) or not parse_required.issubset(parse):
+        raise RunFailure("parse diagnostics are incomplete")
+    if not all(isinstance(parse[field], bool) for field in parse_required):
+        raise RunFailure("parse diagnostics are not boolean")
+    for field in ("worthRemembering", "shouldRemember", "highImportance", "wouldPersistMemory"):
+        if not isinstance(payload[field], bool):
+            raise RunFailure(f"invalid {field}")
+    if payload["highImportance"] != (importance >= 0.6):
+        raise RunFailure("inconsistent AI highImportance")
+    if not isinstance(payload["model"], str) or not payload["model"].strip():
+        raise RunFailure("production model name is missing")
+    return {
+        **base_record(sample),
+        "ai_importance": float(importance),
+        "ai_should_remember": payload["shouldRemember"],
+        "ai_confidence": float(confidence),
+        "ai_high_importance": payload["highImportance"],
+        "ai_would_persist": payload["wouldPersistMemory"],
+        "worthRemembering": payload["worthRemembering"],
+        "parse_success": parse["succeeded"],
+        "memory_object_present": parse["memoryObjectPresent"],
+        "importance_fallback_used": parse["importanceFallbackUsed"],
+        "confidence_fallback_used": parse["confidenceFallbackUsed"],
+        "importance_clamped": parse["importanceClamped"],
+        "confidence_clamped": parse["confidenceClamped"],
+        "model": payload["model"],
+        "http_status": http_status,
+        "api_status": payload["status"],
+        "error_code": None,
+        "error_message": None,
+    }
+
+
+def normalize_attempt(sample: dict[str, Any], http_status: int | None, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return normalize_success(sample, http_status, payload)  # type: ignore[arg-type]
+    except (RunFailure, KeyError, TypeError) as exc:
+        return {
+            **base_record(sample),
+            "ai_importance": None,
+            "ai_should_remember": None,
+            "ai_confidence": None,
+            "ai_high_importance": None,
+            "ai_would_persist": None,
+            "worthRemembering": None,
+            "parse_success": None,
+            "memory_object_present": None,
+            "importance_fallback_used": None,
+            "confidence_fallback_used": None,
+            "importance_clamped": None,
+            "confidence_clamped": None,
+            "model": payload.get("model"),
+            "http_status": http_status,
+            "api_status": payload.get("status", "FAILED"),
+            "error_code": payload.get("code", "INVALID_RESPONSE"),
+            "error_message": payload.get("message", str(exc)),
+        }
 
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-                             encoding="utf-8")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -176,24 +262,65 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def git_commit(project_root: Path) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(project_root), "rev-parse", "HEAD"],
+            text=True,
+            encoding="utf-8",
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RunFailure(f"cannot determine git commit: {exc}") from exc
+
+
+def self_test(project_root: Path) -> None:
+    assert prompt_sha256(
+        project_root / "MindPet-java/src/main/java/service/KnowledgeGraphService.java"
+    )
+    sample = {
+        "sample_id": "i001", "user_message": "x", "assistant_context": "",
+        "category": "stable_preference", "difficulty": "easy",
+        "human_importance": 0.7, "human_should_remember": True,
+        "human_high_importance": True, "annotation_reason": "x",
+        "review_status": "confirmed",
+    }
+    payload = {
+        "status": "OK", "model": "test-model", "worthRemembering": True,
+        "shouldRemember": True, "importance": 0.7, "confidence": 0.9,
+        "highImportance": True, "wouldPersistMemory": True,
+        "parse": {
+            "succeeded": True, "memoryObjectPresent": True,
+            "importanceFallbackUsed": False, "confidenceFallbackUsed": False,
+            "importanceClamped": False, "confidenceClamped": False,
+        },
+    }
+    record = normalize_attempt(sample, 200, payload)
+    assert record["api_status"] == "OK" and record["ai_importance"] == 0.7
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
+    project_root = root.parent
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", type=Path,
-                        default=root / "datasets/importance/importance_samples.jsonl")
-    parser.add_argument("--api-url",
-                        default="http://127.0.0.1:8082/api/eval/importance/score")
+    parser.add_argument("--dataset", type=Path, default=root / "datasets/importance/importance_samples.jsonl")
+    parser.add_argument("--api-url", default="http://127.0.0.1:8081/api/eval/importance/score")
     parser.add_argument("--raw-output", type=Path,
-                        default=root / "results/importance_h3a/raw/importance_scores.jsonl")
+                        default=root / "results/importance_h3a/raw/importance_predictions.jsonl")
     parser.add_argument("--manifest", type=Path,
                         default=root / "results/importance_h3a/raw/run_manifest.json")
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--validate-template", action="store_true")
+    parser.add_argument("--preflight", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
+        if args.self_test:
+            self_test(project_root)
+            print("importance runner self-test passed")
+            return
         samples = read_jsonl(args.dataset)
         validation = validate_dataset(samples, require_human_labels=not args.validate_template)
-        if args.validate_template:
+        if args.validate_template or args.preflight:
             print(json.dumps(validation, ensure_ascii=False, indent=2))
             return
         token = os.environ.get("MINDPET_EVAL_API_TOKEN")
@@ -201,42 +328,46 @@ def main() -> None:
             raise RunFailure("MINDPET_EVAL_API_TOKEN is required")
         if args.raw_output.exists() or args.manifest.exists():
             raise RunFailure("formal output already exists; refusing to overwrite")
+        java_source = project_root / "MindPet-java/src/main/java/service/KnowledgeGraphService.java"
+        prompt_hash = prompt_sha256(java_source)
+        commit = git_commit(project_root)
+        dataset_hash = sha256_file(args.dataset)
         started = now_utc()
-        records = []
+        records: list[dict[str, Any]] = []
         for index, sample in enumerate(samples, start=1):
-            records.append(normalized(sample, post_score(
-                args.api_url, token, sample, args.timeout)))
+            http_status, payload = request_score(args.api_url, token, sample, args.timeout)
+            records.append(normalize_attempt(sample, http_status, payload))
             if index == 1 or index % 10 == 0:
                 print(f"importance scoring progress: {index}/100", flush=True)
         if len(records) != EXPECTED_COUNT:
             raise RunFailure("formal result count is not 100")
-        models = {record["production_model"] for record in records}
-        if len(models) != 1:
-            raise RunFailure("production model changed during the formal run")
-        project_root = Path(__file__).resolve().parents[2]
-        try:
-            git_commit = subprocess.check_output(
-                ["git", "-C", str(project_root), "rev-parse", "HEAD"],
-                text=True, encoding="utf-8",
-            ).strip()
-        except (OSError, subprocess.CalledProcessError) as exc:
-            raise RunFailure(f"cannot determine git commit: {exc}") from exc
+        success_count = sum(
+            record["http_status"] == 200 and record["api_status"] == "OK"
+            for record in records
+        )
+        failure_count = EXPECTED_COUNT - success_count
+        models = {record["model"] for record in records if record["model"]}
+        production_model = next(iter(models)) if len(models) == 1 else None
         write_jsonl(args.raw_output, records)
         write_json(args.manifest, {
-            "experiment": "importance_accuracy_benchmark_v1",
-            "dataset": "Importance Accuracy Benchmark v1",
-            "git_commit": git_commit,
-            "production_model": next(iter(models)),
+            "experiment": EXPERIMENT,
+            "git_commit": commit,
+            "dataset_version": DATASET_VERSION,
+            "dataset_sha256": dataset_hash,
             "samples": EXPECTED_COUNT,
             "formal_requests": EXPECTED_COUNT,
-            "success_count": EXPECTED_COUNT,
-            "failure_count": 0,
-            "api_url": args.api_url,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "production_model": production_model,
+            "prompt_sha256": prompt_hash,
             "start_time": started,
             "end_time": now_utc(),
+            "db_write": False,
             "ground_truth": "confirmed",
-            "database_writes": False,
+            "api_url": args.api_url,
         })
+        if failure_count:
+            raise RunFailure(f"formal run completed with {failure_count} failed requests; no reruns performed")
         print("H3-A RUN PASSED")
     except RunFailure as exc:
         print(f"H3-A RUN FAILED: {exc}", file=sys.stderr)
