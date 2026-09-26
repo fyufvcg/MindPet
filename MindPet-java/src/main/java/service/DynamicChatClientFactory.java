@@ -108,6 +108,13 @@ public class DynamicChatClientFactory {
         return dynamicConfig.effectiveModel(config.getModel());
     }
 
+    /** DeepSeek's OpenAI-compatible endpoint supports a request-scoped thinking mode. */
+    public boolean supportsDeepSeekThinking() {
+        String endpoint = effectiveBaseUrl().toLowerCase(java.util.Locale.ROOT);
+        String model = effectiveModel().toLowerCase(java.util.Locale.ROOT);
+        return endpoint.contains("deepseek") || model.contains("deepseek");
+    }
+
     /** 当前生效的 Base URL（动态 > 静态，已去掉 /chat/completions 后缀），供连通性测试回显 */
     public String effectiveBaseUrlForDisplay() {
         return effectiveBaseUrl();

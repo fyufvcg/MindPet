@@ -110,16 +110,30 @@
 .rpa-command-hero::after {
   content: "";
   position: absolute;
+  z-index: 0;
   right: 34px;
   bottom: 20px;
   width: min(360px, 38vw);
   height: 34px;
   border-radius: 999px;
   background:
-    radial-gradient(circle, var(--rpa-browser) 0 5px, transparent 6px),
-    linear-gradient(90deg, transparent 0 7%, var(--ds-color-7267626128313234) 7% 44%, rgba(6, 182, 212, 0.3) 44% 88%, transparent 88%);
-  box-shadow: 0 0 0 1px var(--ds-color-726762612837392c) inset;
-  opacity: 0.85;
+    radial-gradient(circle, #f4f9ff 0 1px, #a9cbff 1.5px, var(--rpa-browser) 2.5px 4px, color-mix(in srgb, var(--rpa-browser) 34%, transparent) 5px, transparent 9px) 50% 50% / 18px 18px no-repeat,
+    radial-gradient(circle, #f7fbff 0 1px, var(--rpa-browser) 1.5px 3px, color-mix(in srgb, var(--rpa-browser) 35%, transparent) 3.5px, transparent 5.5px) 7% 50% / 12px 12px no-repeat,
+    radial-gradient(circle, #ffffff 0 1px, var(--rpa-desktop) 1.5px 3px, color-mix(in srgb, var(--rpa-desktop) 34%, transparent) 3.5px, transparent 5.5px) 93% 50% / 12px 12px no-repeat,
+    linear-gradient(90deg, transparent 3%, color-mix(in srgb, var(--rpa-browser) 55%, #5aa9f1) 12%, var(--rpa-browser) 27%, color-mix(in srgb, var(--rpa-primary) 48%, var(--rpa-success) 52%) 66%, color-mix(in srgb, color-mix(in srgb, var(--rpa-primary) 48%, var(--rpa-success) 52%) 74%, var(--rpa-desktop) 26%) 88%, transparent 97%) 50% 50% / 100% 3px no-repeat,
+    linear-gradient(110deg, color-mix(in srgb, var(--rpa-bg-panel) 79%, var(--rpa-browser) 21%), color-mix(in srgb, var(--rpa-bg-panel) 72%, color-mix(in srgb, var(--rpa-primary) 48%, var(--rpa-success) 52%) 28%) 68%, color-mix(in srgb, var(--rpa-bg-panel) 86%, var(--rpa-desktop) 14%)) 50% 50% / 100% 100% no-repeat;
+  box-shadow: inset 0 0 0 1px var(--rpa-flow-edge), inset 0 1px 0 var(--rpa-flow-highlight), inset 0 -5px 12px var(--rpa-flow-sheen), 0 5px 16px var(--rpa-flow-glow);
+  opacity: 0.96;
+  pointer-events: none;
+}
+
+.rpa-command-hero[data-signal-active="true"]::after {
+  animation: rpa-flow-signal 5.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+}
+
+@keyframes rpa-flow-signal {
+  from { background-position: 12% 50%, 7% 50%, 93% 50%, 50% 50%, 50% 50%; }
+  to { background-position: 88% 50%, 7% 50%, 93% 50%, 50% 50%, 50% 50%; }
 }
 
 .rpa-hero-copy {
@@ -261,25 +275,27 @@
   top: 18px;
   bottom: 18px;
   width: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: grid;
+  grid-template-rows: 14px minmax(0, 1fr) 14px;
+  justify-items: center;
 }
 
 .rpa-card-rail-line {
-  flex: 1;
   width: 2px;
-  margin: 8px 0;
+  height: 100%;
+  margin: 0;
   border-radius: 999px;
   background: linear-gradient(180deg, var(--ds-color-7267626128313234), var(--ds-color-7267626128362c20));
 }
 
 .rpa-card-rail-node {
+  z-index: 1;
   width: 14px;
   height: 14px;
+  place-self: center;
+  border: 3px solid var(--rpa-browser);
   border-radius: 999px;
   background: white;
-  border: 3px solid var(--rpa-browser);
   box-shadow: 0 0 0 5px var(--ds-color-7267626128313234);
 }
 
@@ -449,9 +465,9 @@
   box-shadow: 0 0 0 8px var(--ds-color-726762612837392c);
 }
 
-.rpa-empty-orbit span:nth-child(1) { left: 12px; top: 18px; }
-.rpa-empty-orbit span:nth-child(2) { right: 12px; top: 32px; background: var(--rpa-desktop); }
-.rpa-empty-orbit span:nth-child(3) { left: 38px; bottom: 10px; background: var(--rpa-success); }
+.rpa-empty-orbit span:nth-child(1) { left: 10px; top: 12px; }
+.rpa-empty-orbit span:nth-child(2) { right: 10px; top: 12px; background: var(--rpa-desktop); }
+.rpa-empty-orbit span:nth-child(3) { left: 37px; bottom: 12px; background: var(--rpa-success); }
 
 @media (max-width: 900px) {
   .rpa-command-hero {
@@ -473,6 +489,10 @@
   --rpa-text-muted: #92a5bf;
   --rpa-primary: var(--ds-color-23373339666630);
   --rpa-primary-hover: #88aff3;
+  --rpa-flow-highlight: rgba(232, 242, 255, 0.14);
+  --rpa-flow-sheen: rgba(80, 151, 244, 0.12);
+  --rpa-flow-edge: color-mix(in srgb, var(--rpa-primary) 32%, var(--rpa-border));
+  --rpa-flow-glow: rgba(73, 132, 255, 0.16);
   background: #0b1220;
   color: var(--rpa-text-main);
 }
@@ -509,9 +529,7 @@
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.32);
 }
 
-.agent-window-container.dark .rpa-card-rail-node {
-  background: var(--rpa-bg-panel);
-}
+.agent-window-container.dark .rpa-card-rail-node { background: var(--rpa-bg-panel); }
 
 .agent-window-container.dark .btn-card-action {
   border-color: var(--rpa-border);
@@ -638,11 +656,16 @@
 
 /* ──────── 2. RPA 任务详情页 ──────── */
 .rpa-detail-header {
-  height: 48px;
+  position: relative;
+  z-index: 5;
+  min-height: 48px;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 6px 16px;
   background: var(--rpa-bg-panel);
   border-bottom: 1px solid var(--rpa-border);
 }
@@ -651,12 +674,74 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
-.rpa-schedule-editor { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.rpa-schedule-select, .rpa-schedule-time { height: 28px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 8px; font-size: 11px; }
+.rpa-current-task-title { min-width: 0; overflow: hidden; color: var(--rpa-text-main); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.rpa-schedule-editor { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.rpa-schedule-select-wrap { position: relative; flex: 0 0 auto; }
+.rpa-schedule-select {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--rpa-border);
+  border-radius: 9px;
+  background: var(--rpa-bg-layout);
+  color: var(--rpa-text-main);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.rpa-schedule-select > svg:first-child { color: var(--rpa-primary); }
+.rpa-schedule-select:hover, .rpa-schedule-select[aria-expanded="true"] { border-color: color-mix(in srgb, var(--rpa-primary) 48%, var(--rpa-border)); background: var(--rpa-primary-soft); }
+.rpa-schedule-select:focus-visible, .rpa-schedule-options-list:focus-visible { outline: 2px solid color-mix(in srgb, var(--rpa-primary) 68%, white); outline-offset: 2px; }
+.rpa-schedule-chevron { margin-left: 2px; color: var(--rpa-text-muted); transition: transform 0.16s ease; }
+.rpa-schedule-select[aria-expanded="true"] .rpa-schedule-chevron { transform: rotate(180deg); }
+.rpa-schedule-options {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(264px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--rpa-border);
+  border-radius: 12px;
+  outline: none;
+  background: var(--rpa-bg-panel);
+  box-shadow: 0 12px 32px rgba(10, 20, 38, 0.2);
+}
+.rpa-schedule-options-list { outline: none; }
+.rpa-schedule-options-heading { padding: 5px 8px 7px; color: var(--rpa-text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+.rpa-schedule-option {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--rpa-text-main);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.rpa-schedule-option:hover, .rpa-schedule-option.active { background: var(--rpa-bg-layout); }
+.rpa-schedule-option.selected .rpa-schedule-option-copy > span { color: var(--rpa-primary); font-weight: 700; }
+.rpa-schedule-option-icon { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 8px; background: var(--rpa-primary-soft); color: var(--rpa-primary); }
+.rpa-schedule-option-icon.interval { background: rgba(16, 185, 129, 0.1); color: #0a9d71; }
+.rpa-schedule-option-icon.daily { background: rgba(249, 115, 22, 0.1); color: #db6b12; }
+.rpa-schedule-option-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.rpa-schedule-option-copy > span { font-size: 11.5px; font-weight: 600; }
+.rpa-schedule-option-copy small { color: var(--rpa-text-muted); font-size: 10px; line-height: 1.35; }
+.rpa-schedule-option-check { flex: 0 0 auto; color: var(--rpa-primary); }
+.rpa-schedule-editor > .rpa-task-state { min-width: 52px; height: 34px; border-radius: 9px; font-size: 11px; }
+.rpa-schedule-time { height: 34px; border: 1px solid var(--rpa-border); border-radius: 8px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 8px; font-size: 11px; }
 .rpa-schedule-value { display: flex; align-items: center; gap: 5px; color: var(--rpa-text-muted); font-size: 11px; }
-.rpa-schedule-value input { width: 54px; height: 26px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 7px; }
+.rpa-schedule-value input { width: 54px; height: 30px; border: 1px solid var(--rpa-border); border-radius: 7px; background: var(--rpa-bg-layout); color: var(--rpa-text-main); padding: 0 7px; }
 
 .btn-back {
   background: transparent;
@@ -832,10 +917,13 @@
 }
 
 .rpa-node-config-card {
-  position: fixed;
+  position: absolute;
   z-index: 1200;
-  width: 320px;
-  max-height: min(68vh, 540px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(320px, calc(100% - 24px));
+  max-height: min(540px, calc(100% - 24px));
   overflow: hidden;
   border: 1px solid var(--rpa-border);
   border-radius: 14px;
@@ -844,13 +932,21 @@
   backdrop-filter: blur(14px);
 }
 .rpa-node-config-head, .rpa-panel-simple-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--rpa-border); }
+.rpa-node-config-head { flex: 0 0 auto; }
 .rpa-node-config-head div, .rpa-panel-simple-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .rpa-node-config-head small, .rpa-panel-simple-head small { color: var(--rpa-text-muted); font-size:  11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .rpa-node-config-head strong, .rpa-panel-simple-head strong { overflow: hidden; color: var(--rpa-text-main); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .rpa-node-config-head button, .rpa-panel-simple-head button { width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--rpa-text-muted); cursor: pointer; font-size: 18px; }
 .rpa-node-config-head button:hover, .rpa-panel-simple-head button:hover { background: var(--rpa-bg-layout); color: var(--rpa-text-main); }
-.rpa-node-config-body { max-height: calc(min(68vh, 540px) - 58px); overflow-y: auto; padding: 14px; }
+.rpa-node-config-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 14px; }
+.rpa-node-config-card .attr-input { box-sizing: border-box; max-width: 100%; min-width: 0; }
+.rpa-node-config-card .attr-label { flex-wrap: wrap; gap: 6px; overflow-wrap: anywhere; }
 .rpa-node-config-fields > .attr-group:first-child { margin-top: 0; }
+
+@media (max-height: 420px) {
+  .rpa-node-config-head { padding: 8px 12px; }
+  .rpa-node-config-body { padding: 8px 12px; }
+}
 
 /* 右侧抽屉 / IDE Sidebar */
 .rpa-panel-container {
@@ -1181,6 +1277,10 @@
   --rpa-primary: #4f5fd7;
   --rpa-primary-hover: #3f4fc2;
   --rpa-browser: #5869e8;
+  --rpa-flow-highlight: rgba(255, 255, 255, 0.56);
+  --rpa-flow-sheen: rgba(255, 255, 255, 0.22);
+  --rpa-flow-edge: color-mix(in srgb, var(--rpa-primary) 24%, var(--rpa-border));
+  --rpa-flow-glow: rgba(83, 140, 239, 0.12);
   --rpa-desktop: #d78a2d;
   --rpa-success: #15947c;
   --rpa-warn: #c7791b;
@@ -1452,4 +1552,23 @@
   border-color: var(--ds-color-23373339666630);
   background: #517fce;
   color: #f8fbff;
+}
+
+@media (max-width: 900px) {
+  .rpa-detail-header { justify-content: flex-start; }
+  .rpa-header-left { flex-basis: 100%; }
+  .rpa-schedule-editor { flex: 1 1 100%; justify-content: flex-start; }
+}
+
+@media (max-width: 620px) {
+  .rpa-detail-header { padding: 8px 10px; }
+  .rpa-schedule-editor { flex-wrap: wrap; }
+  .rpa-schedule-options { right: auto; left: 0; width: min(264px, calc(100vw - 84px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rpa-command-hero::after {
+    animation: none;
+    background-position: 50% 50%, 7% 50%, 93% 50%, 50% 50%, 50% 50%;
+  }
 }

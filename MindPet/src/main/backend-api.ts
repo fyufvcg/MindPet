@@ -216,6 +216,7 @@ export async function* callJavaBackend(
     activeSkills: (config as any).activeSkills || [],
     // 前端注入的技能规约全文（SKILL.md），后端仅用于本次请求
     systemPrompt: (config as any).systemPrompt || '',
+    thinkingEnabled: Boolean((config as any).thinkingEnabled),
     history: backendMessages.slice(0, -1)
   })
 

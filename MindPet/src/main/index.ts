@@ -2310,9 +2310,16 @@ app.whenReady().then(() => {
     permissionManager.clearPendingPermissions()
     clarificationManager.cancelPending(sessionId)
     credentialManager.cancelPending(sessionId)
-    officeRuntimeManager.cancelPending(sessionId)
 
     return true
+  })
+
+  ipcMain.handle('api:get-office-runtime-status', async () => {
+    return await officeRuntimeManager.getStatus()
+  })
+
+  ipcMain.handle('api:install-office-runtime', async event => {
+    return await officeRuntimeManager.installForUser(event.sender)
   })
 
   ipcMain.handle('api:show-notification', async (_, title: string, body: string) => {
@@ -4171,7 +4178,24 @@ app.whenReady().then(() => {
         let finalResponse = ''
         let hasTokenEvent = false
         for await (const step of stepStream) {
-          if (step.type === 'text_delta') {
+          if (step.type === 'reasoning_delta') {
+            if (event) {
+              event.sender.send('api:llm-reasoning-delta', {
+                content: step.content,
+                sessionId: config.sessionId,
+                messageId: config.messageId
+              })
+            }
+          } else if (step.type === 'reasoning_status') {
+            if (event) {
+              event.sender.send('api:llm-reasoning-status', {
+                status: step.content,
+                message: step.message,
+                sessionId: config.sessionId,
+                messageId: config.messageId
+              })
+            }
+          } else if (step.type === 'text_delta') {
             if (event) {
               event.sender.send('api:llm-text-delta', {
                 content: step.content,
@@ -4305,11 +4329,18 @@ app.whenReady().then(() => {
   ipcMain.handle('api:test-llm', async (_, config) => {
     const startedAt = Date.now()
     try {
+      // Renderer 只持有 hasApiKey，不持有密钥明文；测试时在主进程复用已保存的密钥。
+      // 仅当服务商一致时回退，避免把前一个服务商的 Key 用到刚切换的新服务商上。
+      const providerMatchesSaved = config?.provider === systemLlmConfig.provider
+      const savedApiKey = config?.hasApiKey && providerMatchesSaved ? systemLlmConfig.apiKey : ''
+      const apiKey = typeof config?.apiKey === 'string' && config.apiKey.trim()
+        ? config.apiKey.trim()
+        : savedApiKey
       const res = await fetch(backendUrl('/api/desktop/llm-test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey: config?.apiKey || '',
+          apiKey,
           baseUrl: config?.baseUrl || '',
           model: config?.model || ''
         })
@@ -4685,8 +4716,6 @@ app.whenReady().then(() => {
     permissionManager.clearPendingPermissions()
     clarificationManager.cancelPending()
     credentialManager.cancelPending()
-    officeRuntimeManager.cancelPending()
-
 
     // 3. 断开所有 MCP 服务连接
     mcpManager.disconnectAll().catch(() => { })

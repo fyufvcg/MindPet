@@ -42,6 +42,9 @@ interface Message {
   text: string
   time: string
   isThinking?: boolean
+  reasoningText?: string
+  reasoningStatus?: string
+  reasoningNotice?: string
   isSuperseded?: boolean
   toolSteps?: any[]
   fileInfos?: string

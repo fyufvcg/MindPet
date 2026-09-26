@@ -1,0 +1,6 @@
+{
+  "doubaoModel" : "doubao-embedding-vision-251215",
+  "doubaoEndpoint" : "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+  "doubaoApiKey" : "",
+  "mode" : "AUTO"
+}

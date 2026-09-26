@@ -207,6 +207,16 @@ const api = {
     ipcRenderer.on('api:llm-text-delta', subscription)
     return () => ipcRenderer.removeListener('api:llm-text-delta', subscription)
   },
+  onLlmReasoningDelta: (callback: (data: { content: string; sessionId?: string; messageId?: number }) => void): (() => void) => {
+    const subscription = (_event: any, data: { content: string; sessionId?: string; messageId?: number }) => callback(data)
+    ipcRenderer.on('api:llm-reasoning-delta', subscription)
+    return () => ipcRenderer.removeListener('api:llm-reasoning-delta', subscription)
+  },
+  onLlmReasoningStatus: (callback: (data: { status: string; message?: string; sessionId?: string; messageId?: number }) => void): (() => void) => {
+    const subscription = (_event: any, data: { status: string; message?: string; sessionId?: string; messageId?: number }) => callback(data)
+    ipcRenderer.on('api:llm-reasoning-status', subscription)
+    return () => ipcRenderer.removeListener('api:llm-reasoning-status', subscription)
+  },
   onTokenUsage: (callback: (data: any) => void): (() => void) => {
     const subscription = (_event: any, data: any) => callback(data)
     ipcRenderer.on('api:llm-token-usage', subscription)
@@ -355,8 +365,12 @@ const api = {
   respondCredential: (requestId: number, token: string, cancelled = false): void => {
     ipcRenderer.send('api:credential-response', { requestId, token, cancelled })
   },
-  respondOfficeRuntimeInstall: (requestId: number, approved: boolean): void => {
-    ipcRenderer.send('api:office-runtime-response', { requestId, approved })
+  getOfficeRuntimeStatus: (): Promise<any> => ipcRenderer.invoke('api:get-office-runtime-status'),
+  installOfficeRuntime: (): Promise<any> => ipcRenderer.invoke('api:install-office-runtime'),
+  onOfficeRuntimeProgress: (callback: (status: any) => void): (() => void) => {
+    const subscription = (_event: any, status: any) => callback(status)
+    ipcRenderer.on('api:office-runtime-progress', subscription)
+    return () => ipcRenderer.removeListener('api:office-runtime-progress', subscription)
   },
   abortLlm: (sessionId?: string): Promise<boolean> =>
     ipcRenderer.invoke('api:abort-llm', sessionId),

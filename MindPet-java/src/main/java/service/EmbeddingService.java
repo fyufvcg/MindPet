@@ -251,7 +251,8 @@ public class EmbeddingService {
                 "truncate", true,
                 "keep_alive", ollamaKeepAlive
             ));
-            JsonNode root = post(ollamaEndpoint, body, null, 3_000);
+            // 首次加载或冷启动时，embedding 本身可能超过数秒；避免把可用模型误判为离线。
+            JsonNode root = post(ollamaEndpoint, body, null, 10_000);
             JsonNode embeddings = root.path("embeddings");
             if (embeddings.isArray() && !embeddings.isEmpty()) {
                 ollamaReachable = true;

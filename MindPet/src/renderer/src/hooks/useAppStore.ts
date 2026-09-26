@@ -106,7 +106,7 @@ export interface TokenLog {
   source?: 'desktop' | 'wechat' | 'qq'
 }
 
-export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa' | 'memory_gallery'
+export type TabType = 'chat' | 'control' | 'agent' | 'knowledge' | 'settings' | 'logs' | 'rpa' | 'memory_gallery' | 'extensions'
 export type AgentSubTab = 'skills' | 'memory' | 'knowledge' | 'cron' | 'mcp'
 export type SettingsSubTab = 'backend' | 'keys' | 'storage' | 'avatar'
 
@@ -1220,7 +1220,10 @@ export function useAppStore() {
                     text: pm.text || lm.text,
                     isThinking: pm.isThinking,
                     isError: pm.isError,
-                    toolSteps: pm.toolSteps
+                    toolSteps: pm.toolSteps,
+                    reasoningText: pm.reasoningText ?? lm.reasoningText,
+                    reasoningStatus: pm.reasoningStatus ?? lm.reasoningStatus,
+                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice
                   }
                 }
                 // 竞态保护：如果内存中当前消息已完成生成(isThinking=false)，但 DB 读出来的还是 loading(isThinking=true)
@@ -1231,7 +1234,10 @@ export function useAppStore() {
                     text: pm.text,
                     isThinking: false,
                     isError: pm.isError,
-                    toolSteps: pm.toolSteps || lm.toolSteps
+                    toolSteps: pm.toolSteps || lm.toolSteps,
+                    reasoningText: pm.reasoningText ?? lm.reasoningText,
+                    reasoningStatus: pm.reasoningStatus ?? lm.reasoningStatus,
+                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice
                   }
                 }
                 return lm

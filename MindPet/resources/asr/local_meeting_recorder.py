@@ -192,15 +192,41 @@ def audio_callback(indata, frames, time_info, status):
 
 try:
     input_channels = max(1, min(2, int(selected_device["max_input_channels"])))
-    stream = sd.InputStream(
-        device=None if args.device < 0 else args.device,
-        samplerate=sample_rate,
-        channels=input_channels,
-        dtype="float32",
-        callback=audio_callback,
-        blocksize=max(800, int(sample_rate * 0.1)),
-    )
-    stream.start()
+    sample_rates = list(dict.fromkeys((sample_rate, 48000, 44100, 32000, 16000)))
+    channel_counts = list(dict.fromkeys((input_channels, 1)))
+    stream = None
+    last_stream_error = None
+    for candidate_channels in channel_counts:
+        for candidate_rate in sample_rates:
+            candidate = None
+            try:
+                sample_rate = candidate_rate
+                input_channels = candidate_channels
+                wav_file.setframerate(sample_rate)
+                candidate = sd.InputStream(
+                    device=None if args.device < 0 else args.device,
+                    samplerate=sample_rate,
+                    channels=input_channels,
+                    dtype="float32",
+                    callback=audio_callback,
+                    blocksize=max(800, int(sample_rate * 0.1)),
+                )
+                candidate.start()
+                stream = candidate
+                break
+            except Exception as error:
+                last_stream_error = error
+                if candidate is not None:
+                    try:
+                        if candidate.active:
+                            candidate.stop()
+                        candidate.close()
+                    except Exception:
+                        pass
+        if stream is not None:
+            break
+    if stream is None:
+        raise RuntimeError(f"无法以兼容的声道和采样率打开设备：{last_stream_error}")
     emit({
         "type": "ready",
         "device": str(selected_device["name"]),
@@ -212,7 +238,6 @@ except Exception as error:
     stop_event.set()
     wav_file.close()
     sys.exit(2)
-
 for line in sys.stdin:
     try:
         command = json.loads(line)

@@ -9,6 +9,17 @@ type SessionMutation =
   | { type: 'message-delete'; messageId: string }
   | { type: 'refresh'; sessionId?: string }
 
+type OfficeRuntimeStatus = {
+  installed: boolean
+  installing: boolean
+  supported: boolean
+  progress: number
+  detail: string
+  error: string
+  installPath: string
+  pythonVersion: string
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -131,6 +142,8 @@ declare global {
       onToolEvent: (callback: (data: any) => void) => () => void
       onAutomationProgress: (callback: (data: any) => void) => () => void
       onLlmTextDelta: (callback: (data: { content: string; sessionId?: string; messageId?: number }) => void) => () => void
+      onLlmReasoningDelta: (callback: (data: { content: string; sessionId?: string; messageId?: number }) => void) => () => void
+      onLlmReasoningStatus: (callback: (data: { status: string; message?: string; sessionId?: string; messageId?: number }) => void) => () => void
       onTokenUsage: (callback: (data: any) => void) => () => void
       setStoragePath: (pathStr: string) => Promise<string>
       getStoragePath: () => Promise<string>
@@ -224,7 +237,9 @@ declare global {
       respondPermission: (requestId: number, approved: boolean, scope?: 'once' | 'turn') => void
       respondClarification: (requestId: number, answers: Record<string, string>, cancelled?: boolean) => void
       respondCredential: (requestId: number, token: string, cancelled?: boolean) => void
-      respondOfficeRuntimeInstall: (requestId: number, approved: boolean) => void
+      getOfficeRuntimeStatus: () => Promise<OfficeRuntimeStatus>
+      installOfficeRuntime: () => Promise<OfficeRuntimeStatus>
+      onOfficeRuntimeProgress: (callback: (status: OfficeRuntimeStatus) => void) => () => void
       abortLlm: (sessionId?: string) => Promise<boolean>
       getCronTasks: () => Promise<any[] | null>
       saveCronTasks: (tasks: any[]) => Promise<boolean>

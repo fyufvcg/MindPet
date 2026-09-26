@@ -43,19 +43,59 @@ def callback(indata, frames, time_info, status):
         silence_reported = False
 
 
+def open_compatible_stream(device_id, device_info):
+    try:
+        default_rate = int(round(float(device_info.get("default_samplerate") or 0)))
+    except (TypeError, ValueError):
+        default_rate = 0
+    rates = list(dict.fromkeys(
+        rate for rate in (default_rate, args.sample_rate, 48000, 44100, 32000, 16000)
+        if rate > 0
+    ))
+    try:
+        max_channels = int(device_info.get("max_input_channels") or 1)
+    except (TypeError, ValueError):
+        max_channels = 1
+    channels_to_try = list(dict.fromkeys((max(1, min(2, max_channels)), 1)))
+    last_error = None
+
+    for channels in channels_to_try:
+        for sample_rate in rates:
+            candidate = None
+            try:
+                candidate = sd.InputStream(
+                    device=device_id,
+                    samplerate=sample_rate,
+                    channels=channels,
+                    dtype="float32",
+                    callback=callback,
+                    blocksize=max(800, int(sample_rate * 0.1)),
+                )
+                candidate.start()
+                return candidate, channels, sample_rate
+            except Exception as error:
+                last_error = error
+                if candidate is not None:
+                    try:
+                        if candidate.active:
+                            candidate.stop()
+                        candidate.close()
+                    except Exception:
+                        pass
+
+    raise RuntimeError(f"无法打开所选麦克风（尝试采样率：{', '.join(map(str, rates))} Hz）：{last_error}")
+
+
 try:
-    device = sd.query_devices(kind="input") if args.device < 0 else sd.query_devices(args.device)
-    channels = max(1, min(2, int(device["max_input_channels"])))
-    stream = sd.InputStream(
-        device=None if args.device < 0 else args.device,
-        samplerate=args.sample_rate,
-        channels=channels,
-        dtype="float32",
-        callback=callback,
-        blocksize=1600,
-    )
-    stream.start()
-    emit({"type": "test_ready", "device": str(device["name"]), "channels": channels})
+    device_id = None if args.device < 0 else args.device
+    device = sd.query_devices(kind="input") if device_id is None else sd.query_devices(device_id)
+    stream, channels, sample_rate = open_compatible_stream(device_id, device)
+    emit({
+        "type": "test_ready",
+        "device": str(device["name"]),
+        "channels": channels,
+        "sampleRate": sample_rate,
+    })
 except Exception as error:
     emit({"type": "test_error", "message": str(error)})
     sys.exit(2)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { ReactFlow, Background, Controls, MiniMap, Connection, addEdge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useRpaStore } from './useRpaStore'
@@ -24,11 +24,16 @@ import './rpa.css'
 import {
   ArrowLeft,
   Bot,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Clock3,
   Crosshair,
   Eraser,
   KeyRound,
   List,
   Map as MapIcon,
+  MousePointer2,
   Pause,
   Play,
   Plus,
@@ -39,6 +44,145 @@ import {
   Undo2,
   X
 } from 'lucide-react'
+
+type RpaScheduleType = 'manual' | 'interval' | 'daily'
+
+const rpaScheduleOptions = [
+  { value: 'manual', label: '手动执行', description: '仅在你点击运行时启动', Icon: MousePointer2 },
+  { value: 'interval', label: '固定间隔', description: '按设定间隔自动重复', Icon: Clock3 },
+  { value: 'daily', label: '每天定时', description: '每天在指定时间自动启动', Icon: CalendarDays }
+] as const
+
+function ScheduleTypeSelect({
+  value,
+  onChange
+}: {
+  value: RpaScheduleType
+  onChange: (value: RpaScheduleType) => void
+}): React.JSX.Element {
+  const [isOpen, setIsOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const listboxRef = useRef<HTMLDivElement>(null)
+  const selectedIndex = Math.max(0, rpaScheduleOptions.findIndex(option => option.value === value))
+  const selectedOption = rpaScheduleOptions[selectedIndex]
+
+  useEffect(() => {
+    if (!isOpen) return
+    setActiveIndex(selectedIndex)
+    listboxRef.current?.focus()
+  }, [isOpen, selectedIndex])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false)
+    }
+    window.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => window.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [isOpen])
+
+  const openMenu = (index = selectedIndex): void => {
+    setActiveIndex(index)
+    setIsOpen(true)
+  }
+
+  const selectOption = (nextValue: RpaScheduleType): void => {
+    onChange(nextValue)
+    setIsOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  const handleListboxKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      setActiveIndex(index => (index + direction + rpaScheduleOptions.length) % rpaScheduleOptions.length)
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(event.key === 'Home' ? 0 : rpaScheduleOptions.length - 1)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectOption(rpaScheduleOptions[activeIndex].value)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      setIsOpen(false)
+      triggerRef.current?.focus()
+    }
+  }
+
+  const SelectedIcon = selectedOption.Icon
+
+  return (
+    <div className="rpa-schedule-select-wrap" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="rpa-schedule-select"
+        aria-label={`调度方式：${selectedOption.label}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? 'rpa-schedule-options-list' : undefined}
+        onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            openMenu()
+          } else if (event.key === 'Tab' && isOpen) {
+            setIsOpen(false)
+          }
+        }}
+      >
+        <SelectedIcon size={14} strokeWidth={2} aria-hidden="true" />
+        <span>{selectedOption.label}</span>
+        <ChevronDown size={13} strokeWidth={2} aria-hidden="true" className="rpa-schedule-chevron" />
+      </button>
+      {isOpen && (
+        <div className="rpa-schedule-options">
+          <div className="rpa-schedule-options-heading" aria-hidden="true">执行方式</div>
+          <div
+            ref={listboxRef}
+            id="rpa-schedule-options-list"
+            className="rpa-schedule-options-list"
+            role="listbox"
+            aria-label="调度方式"
+            aria-activedescendant={`rpa-schedule-option-${rpaScheduleOptions[activeIndex].value}`}
+            tabIndex={0}
+            onKeyDown={handleListboxKeyDown}
+            onBlur={event => {
+              if (!rootRef.current?.contains(event.relatedTarget as Node | null)) setIsOpen(false)
+            }}
+          >
+            {rpaScheduleOptions.map((option, index) => {
+              const OptionIcon = option.Icon
+              return (
+                <div
+                  key={option.value}
+                  id={`rpa-schedule-option-${option.value}`}
+                  className={`rpa-schedule-option${activeIndex === index ? ' active' : ''}${value === option.value ? ' selected' : ''}`}
+                  role="option"
+                  aria-selected={value === option.value}
+                  onPointerMove={() => setActiveIndex(index)}
+                  onClick={() => selectOption(option.value)}
+                >
+                  <span className={`rpa-schedule-option-icon ${option.value}`}>
+                    <OptionIcon size={15} strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <span className="rpa-schedule-option-copy">
+                    <span>{option.label}</span>
+                    <small>{option.description}</small>
+                  </span>
+                  {value === option.value && <Check size={15} strokeWidth={2.5} aria-hidden="true" className="rpa-schedule-option-check" />}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // 注册 React Flow 自定义节点类型
 const nodeTypes = {
@@ -100,9 +244,38 @@ export function RpaPage(): React.JSX.Element {
   // 2. 状态：选中的节点（用于右侧属性编辑）
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [nodeCardPosition, setNodeCardPosition] = useState<{ x: number; y: number } | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const nodeCardRef = useRef<HTMLDivElement>(null)
   const selectedNode = useMemo(() => {
     return nodes.find(n => n.id === selectedNodeId) || null
   }, [nodes, selectedNodeId])
+
+  useLayoutEffect(() => {
+    if (!nodeCardPosition) return
+
+    const keepCardInCanvas = (): void => {
+      const canvas = canvasRef.current
+      const card = nodeCardRef.current
+      if (!canvas || !card) return
+
+      const inset = 12
+      const toolbarBottom = canvas.clientHeight < 260 ? inset : 56
+      const maxX = Math.max(inset, canvas.clientWidth - card.offsetWidth - inset)
+      const maxY = Math.max(toolbarBottom, canvas.clientHeight - card.offsetHeight - inset)
+      setNodeCardPosition(current => {
+        if (!current) return current
+        const x = Math.min(Math.max(current.x, inset), maxX)
+        const y = Math.min(Math.max(current.y, toolbarBottom), maxY)
+        return x === current.x && y === current.y ? current : { x, y }
+      })
+    }
+
+    keepCardInCanvas()
+    const observer = new ResizeObserver(keepCardInCanvas)
+    if (canvasRef.current) observer.observe(canvasRef.current)
+    if (nodeCardRef.current) observer.observe(nodeCardRef.current)
+    return () => observer.disconnect()
+  }, [nodeCardPosition, selectedNodeId])
 
   // 3. 状态：右侧 Tab
   const [activeTab, setActiveTab] = useState<'attr' | 'logs' | 'chat' | 'credentials'>('logs')
@@ -115,6 +288,8 @@ export function RpaPage(): React.JSX.Element {
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [chatInput, setChatInput] = useState('')
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const heroRef = useRef<HTMLDivElement>(null)
+  const [isHeroSignalVisible, setIsHeroSignalVisible] = useState(false)
 
   // 4. 状态：创建新任务 Modal
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -144,6 +319,33 @@ export function RpaPage(): React.JSX.Element {
   const [showPanel, setShowPanel] = useState(false)
 
   const [isChatSending, setIsChatSending] = useState(false)
+
+  useEffect(() => {
+    const hero = heroRef.current
+    if (!hero || activeTaskId !== null || !('IntersectionObserver' in window)) {
+      setIsHeroSignalVisible(false)
+      return
+    }
+
+    let isIntersecting = false
+    const syncVisibility = (): void => {
+      setIsHeroSignalVisible(isIntersecting && document.visibilityState === 'visible')
+    }
+    const observer = new IntersectionObserver(
+      entries => {
+        isIntersecting = entries.some(entry => entry.isIntersecting)
+        syncVisibility()
+      },
+      { root: hero.closest('.rpa-list-view'), threshold: 0 }
+    )
+    observer.observe(hero)
+    document.addEventListener('visibilitychange', syncVisibility)
+
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', syncVisibility)
+    }
+  }, [activeTaskId])
 
   // 11. 状态：右键菜单管理
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -954,7 +1156,7 @@ export function RpaPage(): React.JSX.Element {
     return (
       <div className="rpa-container">
         <div className="rpa-list-view">
-          <div className="rpa-command-hero">
+          <div className="rpa-command-hero" ref={heroRef} data-signal-active={isHeroSignalVisible ? 'true' : 'false'}>
             <div className="rpa-hero-copy">
               <div className="rpa-kicker">Hybrid automation console</div>
               <h1>RPA 自动化任务清单</h1>
@@ -1071,7 +1273,7 @@ export function RpaPage(): React.JSX.Element {
             <ArrowLeft size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
             返回列表
           </button>
-          <div style={{ fontSize: '16px', fontWeight: 700 }}>
+          <div className="rpa-current-task-title">
             {currentTask?.name}
           </div>
         </div>
@@ -1083,20 +1285,15 @@ export function RpaPage(): React.JSX.Element {
             >
               {currentTask.enabled === false ? '关闭' : currentTask.lastRunStatus === 'failed' ? '异常' : '允许'}
             </button>
-            <select
-              className="rpa-schedule-select"
+            <ScheduleTypeSelect
               value={currentTask.schedule?.type || 'manual'}
-              onChange={event => updateTask(currentTask.id, {
+              onChange={type => updateTask(currentTask.id, {
                 schedule: {
                   ...currentTask.schedule,
-                  type: event.target.value as 'manual' | 'interval' | 'daily'
+                  type
                 }
               })}
-            >
-              <option value="manual">手动执行</option>
-              <option value="interval">固定间隔</option>
-              <option value="daily">每天定时</option>
-            </select>
+            />
             {currentTask.schedule?.type === 'interval' && (
               <label className="rpa-schedule-value">
                 每
@@ -1127,7 +1324,7 @@ export function RpaPage(): React.JSX.Element {
 
       <div className="rpa-detail-body">
         {/* 左侧 React Flow 编辑画布 */}
-        <div className="rpa-canvas-container">
+        <div className="rpa-canvas-container" ref={canvasRef}>
           {/* 普通用户主路径：录制 → 自动生成 → 运行 */}
           <div className="rpa-canvas-toolbar">
             <button className="rpa-toolbar-primary" onClick={handleRecordWorkflow} disabled={isChatSending}><span className="rpa-record-dot" />录制</button>
@@ -1161,8 +1358,10 @@ export function RpaPage(): React.JSX.Element {
             onConnect={onConnect}
             nodeTypes={nodeTypes}
             onNodeClick={(event, node) => {
+              const canvasBounds = canvasRef.current?.getBoundingClientRect()
+              if (!canvasBounds) return
               setSelectedNodeId(node.id)
-              setNodeCardPosition({ x: Math.min(event.clientX + 28, window.innerWidth - 360), y: Math.max(92, Math.min(event.clientY - 36, window.innerHeight - 520)) })
+              setNodeCardPosition({ x: event.clientX - canvasBounds.left + 28, y: event.clientY - canvasBounds.top - 36 })
               setShowPanel(false)
               setMenu(null)
             }}
@@ -1211,7 +1410,7 @@ export function RpaPage(): React.JSX.Element {
             )}
           </ReactFlow>
           {selectedNode && nodeCardPosition && (
-            <div className="rpa-node-config-card" style={{ left: nodeCardPosition.x, top: nodeCardPosition.y }}>
+            <div className="rpa-node-config-card" ref={nodeCardRef} style={{ left: nodeCardPosition.x, top: nodeCardPosition.y }}>
               <div className="rpa-node-config-head">
                 <div>
                   <small>节点配置</small>

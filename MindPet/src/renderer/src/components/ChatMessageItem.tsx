@@ -4,7 +4,6 @@ import { setInternalClipboard } from '../hooks/useAppStore'
 import iconSvg from '../assets/icon_from_image.svg'
 import { ClarificationCard } from './ClarificationCard'
 import { PaddleOcrCredentialCard } from './PaddleOcrCredentialCard'
-import { OfficeRuntimeInstallCard } from './OfficeRuntimeInstallCard'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import {
@@ -1247,12 +1246,14 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
 
   // 使用 userCollapsed 状态，绝对且强制在思考状态变化时更新折叠展示
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null)
+  const [reasoningExpanded, setReasoningExpanded] = useState(Boolean(msg.isThinking && msg.reasoningText !== undefined))
   const [copied, setCopied] = useState(false)
   const [traceExportState, setTraceExportState] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
   // 缓存消息文本渲染结果，避免重渲染导致 DOM 替换丢失选区
   const deferredStreamingText = useDeferredValue(msg.isThinking ? msg.text : null)
   const textForRender = msg.isThinking ? deferredStreamingText : msg.text
+  const reasoningTextForRender = useDeferredValue(msg.reasoningText || '')
 
   const renderedText = useMemo(() => {
     if (!textForRender) return null
@@ -1353,12 +1354,15 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
     }
   }, [msg.isThinking])
 
+  useEffect(() => {
+    setReasoningExpanded(Boolean(msg.isThinking && msg.reasoningText !== undefined))
+  }, [msg.id, msg.isThinking])
+
   const currentCollapsed = userCollapsed !== null ? userCollapsed : !msg.isThinking
 
   const toolSteps = msg.toolSteps || []
   const clarificationSteps = toolSteps.filter((step: any) => step.type === 'clarification')
   const credentialSteps = toolSteps.filter((step: any) => step.type === 'credential')
-  const officeRuntimeSteps = toolSteps.filter((step: any) => step.type === 'officeRuntime')
   const generatedToolFiles = toolSteps
     .filter((step: any) => step.type === 'generatedFiles' && Array.isArray(step.files))
     .flatMap((step: any) => step.files)
@@ -1416,6 +1420,14 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
 
   const headerText = `${summaryText}${timeSuffix}`
   const collapseText = `${summaryText}`
+  const hasReasoning = msg.sender === 'agent' && (msg.reasoningText !== undefined || Boolean(msg.reasoningStatus || msg.reasoningNotice))
+  const reasoningSummary = msg.reasoningStatus === 'unsupported'
+    ? '深度思考不可用'
+    : msg.reasoningStatus === 'unavailable'
+      ? '模型未返回推理内容'
+      : msg.isThinking
+        ? '正在深度思考'
+        : '深度思考过程'
 
   const senderName = msg.sender === 'user' ? '我' : currentAvatarName
   console.log('[ChatMsg] sender=', msg.sender, 'text=', (msg.text || '').slice(0, 30), 'isThinking=', msg.isThinking)
@@ -1516,15 +1528,34 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
           </div>
         )}
 
+        {hasReasoning && (
+          <details
+            className={`message-reasoning ${msg.isThinking ? 'streaming' : ''}`}
+            open={reasoningExpanded}
+            onToggle={event => setReasoningExpanded(event.currentTarget.open)}
+          >
+            <summary>
+              <Brain size={14} strokeWidth={2} aria-hidden="true" />
+              <span>{reasoningSummary}</span>
+              {msg.isThinking && reasoningTextForRender.length > 0 && <span className="message-reasoning-live">实时更新</span>}
+            </summary>
+            {msg.reasoningNotice && (msg.reasoningStatus === 'unsupported' || msg.reasoningStatus === 'unavailable') && (
+              <div className="message-reasoning-notice">{msg.reasoningNotice}</div>
+            )}
+            {reasoningTextForRender ? (
+              <div className="message-reasoning-text">{reasoningTextForRender}</div>
+            ) : msg.isThinking && !msg.reasoningNotice ? (
+              <div className="message-reasoning-placeholder">正在等待模型返回推理内容…</div>
+            ) : null}
+          </details>
+        )}
+
         {/* 工具调用流（现代内联样式） */}
         {clarificationSteps.map((step: any) => (
           <ClarificationCard key={step.id} step={step} />
         ))}
         {credentialSteps.map((step: any) => (
           <PaddleOcrCredentialCard key={step.id} step={step} />
-        ))}
-        {officeRuntimeSteps.map((step: any) => (
-          <OfficeRuntimeInstallCard key={step.id} step={step} />
         ))}
         {generatedToolFiles.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>

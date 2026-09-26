@@ -142,6 +142,8 @@ export function MeetingRecorderPanel({ llmConfig, onClose, onToast }: MeetingRec
   const [savingAsrConfig, setSavingAsrConfig] = useState(false)
   const [asrConfigOpen, setAsrConfigOpen] = useState(false)
   const [devices, setDevices] = useState<LocalAudioDevice[]>([])
+  const [devicesLoading, setDevicesLoading] = useState(false)
+  const [deviceError, setDeviceError] = useState('')
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined)
   const [levels, setLevels] = useState<number[]>(() => Array.from({ length: 56 }, () => 0.12))
   const [testLevels, setTestLevels] = useState<number[]>([0, 0])
@@ -290,17 +292,33 @@ export function MeetingRecorderPanel({ llmConfig, onClose, onToast }: MeetingRec
     }
   }), [])
 
-  const loadDevices = async (): Promise<void> => {
+  const loadDevices = async (resetSelection = false): Promise<void> => {
+    setDevicesLoading(true)
+    setDeviceError('')
     try {
       const list = await window.api.listLocalMeetingDevices()
       setDevices(list)
       const preferred = list.find(device => device.isDefault) || list[0]
-      setSelectedDeviceId(current => current ?? preferred?.id)
+      setSelectedDeviceId(current => {
+        if (!preferred) return undefined
+        return !resetSelection && current !== undefined && list.some(device => device.id === current)
+          ? current
+          : preferred.id
+      })
+      if (list.length === 0) {
+        setDeviceError('未检测到可用的麦克风输入设备。请检查 Windows 麦克风权限和设备连接后重新检测。')
+      }
     } catch (error) {
       setDevices([])
-      if ((error instanceof Error ? error.message : String(error)).includes('LOCAL_ASR_COMPONENTS_REQUIRED')) {
+      setSelectedDeviceId(undefined)
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('LOCAL_ASR_COMPONENTS_REQUIRED')) {
         setInstallRequired(true)
+      } else {
+        setDeviceError(`录音设备检测失败：${message}`)
       }
+    } finally {
+      setDevicesLoading(false)
     }
   }
 
@@ -332,7 +350,7 @@ export function MeetingRecorderPanel({ llmConfig, onClose, onToast }: MeetingRec
   }, [asrConfigured])
 
   useEffect(() => {
-    if (view !== 'record' || state !== 'setup' || selectedDeviceId === undefined || installRequired) return undefined
+    if (view !== 'record' || state !== 'setup' || selectedDeviceId === undefined || devicesLoading || installRequired) return undefined
     setTestStatus('starting')
     setTestLevels([0, 0])
     setTestMessage('正在连接麦克风…')
@@ -342,7 +360,7 @@ export function MeetingRecorderPanel({ llmConfig, onClose, onToast }: MeetingRec
       else { setTestStatus('error'); setTestMessage(message) }
     })
     return () => { void window.api.stopLocalMicrophoneTest() }
-  }, [installRequired, selectedDeviceId, state, view])
+  }, [devicesLoading, installRequired, selectedDeviceId, state, view])
 
   useEffect(() => {
     if (state !== 'recording') return undefined
@@ -608,7 +626,20 @@ export function MeetingRecorderPanel({ llmConfig, onClose, onToast }: MeetingRec
             </div>
           ) : (
             <>
-              <label className="meeting-device-select"><span>录音设备</span><select value={selectedDeviceId ?? ''} onChange={event => setSelectedDeviceId(Number(event.target.value))}>{devices.map(device => <option key={device.id} value={device.id}>{device.name}</option>)}</select></label>
+              <label className="meeting-device-select">
+                <span className="meeting-device-select-heading">
+                  录音设备
+                  <button type="button" className="meeting-device-refresh" onClick={() => void loadDevices(true)} disabled={devicesLoading}>
+                    <RefreshCw size={13} className={devicesLoading ? 'meeting-button-spinner' : ''} />
+                    {devicesLoading ? '检测中…' : '重新检测'}
+                  </button>
+                </span>
+                <select value={selectedDeviceId ?? ''} onChange={event => setSelectedDeviceId(Number(event.target.value))} disabled={devicesLoading || devices.length === 0}>
+                  {devices.length === 0 && <option value="">{devicesLoading ? '正在扫描输入设备…' : '未检测到麦克风'}</option>}
+                  {devices.map(device => <option key={device.id} value={device.id}>{device.name}{device.host ? ` · ${device.host}` : ''}</option>)}
+                </select>
+                {deviceError && <small role="status" className="meeting-device-error">{deviceError}</small>}
+              </label>
               <div className={`meeting-mic-test is-${testStatus}`}>
                 <div className="meeting-test-orb"><Mic size={20} /></div>
                 <div className="meeting-test-channels">{testLevels.map((level, index) => <div key={index}><span>音道 {index + 1}</span><i><b style={{ width: `${Math.max(2, level * 100)}%` }} /></i></div>)}</div>

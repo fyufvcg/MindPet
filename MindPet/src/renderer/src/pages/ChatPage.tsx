@@ -12,6 +12,7 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  Brain,
   Check,
   ChevronDown,
   Code2,
@@ -107,6 +108,7 @@ function ChatPageImpl(): React.JSX.Element {
   const [showMcpPopover, setShowMcpPopover] = useState(false)
   const [showModelPopover, setShowModelPopover] = useState(false)
   const [showMeetingRecorder, setShowMeetingRecorder] = useState(false)
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [approvalDetailsExpanded, setApprovalDetailsExpanded] = useState(false)
   const [approvalMenuOpen, setApprovalMenuOpen] = useState(false)
   const skillsPopoverRef = useRef<HTMLDivElement>(null)
@@ -642,7 +644,8 @@ function ChatPageImpl(): React.JSX.Element {
       showToast('上下文额度已用满，请创建新会话以继续对话！', 'error')
       return
     }
-    handleSendChat()
+    void handleSendChat(thinkingEnabled)
+    setThinkingEnabled(false)
   }
 
   // SSH 弹窗控制本地状态
@@ -737,6 +740,7 @@ function ChatPageImpl(): React.JSX.Element {
   // 切换会话时重置滚动状态
   useEffect(() => {
     setShowScrollToBottom(false)
+    setThinkingEnabled(false)
   }, [activeSessionId])
 
   useEffect(() => {
@@ -1227,6 +1231,17 @@ function ChatPageImpl(): React.JSX.Element {
           <div className="chat-control-toolbar">
             {/* 左侧：模型切换 */}
             <div className="toolbar-group-left" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className={`thinking-mode-toggle ${thinkingEnabled ? 'active' : ''}`}
+                aria-pressed={thinkingEnabled}
+                aria-label="深度思考"
+                onClick={() => setThinkingEnabled(enabled => !enabled)}
+                title="按次开启深度思考，尝试显示 DeepSeek 或兼容模型返回的推理内容"
+              >
+                <Brain size={15} strokeWidth={2} aria-hidden="true" />
+                <span>深度思考</span>
+              </button>
               <div className="custom-model-select-container" style={{ position: 'relative' }} ref={modelPopoverRef}>
                 <div
                   className="model-dropdown-container"

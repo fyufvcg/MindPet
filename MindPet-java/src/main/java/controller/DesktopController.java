@@ -86,6 +86,7 @@ public class DesktopController {
         String message = String.valueOf(body.getOrDefault("message", ""));
         String mode = String.valueOf(body.getOrDefault("mode", "chat"));
         int contextRounds = Integer.parseInt(String.valueOf(body.getOrDefault("contextRounds", "6")));
+        boolean thinkingRequested = Boolean.parseBoolean(String.valueOf(body.getOrDefault("thinkingEnabled", false)));
         @SuppressWarnings("unchecked")
         List<String> images = (List<String>) body.getOrDefault("images", List.of());
         @SuppressWarnings("unchecked")
@@ -108,12 +109,33 @@ public class DesktopController {
                 + (hasImages ? ", 图片: " + images.size() + "张" : ""));
 
             final OutputStream streamOut = out;
+            boolean thinkingSupported = chatClientFactory.supportsDeepSeekThinking();
+            boolean thinkingEnabled = thinkingRequested && thinkingSupported && !"summary".equals(mode);
+            StringBuilder reasoningContent = new StringBuilder();
+            if (thinkingRequested && !"summary".equals(mode)) {
+                if (thinkingSupported) {
+                    writeNdjson(streamOut, "reasoning_status", "thinking", "正在等待模型推理内容…");
+                } else {
+                    writeNdjson(streamOut, "reasoning_status", "unsupported",
+                        "当前配置不是 DeepSeek 或兼容模型，已按普通模式回答。");
+                }
+                streamOut.flush();
+            }
             java.util.function.Consumer<String> onDelta = delta -> {
                 try {
                     writeNdjson(streamOut, "text_delta", delta, null);
                     streamOut.flush();
                 } catch (Exception writeError) {
                     throw new IllegalStateException("写入流式响应失败", writeError);
+                }
+            };
+            java.util.function.Consumer<String> onReasoningDelta = delta -> {
+                try {
+                    reasoningContent.append(delta);
+                    writeNdjson(streamOut, "reasoning_delta", delta, null);
+                    streamOut.flush();
+                } catch (Exception writeError) {
+                    throw new IllegalStateException("写入推理流失败", writeError);
                 }
             };
 
@@ -130,9 +152,19 @@ public class DesktopController {
             } else if (hasImages) {
                 byte[] imageBytes = java.util.Base64.getDecoder().decode(images.get(0));
                 result = aiService.chatWithImageStream(userId,
-                    message.isBlank() ? null : message, imageBytes, "image.png", contextRounds, onDelta, skills);
+                    message.isBlank() ? null : message, imageBytes, "image.png", contextRounds, onDelta,
+                    skills, thinkingEnabled, onReasoningDelta);
             } else {
-                result = aiService.chatStream(userId, message, contextRounds, onDelta, skills, extraSystemPrompt);
+                result = aiService.chatStream(userId, message, contextRounds, onDelta, skills,
+                    extraSystemPrompt, thinkingEnabled, onReasoningDelta);
+            }
+            if (thinkingEnabled) {
+                if (reasoningContent.isEmpty()) {
+                    writeNdjson(out, "reasoning_status", "unavailable",
+                        "模型完成了回答，但服务没有返回可显示的推理内容。");
+                } else {
+                    writeNdjson(out, "reasoning_status", "complete", null);
+                }
             }
             String reply = result.reply();
 

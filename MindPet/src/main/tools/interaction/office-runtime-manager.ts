@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { spawn } from 'child_process'
 import * as fs from 'fs'
@@ -31,17 +31,19 @@ export interface OfficeRuntimeInfo {
   pdf2docxVersion: string
 }
 
-interface PendingRequest {
-  resolve: (approved: boolean) => void
-  timer: NodeJS.Timeout
-  sessionId?: string
+interface OfficeRuntimeEnsureContext {
+  event?: { sender: WebContents }
 }
 
-interface InstallEventContext {
-  requestId: number
-  sessionId?: string
-  messageId?: number
-  target: BrowserWindow
+export interface OfficeRuntimeStatus {
+  installed: boolean
+  installing: boolean
+  supported: boolean
+  progress: number
+  detail: string
+  error: string
+  installPath: string
+  pythonVersion: string
 }
 
 function runtimeRoot(): string {
@@ -59,24 +61,6 @@ function runtimeInfo(): OfficeRuntimeInfo {
     pythonVersion: PYTHON_VERSION,
     pdf2docxVersion: PDF2DOCX_VERSION
   }
-}
-
-function sendInstallEvent(
-  eventContext: InstallEventContext,
-  type: 'office_runtime_progress' | 'office_runtime_complete' | 'office_runtime_error',
-  detail: string,
-  progress: number
-): void {
-  if (eventContext.target.isDestroyed()) return
-  eventContext.target.webContents.send('api:llm-tool-event', {
-    type,
-    requestId: eventContext.requestId,
-    detail,
-    progress: Math.max(0, Math.min(100, Math.round(progress))),
-    timestamp: Date.now(),
-    messageId: eventContext.messageId,
-    sessionId: eventContext.sessionId
-  })
 }
 
 async function runProcess(
@@ -527,24 +511,12 @@ async function validateRuntime(info: OfficeRuntimeInfo): Promise<boolean> {
 }
 
 class OfficeRuntimeManager {
-  private pending = new Map<number, PendingRequest>()
-  private nextRequestId = 1
-  private installPromise: Promise<OfficeRuntimeInfo> | null = null
+  private installPromise: Promise<void> | null = null
+  private installProgress = 0
+  private installDetail = ''
+  private installError = ''
 
-  constructor() {
-    ipcMain.on('api:office-runtime-response', (_event, data) => {
-      const requestId = Number(data?.requestId)
-      const pending = this.pending.get(requestId)
-      if (!pending) return
-      clearTimeout(pending.timer)
-      this.pending.delete(requestId)
-      pending.resolve(Boolean(data?.approved))
-    })
-  }
-
-  public async ensure(
-    context: { sessionId?: string; messageId?: number; event?: { sender: WebContents }; abortSignal?: AbortSignal }
-  ): Promise<OfficeRuntimeInfo> {
+  public async ensure(_context?: OfficeRuntimeEnsureContext): Promise<OfficeRuntimeInfo> {
     if (process.platform !== 'win32' || process.arch !== 'x64') {
       throw new Error('当前 Office 组件包安装器暂仅支持 Windows x64')
     }
@@ -553,93 +525,108 @@ class OfficeRuntimeManager {
       await writeOfficeRuntimeScripts(info)
       if (await validateRuntime(info)) return info
     }
+    throw new Error('请先打开侧栏「扩展包」安装 Office 文档组件，再重试此操作。')
+  }
 
-    const target = context.event?.sender
-      ? BrowserWindow.fromWebContents(context.event.sender)
-      : BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-    if (!target || target.isDestroyed()) throw new Error('无法显示 Office 组件包安装卡片')
-
-    const requestId = this.nextRequestId++
-    const approved = await new Promise<boolean>(resolvePromise => {
-      const timer = setTimeout(() => {
-        this.pending.delete(requestId)
-        resolvePromise(false)
-      }, 10 * 60 * 1000)
-      this.pending.set(requestId, { resolve: resolvePromise, timer, sessionId: context.sessionId })
-      target.webContents.send('api:llm-tool-event', {
-        type: 'office_runtime_request',
-        requestId,
-        request: {
-          title: '安装 Office 组件包',
-          description:
-            '用于增强 Office 文档转换与排版能力。组件安装在 MindPet 独立目录中，不修改系统环境，不需要管理员权限。',
-          downloadSize: '预计下载 120–180 MB，安装后约占用 350–500 MB',
-          installPath: info.rootDir
-        },
-        timestamp: Date.now(),
-        messageId: context.messageId,
-        sessionId: context.sessionId
-      })
-    })
-    if (!approved) throw new Error('OFFICE_RUNTIME_INSTALL_CANCELLED: 用户取消了 Office 组件包安装')
-
-    const eventContext: InstallEventContext = {
-      requestId,
-      sessionId: context.sessionId,
-      messageId: context.messageId,
-      target
+  public async getStatus(): Promise<OfficeRuntimeStatus> {
+    const supported = process.platform === 'win32' && process.arch === 'x64'
+    const info = runtimeInfo()
+    if (this.installPromise) {
+      return {
+        installed: false,
+        installing: true,
+        supported,
+        progress: this.installProgress,
+        detail: this.installDetail,
+        error: this.installError,
+        installPath: info.rootDir,
+        pythonVersion: PYTHON_VERSION
+      }
     }
+    const installed = supported && await validateRuntime(info)
+    return {
+      installed,
+      installing: false,
+      supported,
+      progress: installed ? 100 : this.installProgress,
+      detail: installed ? 'Office 文档组件已就绪' : this.installDetail,
+      error: this.installError,
+      installPath: info.rootDir,
+      pythonVersion: PYTHON_VERSION
+    }
+  }
+
+  public async installForUser(sender: WebContents): Promise<OfficeRuntimeStatus> {
+    const info = runtimeInfo()
+    if (process.platform !== 'win32' || process.arch !== 'x64') return await this.getStatus()
+    const currentStatus = await this.getStatus()
+    if (currentStatus.installed) return currentStatus
+
+    const target = BrowserWindow.fromWebContents(sender)
+    if (!target || target.isDestroyed()) throw new Error('扩展包页面已关闭，无法开始安装')
+
     if (!this.installPromise) {
-      this.installPromise = this.install(info, eventContext, context.abortSignal).finally(() => {
+      this.installError = ''
+      this.installProgress = 0
+      this.installDetail = '正在准备安装目录'
+      this.publishStatus(true)
+      this.installPromise = this.install(info).finally(() => {
         this.installPromise = null
       })
     }
-    return await this.installPromise
+    try {
+      await this.installPromise
+    } catch {
+      // The page receives the detailed error through the progress event and status query.
+    }
+    return await this.getStatus()
   }
 
-  public cancelPending(sessionId?: string): void {
-    for (const [requestId, pending] of this.pending.entries()) {
-      if (sessionId && pending.sessionId !== sessionId) continue
-      clearTimeout(pending.timer)
-      this.pending.delete(requestId)
-      pending.resolve(false)
+  private publishStatus(installing: boolean, installed = false): void {
+    const payload: OfficeRuntimeStatus = {
+      installed,
+      installing,
+      supported: process.platform === 'win32' && process.arch === 'x64',
+      progress: this.installProgress,
+      detail: this.installDetail,
+      error: this.installError,
+      installPath: runtimeRoot(),
+      pythonVersion: PYTHON_VERSION
+    }
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('api:office-runtime-progress', payload)
     }
   }
 
-  private async install(
-    info: OfficeRuntimeInfo,
-    eventContext: InstallEventContext,
-    signal?: AbortSignal
-  ): Promise<OfficeRuntimeInfo> {
+  private async install(info: OfficeRuntimeInfo): Promise<void> {
     const pythonDir = dirname(info.pythonPath)
+    const updateProgress = (detail: string, progress: number): void => {
+      this.installProgress = Math.max(0, Math.min(100, Math.round(progress)))
+      this.installDetail = detail
+      this.publishStatus(true)
+    }
     try {
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在准备安装目录', 3)
+      updateProgress('正在准备安装目录', 3)
       await fs.promises.mkdir(dirname(info.rootDir), { recursive: true })
       if (fs.existsSync(info.rootDir)) await fs.promises.rm(info.rootDir, { recursive: true, force: true })
       await fs.promises.mkdir(pythonDir, { recursive: true })
 
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在下载 Office 运行组件', 8)
-      const pythonArchive = await downloadBuffer(PYTHON_EMBED_URL, signal, ratio => {
-        sendInstallEvent(
-          eventContext,
-          'office_runtime_progress',
-          `正在下载 Office 运行组件（${Math.round(ratio * 100)}%）`,
-          8 + ratio * 20
-        )
+      updateProgress('正在下载 Office 运行组件', 8)
+      const pythonArchive = await downloadBuffer(PYTHON_EMBED_URL, undefined, ratio => {
+        updateProgress(`正在下载 Office 运行组件（${Math.round(ratio * 100)}%）`, 8 + ratio * 20)
       })
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在配置 Office 运行环境', 30)
+      updateProgress('正在配置 Office 运行环境', 30)
       await extractPythonArchive(pythonArchive, pythonDir)
       await configureEmbeddedPython(pythonDir)
 
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在准备组件安装服务', 38)
+      updateProgress('正在准备组件安装服务', 38)
       const getPipPath = join(info.rootDir, 'get-pip.py')
-      await fs.promises.writeFile(getPipPath, await downloadBuffer(GET_PIP_URL, signal, () => undefined))
+      await fs.promises.writeFile(getPipPath, await downloadBuffer(GET_PIP_URL, undefined, () => undefined))
       await runProcess(info.pythonPath, [getPipPath, 'pip==24.3.1'], {
-        cwd: info.rootDir,
-        signal
+        cwd: info.rootDir
       })
 
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在安装 Office 文档转换组件', 55)
+      updateProgress('正在安装 Office 文档转换组件', 55)
       await runProcess(
         info.pythonPath,
         [
@@ -649,9 +636,9 @@ class OfficeRuntimeManager {
           '--only-binary=:all:',
           ...OFFICE_PYTHON_PACKAGES
         ],
-        { cwd: info.rootDir, signal }
+        { cwd: info.rootDir }
       )
-      sendInstallEvent(eventContext, 'office_runtime_progress', '正在完成 Office 组件配置', 90)
+      updateProgress('正在完成 Office 组件配置', 90)
       await writeOfficeRuntimeScripts(info)
       await fs.promises.writeFile(
         join(info.rootDir, 'manifest.json'),
@@ -671,18 +658,17 @@ class OfficeRuntimeManager {
       )
       if (!(await validateRuntime(info))) throw new Error('Office 组件包安装后验证失败')
       await fs.promises.rm(join(info.rootDir, 'get-pip.py'), { force: true })
-      sendInstallEvent(eventContext, 'office_runtime_complete', 'Office 组件包安装完成，正在继续转换', 100)
-      return info
+      this.installProgress = 100
+      this.installDetail = 'Office 文档组件安装完成'
+      this.installError = ''
+      this.publishStatus(false, true)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error('[OfficeRuntime] Office 组件包安装失败：', message)
-      sendInstallEvent(
-        eventContext,
-        'office_runtime_error',
-        'Office 组件包安装失败，请检查网络连接后重新转换',
-        100
-      )
-      throw new Error('Office 组件包安装失败，请检查网络连接后重新转换')
+      this.installError = `Office 组件包安装失败：${message}`
+      this.installDetail = '安装未完成，可检查网络后重试'
+      this.publishStatus(false)
+      throw new Error(this.installError)
     }
   }
 }

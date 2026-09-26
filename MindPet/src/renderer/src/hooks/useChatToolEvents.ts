@@ -69,21 +69,6 @@ function appendToolSteps(existingSteps: any[] | undefined, events: any[]): any[]
         toolSteps.push({ id, sequence, timestamp, type: 'generatedFiles', files: newFiles })
       }
     }
-    else if (type === 'office_runtime_request' && request) {
-      toolSteps.push({ id, sequence, timestamp, type: 'officeRuntime', requestId, request, status: 'waiting', progress: 0 })
-    }
-    else if (type === 'office_runtime_progress' || type === 'office_runtime_complete' || type === 'office_runtime_error') {
-      const existing = toolSteps.findIndex(step => step.type === 'officeRuntime' && step.requestId === requestId)
-      if (existing >= 0) {
-        toolSteps[existing] = {
-          ...toolSteps[existing],
-          timestamp,
-          detail,
-          progress: Number(progress) || 0,
-          status: type === 'office_runtime_complete' ? 'complete' : type === 'office_runtime_error' ? 'error' : 'installing'
-        }
-      }
-    }
   }
   return toolSteps
 }
@@ -92,7 +77,7 @@ function withoutEphemeralToolSteps(message: any): any {
   if (!Array.isArray(message?.toolSteps)) return message
   return {
     ...message,
-    toolSteps: message.toolSteps.filter((step: any) => step?.type !== 'clarification' && step?.type !== 'credential' && step?.type !== 'officeRuntime')
+    toolSteps: message.toolSteps.filter((step: any) => step?.type !== 'clarification' && step?.type !== 'credential')
   }
 }
 

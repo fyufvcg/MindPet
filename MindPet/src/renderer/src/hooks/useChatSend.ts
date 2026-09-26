@@ -126,8 +126,8 @@ export function useChatSend({
   finalizeReply,
   failReply,
   triggerSessionSummary
-}: ChatSendOptions): { handleSendChat: () => Promise<void> } {
-  const handleSendChat = useCallback(async (): Promise<void> => {
+}: ChatSendOptions): { handleSendChat: (thinkingEnabled?: boolean) => Promise<void> } {
+  const handleSendChat = useCallback(async (thinkingEnabled = false): Promise<void> => {
     const state = getState() as any
     const sessionId = state.activeSessionId
     const attachedFiles = [...state.attachedFiles]
@@ -172,6 +172,7 @@ export function useChatSend({
       sender: 'agent',
       text: '',
       isThinking: true,
+      reasoningText: thinkingEnabled ? '' : undefined,
       toolSteps: [],
       time
     }
@@ -243,7 +244,8 @@ export function useChatSend({
           sessionId,
           messageId: replyId,
           contextRounds: state.contextRounds,
-          activeSkills
+          activeSkills,
+          thinkingEnabled
         },
         chatMessages,
         workspacePath

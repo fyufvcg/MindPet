@@ -67,8 +67,8 @@ public class AiService {
             "didi_searchPlace", "didi_estimateRide", "didi_createOrder", "didi_queryOrder", "didi_cancelOrder"));
         GROUP_DESCRIPTIONS.put("出行", "IP定位、路线规划、滴滴打车(搜索地点/估价/下单/查询/取消)");
 
-        TOOL_GROUPS.put("search", List.of("search", "browser"));
-        GROUP_DESCRIPTIONS.put("search", "文件内容搜索、联网搜索、网页全文抓取");
+        TOOL_GROUPS.put("search", List.of("search"));
+        GROUP_DESCRIPTIONS.put("search", "文件内容搜索、静默联网搜索和网页全文抓取；不会操控当前浏览器");
 
         // 麦当劳：纯前端配置的 MCP 原子工具由 getToolCallbacks 无条件透传；
         // 这 4 个是 Java 侧的复合包装（把官方多步编码链路收敛成一句话）
@@ -95,7 +95,7 @@ public class AiService {
         GROUP_DESCRIPTIONS.put("email", "邮件操作（收件箱列表、搜索、详情、发送、回复、删除）");
 
         TOOL_GROUPS.put("browser", List.of("browser"));
-        GROUP_DESCRIPTIONS.put("browser", "浏览器操控（连接用户浏览器、打开网页、点击、输入、截图快照、标签页管理）");
+        GROUP_DESCRIPTIONS.put("browser", "仅在用户明确要求操作浏览器时使用：连接用户浏览器、打开网页、点击、输入、截图快照、管理标签页");
 
         // ── Desktop 工具分组 — 对应前端 tools/builtin 分类 ──────────
         // 工具名格式: desktop_tools__desktop__{category}__{toolName}
@@ -295,6 +295,10 @@ public class AiService {
     private Set<String> routingFallbackGroups(Set<String> routedGroups, String userMessage) {
         Set<String> groups = new LinkedHashSet<>(routedGroups);
         String text = userMessage == null ? "" : userMessage.toLowerCase(Locale.ROOT);
+        if (groups.contains("browser") && !isExplicitBrowserControlRequest(text)) {
+            groups.remove("browser");
+            logger.log("WARN", "意图路由尝试启用浏览器工具，但用户未明确要求浏览器操作；已移除 browser 分组");
+        }
         if (List.of("图表", "绘图", "可视化", "柱状图", "条形图", "折线图", "趋势图", "饼图", "散点图",
                 "chart", "graph", "plot")
             .stream().anyMatch(text::contains)) {
@@ -303,18 +307,65 @@ public class AiService {
         return groups;
     }
 
+    /** Browser control is available only for an explicit user request, never just because routing guessed it. */
+    private boolean isExplicitBrowserControlRequest(String text) {
+        boolean mentionsBrowser = List.of("浏览器", "browser", "标签页", "tab")
+            .stream().anyMatch(text::contains);
+        boolean mentionsAction = List.of("打开", "访问", "前往", "跳转", "导航", "点击", "输入", "刷新",
+                "关闭", "切换", "新建", "连接", "控制", "操作", "截图", "搜索", "查找",
+                "open", "navigate", "click", "type", "refresh", "close", "switch", "connect",
+                "control", "screenshot", "search")
+            .stream().anyMatch(text::contains);
+        if (!mentionsBrowser || !mentionsAction) return false;
+
+        boolean questionAboutBrowser = List.of("为什么", "怎么", "如何", "是什么", "是否", "能不能", "可以吗",
+                "why", "how", "what is", "whether")
+            .stream().anyMatch(text::contains);
+        boolean explicitRequest = List.of("帮我", "请帮", "麻烦", "替我", "为我", "我想在", "我要在",
+                "请在", "请用", "用浏览器", "使用浏览器", "在浏览器", "在我的浏览器",
+                "please", "can you", "could you", "use my browser", "in my browser")
+            .stream().anyMatch(text::contains);
+        boolean directCommand = List.of("打开浏览器", "连接浏览器", "控制浏览器", "操作浏览器",
+                "点击浏览器", "刷新浏览器", "关闭浏览器", "打开标签页", "切换标签页",
+                "open browser", "connect browser", "control browser", "open tab", "switch tab")
+            .stream().anyMatch(text::startsWith);
+        return explicitRequest || (directCommand && !questionAboutBrowser);
+    }
+
+    private String buildToolRoutingInstruction(Set<String> groups, ToolCallback[] callbacks) {
+        String toolNames = Arrays.stream(callbacks)
+            .map(tc -> tc.getToolDefinition().name())
+            .collect(java.util.stream.Collectors.joining("、"));
+        if (groups.contains("search") && !groups.contains("browser")) {
+            return "【系统指令】用户消息涉及搜索功能。需要实时或外部信息时，先使用联网搜索；若搜索报错或无结果，可换关键词重试一次。"
+                + "若重试后仍报错或没有有效结果，停止搜索，基于已有知识尽力回答，并明确说明未能联网核实。"
+                + "对实时或可能变化的信息要标注不确定，不得编造来源、日期或具体数据。可用工具：" + toolNames;
+        }
+        return "【系统指令】用户消息涉及 " + String.join("、", groups)
+            + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames;
+    }
+
     private double parseDouble(Object obj) {
         try { return Double.parseDouble(String.valueOf(obj)); }
         catch (Exception e) { return 0.3; }
     }
 
     private ChatClient.ChatClientRequestSpec applyChatOptions(ChatClient.ChatClientRequestSpec chatSpec) {
+        return applyChatOptions(chatSpec, null);
+    }
+
+    private ChatClient.ChatClientRequestSpec applyChatOptions(ChatClient.ChatClientRequestSpec chatSpec,
+                                                              Boolean thinkingEnabled) {
         OpenAiChatOptions.Builder options = OpenAiChatOptions.builder();
         // OpenAI-compatible providers such as Doubao put streaming usage in the
         // final SSE chunk only when stream_options.include_usage is requested.
         options.streamUsage(true);
         if (dynamicConfig.hasOverride() && !dynamicConfig.getModel().isBlank()) {
             options.model(dynamicConfig.getModel());
+        }
+        if (thinkingEnabled != null && chatClientFactory.supportsDeepSeekThinking()) {
+            options.extraBody(Map.of("thinking", Map.of(
+                "type", Boolean.TRUE.equals(thinkingEnabled) ? "enabled" : "disabled")));
         }
         return chatSpec.options(options.build());
     }
@@ -363,6 +414,17 @@ public class AiService {
                         for (int i = 0; i < parts.length - 1; i++) {
                             if ("desktop".equals(parts[i])) {
                                 String category = parts[i + 1];
+                                // The web manifest shares the "browser" category with controls for
+                                // the user's visible browser. A search request gets only passive web
+                                // search/fetch tools; browser control requires the explicit browser group.
+                                if ("browser".equals(category)) {
+                                    if (groups.contains("browser")
+                                        || (groups.contains("search") && isPassiveWebTool(name))) {
+                                        dtMatched.incrementAndGet();
+                                        return true;
+                                    }
+                                    return false;
+                                }
                                 if (neededNames.contains(category)) {
                                     dtMatched.incrementAndGet();
                                     return true;
@@ -397,16 +459,16 @@ public class AiService {
                                 .computeIfAbsent(toolName, ignored -> new AtomicInteger())
                                 .incrementAndGet();
                             if (invocation > 2) {
-                                logger.log("WARN", "  [限流] " + toolName + " 已达到本次请求最多2次调用");
+                                AiService.this.logger.log("WARN", "  [限流] " + toolName + " 已达到本次请求最多2次调用");
                                 return "该工具已达到本次请求最多2次调用限制，请使用已有结果回答。";
                             }
                         }
-                        logger.log("INFO", "  -> 调用工具: " + toolName);
+                        AiService.this.logger.log("INFO", "  -> 调用工具: " + toolName);
                         String result = tc.call(request);
                         String preview = result == null ? "null"
                             : result.replace("\r", " ").replace("\n", " ");
                         if (preview.length() > 200) preview = preview.substring(0, 200) + "...";
-                        logger.log("INFO", "  <- 工具结果: " + preview);
+                        AiService.this.logger.log("INFO", "  <- 工具结果: " + preview);
                         return result;
                     } finally {
                         if (installContext) tool.ToolUserContext.clear();
@@ -433,6 +495,10 @@ public class AiService {
             && (actual.equals(expected) || actual.endsWith("_" + expected));
     }
 
+    private boolean isPassiveWebTool(String name) {
+        return name.endsWith("__web_search") || name.endsWith("__web_fetch");
+    }
+
     /** Load recent conversation history from Redis as Spring AI Message list. */
     private List<Message> loadHistory(String userId, int limit) {
         List<Message> messages = new ArrayList<>();
@@ -449,6 +515,12 @@ public class AiService {
 
     private StreamedResponse streamResponse(ChatClient.ChatClientRequestSpec chatSpec,
                                             Consumer<String> onDelta) {
+        return streamResponse(chatSpec, onDelta, ignored -> {});
+    }
+
+    private StreamedResponse streamResponse(ChatClient.ChatClientRequestSpec chatSpec,
+                                            Consumer<String> onDelta,
+                                            Consumer<String> onReasoningDelta) {
         StringBuilder reply = new StringBuilder();
         AtomicInteger promptTokens = new AtomicInteger();
         AtomicInteger completionTokens = new AtomicInteger();
@@ -457,10 +529,19 @@ public class AiService {
             .doOnNext(response -> {
                 updateStreamUsage(response, promptTokens, completionTokens);
                 if (response.getResult() == null || response.getResult().getOutput() == null) return;
-                String delta = response.getResult().getOutput().getText();
-                if (delta == null || delta.isEmpty()) return;
-                reply.append(delta);
-                onDelta.accept(delta);
+                AssistantMessage output = response.getResult().getOutput();
+                Object reasoningValue = output.getMetadata().get("reasoningContent");
+                if (!(reasoningValue instanceof String)) {
+                    reasoningValue = output.getMetadata().get("reasoning_content");
+                }
+                if (reasoningValue instanceof String reasoningDelta && !reasoningDelta.isEmpty()) {
+                    onReasoningDelta.accept(reasoningDelta);
+                }
+                String textDelta = output.getText();
+                if (textDelta != null && !textDelta.isEmpty()) {
+                    reply.append(textDelta);
+                    onDelta.accept(textDelta);
+                }
             })
             .blockLast();
 
@@ -544,13 +625,9 @@ public class AiService {
             logger.log("INFO", "[2/2] 调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills);
 
-            // 有工具可用且意图路由命中时，强制注入工具调用指令到 prompt 最前面
+            // 有工具可用且意图路由命中时，注入工具使用与失败回退指令
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                String toolNames = java.util.Arrays.stream(callbacks)
-                    .map(tc -> tc.getToolDefinition().name())
-                    .collect(java.util.stream.Collectors.joining("、"));
-                systemPrompt = "【系统指令】用户消息涉及 " + String.join("、", pre.groups())
-                    + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames
+                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
             }
 
@@ -648,6 +725,14 @@ public class AiService {
     public model.ChatResult chatStream(String userId, String userMessage, int contextRounds,
                                        Consumer<String> onDelta, Set<String> activeSkills,
                                        String extraSystemPrompt) {
+        return chatStream(userId, userMessage, contextRounds, onDelta, activeSkills,
+            extraSystemPrompt, false, ignored -> {});
+    }
+
+    public model.ChatResult chatStream(String userId, String userMessage, int contextRounds,
+                                       Consumer<String> onDelta, Set<String> activeSkills,
+                                       String extraSystemPrompt, boolean thinkingEnabled,
+                                       Consumer<String> onReasoningDelta) {
         String fallback = "MindPet 暂时有点累，稍后再试试吧~";
         if (!isConfigured()) {
             String message = "请先配置 LLM API。";
@@ -680,11 +765,7 @@ public class AiService {
             logger.log("INFO", "[2/2] 流式调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills, extraSystemPrompt);
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                String toolNames = Arrays.stream(callbacks)
-                    .map(tc -> tc.getToolDefinition().name())
-                    .collect(java.util.stream.Collectors.joining("、"));
-                systemPrompt = "【系统指令】用户消息涉及 " + String.join("、", pre.groups())
-                    + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames
+                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
             }
 
@@ -695,11 +776,11 @@ public class AiService {
                 .messages(loadHistory(userId, historyLimit))
                 .user(userMessage)
                 .toolCallbacks(callbacks);
-            chatSpec = applyChatOptions(chatSpec);
+            chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
 
             String alertPrefix = emotion.alert() == null ? "" : emotion.alert() + "\n\n";
             if (!alertPrefix.isEmpty()) emit.accept(alertPrefix);
-            StreamedResponse streamed = streamResponse(chatSpec, emit);
+            StreamedResponse streamed = streamResponse(chatSpec, emit, onReasoningDelta);
             String reply = alertPrefix + streamed.text();
             if (reply.isEmpty()) {
                 reply = fallback;
@@ -758,13 +839,9 @@ public class AiService {
 
             String systemPrompt = buildSystemPrompt(userId, textPrompt, emotion, trend, activeSkills);
 
-            // 有工具可用且意图路由命中时，强制注入工具调用指令到 prompt 最前面
+            // 有工具可用且意图路由命中时，注入工具使用与失败回退指令
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                String toolNames = java.util.Arrays.stream(callbacks)
-                    .map(tc -> tc.getToolDefinition().name())
-                    .collect(java.util.stream.Collectors.joining("、"));
-                systemPrompt = "【系统指令】用户消息涉及 " + String.join("、", pre.groups())
-                    + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames
+                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
             }
 
@@ -858,6 +935,14 @@ public class AiService {
     public model.ChatResult chatWithImageStream(String userId, String userMessage, byte[] imageBytes,
                                                 String fileName, int contextRounds,
                                                 Consumer<String> onDelta, Set<String> activeSkills) {
+        return chatWithImageStream(userId, userMessage, imageBytes, fileName, contextRounds,
+            onDelta, activeSkills, false, ignored -> {});
+    }
+
+    public model.ChatResult chatWithImageStream(String userId, String userMessage, byte[] imageBytes,
+                                                String fileName, int contextRounds,
+                                                Consumer<String> onDelta, Set<String> activeSkills,
+                                                boolean thinkingEnabled, Consumer<String> onReasoningDelta) {
         String fallback = "图片识别失败，请稍后再试试吧~";
         if (!isConfigured()) {
             String message = "请先配置 LLM API。";
@@ -885,11 +970,7 @@ public class AiService {
 
             String systemPrompt = buildSystemPrompt(userId, textPrompt, emotion, trend, activeSkills);
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                String toolNames = Arrays.stream(callbacks)
-                    .map(tc -> tc.getToolDefinition().name())
-                    .collect(java.util.stream.Collectors.joining("、"));
-                systemPrompt = "【系统指令】用户消息涉及 " + String.join("、", pre.groups())
-                    + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames
+                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
             }
 
@@ -917,9 +998,9 @@ public class AiService {
                     }
                 ))
                 .toolCallbacks(callbacks);
-            chatSpec = applyChatOptions(chatSpec);
+            chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
 
-            StreamedResponse streamed = streamResponse(chatSpec, emit);
+            StreamedResponse streamed = streamResponse(chatSpec, emit, onReasoningDelta);
             String reply = streamed.text();
             if (reply.isEmpty()) {
                 reply = "MindPet 暂时有点累，稍后再试试吧~";
