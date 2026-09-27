@@ -69,9 +69,11 @@ def validate(rows: list[dict[str, Any]], require_confirmed: bool) -> dict[str, A
         for relation in row["expected_relations"]:
             if not isinstance(relation, dict) or relation.get("predicate") not in PREDICATES:
                 raise ValueError(f"{sample_id}: invalid expected relation predicate")
-            if relation.get("source") != "user" and relation.get("source") not in keys:
+            source = relation.get("source_entity_key")
+            target = relation.get("target_entity_key")
+            if source != "user" and source not in keys:
                 raise ValueError(f"{sample_id}: relation source does not reference an entity_key")
-            if relation.get("target") != "user" and relation.get("target") not in keys:
+            if target != "user" and target not in keys:
                 raise ValueError(f"{sample_id}: relation target does not reference an entity_key")
 
         if require_confirmed:
