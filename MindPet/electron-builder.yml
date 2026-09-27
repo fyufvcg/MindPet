@@ -13,6 +13,9 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: build/backend
+    to: backend
 electronLanguages:
   - zh-CN
   - en-US

@@ -7,8 +7,7 @@ import service.SessionService;
 import java.util.*;
 
 /**
- * 桌面端会话管理 API — 替代前端 mock SQLite。
- * Redis 持久化，不设 TTL，手动删除才消失。
+ * 桌面端会话管理 API。实际存储由 SessionStore 提供，默认使用 SQLite。
  */
 @RestController
 @RequestMapping("/api/desktop/sessions")

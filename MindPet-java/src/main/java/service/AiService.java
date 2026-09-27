@@ -130,7 +130,7 @@ public class AiService {
     private final Logger logger;
     private final DynamicLlmConfig dynamicConfig;
     private final DynamicChatClientFactory chatClientFactory;
-    private final PgVectorMemoryService pgMemory;
+    private final SqliteMemoryService memoryStore;
     private final UserProfileService profileService;
     private final UserInsightService insightService;
     private final ConversationMemoryService convMemory;
@@ -146,7 +146,7 @@ public class AiService {
     public AiService(
             DynamicLlmConfig dynamicConfig,
             DynamicChatClientFactory chatClientFactory,
-            PgVectorMemoryService pgMemory,
+            SqliteMemoryService memoryStore,
             UserProfileService profileService,
             UserInsightService insightService,
             ConversationMemoryService convMemory,
@@ -160,7 +160,7 @@ public class AiService {
             Logger logger) {
         this.dynamicConfig = dynamicConfig;
         this.chatClientFactory = chatClientFactory;
-        this.pgMemory = pgMemory;
+        this.memoryStore = memoryStore;
         this.profileService = profileService;
         this.insightService = insightService;
         this.convMemory = convMemory;
@@ -499,7 +499,7 @@ public class AiService {
         return name.endsWith("__web_search") || name.endsWith("__web_fetch");
     }
 
-    /** Load recent conversation history from Redis as Spring AI Message list. */
+    /** Load recent conversation history from local storage as Spring AI Message list. */
     private List<Message> loadHistory(String userId, int limit) {
         List<Message> messages = new ArrayList<>();
         for (var msg : convMemory.loadRecent(userId, limit)) {
@@ -667,7 +667,7 @@ public class AiService {
             }
             reply += tool.ToolUserContext.missingGeneratedFilesMarkdown(reply);
 
-            // 写入 Redis 短期记忆（带情感标签）
+            // 写入本地短期记忆（带情感标签）
             String emotionTag = emotion.toTag();
             Map<String, Object> userMsgMap = new LinkedHashMap<>();
             userMsgMap.put("role", "user");
@@ -675,7 +675,7 @@ public class AiService {
             if (!emotionTag.isBlank()) userMsgMap.put("emotion", emotionTag);
             convMemory.append(userId, userMsgMap);
             convMemory.append(userId, Map.of("role", "assistant", "content", reply));
-            // 持久化消息到 Redis，格式兼容前端（sender + text）
+            // 持久化消息，格式兼容前端（sender + text）
             String sid = tool.ToolUserContext.getSessionId();
             java.time.Instant occurredAt = java.time.Instant.now();
             String time = java.time.LocalDateTime.ofInstant(occurredAt, java.time.ZoneId.systemDefault()).toString();
@@ -890,7 +890,7 @@ public class AiService {
             }
             reply += tool.ToolUserContext.missingGeneratedFilesMarkdown(reply);
 
-            // 写入 Redis 短期记忆（带情感标签）
+            // 写入本地短期记忆（带情感标签）
             String emotionTag = emotion.toTag();
             Map<String, Object> userMsgMap = new LinkedHashMap<>();
             userMsgMap.put("role", "user");
@@ -1280,7 +1280,7 @@ public class AiService {
                     }
                 } catch (Exception ignored) {}
                 try {
-                    var memories = pgMemory.search(userId, query, vec, 3);
+                    var memories = memoryStore.search(userId, query, vec, 3);
                     if (!memories.isEmpty()) {
                         StringBuilder sb = new StringBuilder("\n\n## 相关历史记忆\n");
                         for (var m : memories) {

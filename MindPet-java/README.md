@@ -4,6 +4,14 @@ MindPet 是一套由桌面端 AgentPet 和 Java 后端组成的智能助手系�
 
 本仓库是后端工程，前端工程位于：`C:\Users\17547\Desktop\AgentPet-main`。
 
+## 当前桌面默认存储
+
+桌面版默认使用内嵌 SQLite：会话、短期上下文、情绪记录、缓存、长期记忆、用户画像、知识图谱与 RPA 记录都写入同一个 `mindpet.db`。向量由 Embedding 服务生成，优先交给随 JAR 打包的 `sqlite-vec` 计算余弦距离；扩展无法加载时自动使用 Java 精确余弦计算。
+
+Electron 安装包同时携带后端 JAR、精简 JRE 和各平台 sqlite-vec 原生库。终端用户无需安装 Java、PostgreSQL、Redis 或 Docker。源码开发只需要 JDK 21、Maven 和 Node.js；数据库表会在首次启动时自动创建。
+
+旧 PostgreSQL、pgvector、Redis 与 Docker 文件继续保留，供历史部署迁移使用。Maven profile `legacy-postgres-redis` 只提供旧驱动依赖，不是桌面版默认配置。下文涉及 PostgreSQL、Redis 和 Docker 的章节是旧部署说明。
+
 ## 1. 系统架构
 
 ```text
@@ -20,8 +28,8 @@ MindPet 后端 (Spring Boot，默认 127.0.0.1:8080)
   ├─ /api/desktop/knowledge-graph：知识图谱查询与重建
   └─ 微信机器人：微信消息、语音、图片和文件入口
           │
-          ├─ PostgreSQL + pgvector：画像、长期记忆、向量检索、知识图谱
-          ├─ Redis：短期会话记忆、缓存和跨窗口/跨端状态
+          ├─ SQLite + sqlite-vec：画像、长期记忆、向量检索、知识图谱
+          ├─ SQLite TTL 表：短期会话记忆、缓存和跨窗口状态
           ├─ LLM / Embedding：豆包 Ark 或兼容 OpenAI 协议的服务
           └─ 外部能力：天气、腾讯地图、百度语音、12306/菜谱/外卖等 MCP
 ```

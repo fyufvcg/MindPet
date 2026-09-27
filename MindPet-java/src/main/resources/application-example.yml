@@ -46,8 +46,6 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
-      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
   main:
     web-application-type: servlet
   ai:
@@ -66,23 +64,13 @@ spring:
       backoff:
         initial-interval: 1000
         max-interval: 5000
-  data:
-    redis:
-      host: localhost
-      port: 6379
-  datasource:
-    # PostgreSQL 数据库连接 —— 请先创建数据库: CREATE DATABASE mindpet;
-    url: jdbc:postgresql://localhost:5432/mindpet
-    username: postgres
-    password: <你的PostgreSQL密码>
-    driver-class-name: org.postgresql.Driver
-
 app:
+  storage:
+    sqlite:
+      path: ${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db
+      vec-extension: ${MINDPET_SQLITE_VEC:}
   chart:
     api-url: https://quickchart.io/chart
-  memory:
-    redis:
-      enabled: true
   embedding:
     use-ollama: true
     ollama:

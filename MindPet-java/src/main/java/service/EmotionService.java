@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import util.Logger;
 
@@ -21,7 +21,7 @@ import java.util.Map;
  * 3. 语境翻转规则 → 纠正 LLM 典型盲区
  *
  * 情感历史追踪：
- * - 每条消息的情感存入 Redis 历史列表，用于趋势对比
+ * - 每条消息的情感存入 SQLite 历史表，用于趋势对比
  * - 每次分析后对比上次情感，显式输出变化趋势到 system prompt
  */
 @Service
@@ -113,25 +113,18 @@ public class EmotionService {
         }
         只返回 JSON，不要加任何解释。""";
 
-    // ==================== 情感历史 Redis Key ====================
-
-    private static final String EMOTION_HISTORY_KEY = "emotion:history:";
-
-    private String historyKey(String userId) {
-        return EMOTION_HISTORY_KEY + userId + ":" + tool.ToolUserContext.getSessionId();
-    }
     private static final Duration HISTORY_TTL = Duration.ofDays(7);
     private static final int HISTORY_MAX_SIZE = 50;
 
     private final ChatClient.Builder chatClientBuilder;
-    private final StringRedisTemplate redis;
+    private final JdbcTemplate jdbc;
     private final Logger logger;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Autowired
-    public EmotionService(ChatClient.Builder chatClientBuilder, StringRedisTemplate redis, Logger logger) {
+    public EmotionService(ChatClient.Builder chatClientBuilder, JdbcTemplate jdbc, Logger logger) {
         this.chatClientBuilder = chatClientBuilder;
-        this.redis = redis;
+        this.jdbc = jdbc;
         this.logger = logger;
     }
 
@@ -237,7 +230,7 @@ public class EmotionService {
     // ==================== 情感历史追踪 ====================
 
     /**
-     * 保存情感记录到 Redis 历史列表。
+     * 保存情感记录到 SQLite 历史表。
      */
     public void saveToHistory(String userId, EmotionResult result) {
         if (result == null) return;
@@ -248,10 +241,12 @@ public class EmotionService {
                 "triggers", result.triggers,
                 "timestamp", System.currentTimeMillis()
             );
-            String key = historyKey(userId);
-            redis.opsForList().rightPush(key, mapper.writeValueAsString(entry));
-            redis.opsForList().trim(key, -HISTORY_MAX_SIZE, -1);
-            redis.expire(key, HISTORY_TTL);
+            long now = System.currentTimeMillis();
+            jdbc.update("INSERT INTO emotion_history(user_id,payload_json,created_at,expires_at) VALUES(?,?,?,?)",
+                userId, mapper.writeValueAsString(entry), now, now + HISTORY_TTL.toMillis());
+            jdbc.update("DELETE FROM emotion_history WHERE expires_at<?", now);
+            jdbc.update("DELETE FROM emotion_history WHERE id IN (SELECT id FROM emotion_history WHERE user_id=? ORDER BY id DESC LIMIT -1 OFFSET ?)",
+                userId, HISTORY_MAX_SIZE);
         } catch (Exception e) {
             // 静默降级
         }
@@ -262,8 +257,9 @@ public class EmotionService {
      */
     private EmotionResult getLastEmotion(String userId) {
         try {
-            String key = historyKey(userId);
-            String json = redis.opsForList().index(key, -1);
+            List<String> rows = jdbc.query("SELECT payload_json FROM emotion_history WHERE user_id=? AND expires_at>? ORDER BY id DESC LIMIT 1",
+                (rs, row) -> rs.getString(1), userId, System.currentTimeMillis());
+            String json = rows.isEmpty() ? null : rows.get(0);
             if (json == null || json.isBlank()) return null;
             Map<String, Object> entry = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
             return new EmotionResult(
@@ -360,7 +356,7 @@ public class EmotionService {
                 + (triggers.isBlank() ? "" : ", 原因: " + triggers);
         }
 
-        /** 生成中文标签，用于存入 Redis 消息记录。 */
+        /** 生成中文标签，用于存入消息记录。 */
         public String toTag() {
             if ("neutral".equals(emotion) && intensity < 0.5) return "";
             return emotionLabel(emotion);

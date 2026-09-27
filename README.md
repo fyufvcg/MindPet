@@ -28,7 +28,7 @@ MindPet 是一个**桌面 AI 智能伴侣**——不是存日志的聊天机器�
 
 ### 1. 长期记忆 —— 选择性记住该记住的
 
-MindPet **不会把每条消息都塞进数据库**。消息先进入短期上下文窗口，由 LLM 结合知识图谱评估重要性：有价值的事实写入 PostgreSQL 长期存储，闲聊只在短期窗口里保留，过期自然消失。
+MindPet **不会把每条消息都塞进长期记忆**。消息先进入 SQLite 短期上下文窗口，由 LLM 结合知识图谱评估重要性：有价值的事实写入 SQLite 长期存储，闲聊只在短期窗口里保留，过期自然消失。
 
 | 机制 | 说明 |
 |------|------|
@@ -38,12 +38,12 @@ MindPet **不会把每条消息都塞进数据库**。消息先进入短期上�
 | **自动遗忘** | `importance × e^(-age/decay)`，琐事快忘、重要的事慢忘 |
 
 ```
-用户消息 → 短期上下文 (Redis) → LLM 评估重要性
+用户消息 → 短期上下文 (SQLite TTL) → LLM 评估重要性
                                       │
                          ┌────────────┼────────────┐
                          ▼            ▼            ▼
                     重要事实      普通对话      闲聊/噪音
-                  写入 PG         短期保留      直接丢弃
+                  写入 SQLite     短期保留      直接丢弃
                   向量索引       过期消失
 ```
 
@@ -154,8 +154,8 @@ MindPet 不是封闭系统。通过 MCP 协议和 Skill 规约，**任何人都�
 ├─────────────────────────────────────────────────┤
 │                    记忆层                         │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │PG 长期记忆│  │Redis 短期│  │  知识图谱     │  │
-│  │ +pgvector │  │  上下文  │  │  Neo4j/A Conf│  │
+│  │SQLite 长期 │  │SQLite TTL│  │  知识图谱     │  │
+│  │+sqlite-vec│  │ 短期上下文│  │  SQLite      │  │
 │  └──────────┘  └──────────┘  └──────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
@@ -166,8 +166,8 @@ MindPet 不是封闭系统。通过 MCP 协议和 Skill 规约，**任何人都�
 |---|------|
 | **桌面客户端** | Electron 39 · React 19 · TypeScript 5.9 · Vite 7 · Pixi.js (Live2D) |
 | **后端服务** | Spring Boot 3.3 · Java 21 · Spring AI 1.0 |
-| **向量存储** | PostgreSQL 14+ · pgvector |
-| **缓存** | Redis 7 |
+| **本地存储** | SQLite · 随应用自动创建 |
+| **向量检索** | sqlite-vec · Java 精确余弦回退 |
 | **LLM** | OpenAI 兼容协议（豆包 / DeepSeek / 任意兼容 API） |
 | **Embedding** | BGE-M3 (Ollama) / 豆包 Embedding |
 
@@ -175,50 +175,38 @@ MindPet 不是封闭系统。通过 MCP 协议和 Skill 规约，**任何人都�
 
 ## 🚀 快速开始
 
-### 方式一：Docker 一键部署（推荐）
+### 方式一：桌面安装包（推荐）
 
-只依赖 **Docker Desktop**，无需安装 JDK / Node / PostgreSQL / Redis / Ollama。
+安装包内置 Electron 前端、Java 后端、精简 JRE、SQLite 和 sqlite-vec。终端用户无需安装 Node.js、Java、PostgreSQL、Redis 或 Docker；业务数据保存在应用的用户数据目录。
 
 ```powershell
-# 1. 配置环境变量（填入 LLM API Key 与数据库密码）
-copy docker\.env.example docker\.env
-
-# 2. 启动基础设施（PostgreSQL + pgvector、Redis、后端）
-docker compose -f docker\compose.yaml up -d
-
-# 3. 校验部署（含 Embedding 连通性断言）
-scripts\check.bat
+# 开发者构建 Windows 安装包
+cd MindPet
+npm install
+npm run build:win
 ```
 
-> 已构建好的 jar 随发布包提供，**不需要 Maven**。
-> 若要自行构建：`scripts\build-backend.bat`
+构建过程会编译 Java 后端并用 `jlink` 生成随包运行时；安装后的应用自动启动后端和本地数据库。
 
 **两种 Embedding 模式**（同一份代码，靠 profile 切换）：
 
 | 模式 | 命令 | 说明 |
 |---|---|---|
-| **云端模式**（默认） | `docker compose -f docker\compose.yaml up -d` | 走豆包 Embedding API，不启 Ollama，服务器内存需求更低 |
-| **本地隐私模式** | `scripts\start.bat local` | 额外启动 Ollama + bge-m3，数据完全不出本机 |
+| **云端 Embedding**（默认可配置） | 在设置页填写 Embedding API | 无需安装本地模型，向量和记忆仍写入本机 SQLite |
+| **本地 Embedding** | 安装 Ollama + bge-m3 | 文本和向量生成过程也留在本机 |
 
 本地隐私模式首次需拉取模型（约 1.1GB，一次性）：
 
 ```powershell
-docker exec mindpet-ollama ollama pull bge-m3
+ollama pull bge-m3
 ```
 
-**桌面客户端**在宿主机运行（GUI 应用，不进容器），会自动连接 `http://localhost:8080`。
-
-停止 / 清空数据：
-
-```powershell
-scripts\stop.bat            # 停止，保留数据
-scripts\stop.bat --purge    # 停止并删除所有数据卷（不可恢复）
-```
+旧 PostgreSQL、pgvector、Redis 与 Docker 方案仍保留在 `docker/`、`MindPet-java/sql/` 和 Maven 的 `legacy-postgres-redis` profile 中，用于迁移和兼容，不参与桌面安装包的默认运行。
 
 ### 方式二：源码手动部署（开发者）
 
 <details>
-<summary>展开：需要 JDK 21 + Maven + Node 20 + 本机 PostgreSQL/Redis</summary>
+<summary>展开：源码构建需要 JDK 21 + Maven + Node 20</summary>
 
 ### 前置依赖
 
@@ -227,29 +215,11 @@ scripts\stop.bat --purge    # 停止并删除所有数据卷（不可恢复）
 | **JDK** | 21+ | 后端运行环境 |
 | **Maven** | 3.8+ | 后端构建 |
 | **Node.js** | 20+ | 前端运行环境 |
-| **PostgreSQL** | 14+ | 需安装 `pgvector` 扩展 |
-| **Redis** | 7+ | 短期记忆与缓存 |
 | **Ollama** | (可选) | 本地 Embedding 模型 |
 
-### 1. 初始化数据库
+### 1. 数据库
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE IF NOT EXISTS long_term_memory (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         VARCHAR(64)  NOT NULL,
-    content         TEXT         NOT NULL,
-    importance      DOUBLE PRECISION DEFAULT 0.5,
-    embedding       vector(1024),
-    metadata        JSONB        DEFAULT '{}',
-    created_at      TIMESTAMP    DEFAULT now(),
-    last_accessed   TIMESTAMP    DEFAULT now(),
-    access_count    INTEGER      DEFAULT 0
-);
-
-CREATE INDEX ON long_term_memory USING ivfflat (embedding vector_cosine_ops);
-```
+无需初始化数据库。后端首次运行时自动创建 `~/.mindpet/mindpet.db` 和完整表结构，并加载当前平台对应的 sqlite-vec 原生库。
 
 ### 2. 配置后端
 
@@ -270,16 +240,10 @@ spring:
       base-url: https://ark.cn-beijing.volces.com/api/v3
       chat:
         model: doubao-seed-1-8-251228
-  datasource:
-    url: jdbc:postgresql://localhost:5432/mindpet
-    username: postgres
-    password: your-db-password
-  data:
-    redis:
-      host: localhost
-      port: 6379
-
 app:
+  storage:
+    sqlite:
+      path: ${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db
   embedding:
     use-ollama: true                     # 使用本地 Ollama Embedding
     ollama:
@@ -335,7 +299,7 @@ MINDPET/
 ├── MindPet-java/             # Spring Boot 后端
 │   ├── src/main/java/.../
 │   │   ├── service/          # 核心服务
-│   │   │   ├── PgVectorMemoryService  # 长期记忆
+│   │   │   ├── SqliteMemoryService    # 长期记忆和向量检索
 │   │   │   ├── MemoryCuratorService   # 记忆馆长
 │   │   │   ├── EmotionService         # 情感分析
 │   │   │   ├── KnowledgeGraphService  # 知识图谱
@@ -349,7 +313,7 @@ MINDPET/
 │   ├── init/01-schema.sql    # 首次启动自动建表
 │   └── backend/Dockerfile
 ├── scripts/
-│   ├── build-backend.bat     # 构建 jar 到 Docker 构建上下文
+│   ├── build-backend.bat     # 旧 Docker 方案的后端构建脚本
 │   ├── start.bat             # 启动（支持 start.bat local 启用 Ollama）
 │   ├── check.bat             # 部署校验（含 Embedding 连通性断言）
 │   └── stop.bat              # 停止（--purge 清空数据）

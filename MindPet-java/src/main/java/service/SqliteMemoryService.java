@@ -15,36 +15,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class PgVectorMemoryService {
+public class SqliteMemoryService {
 
     private static final int PRUNE_THRESHOLD = 500; // 超过此数量时触发清理
     private static final double RETENTION_MIN = 0.1; // 保留率低于此值的记忆视为"已遗忘"
 
     private final JdbcTemplate jdbc;
     private final EmbeddingService embedService;
+    private final VectorSearchService vectorSearch;
     private final Logger logger;
 
-    public PgVectorMemoryService(JdbcTemplate jdbc, EmbeddingService embedService, Logger logger) {
+    public SqliteMemoryService(JdbcTemplate jdbc, EmbeddingService embedService,
+                                 VectorSearchService vectorSearch, Logger logger) {
         this.jdbc = jdbc;
         this.embedService = embedService;
+        this.vectorSearch = vectorSearch;
         this.logger = logger;
         try {
             jdbc.queryForObject("SELECT COUNT(*) FROM long_term_memory", Integer.class);
-            // v2 自动迁移：新增重要性/分层/情感/访问统计字段
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS importance FLOAT DEFAULT 0.5"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS layer INT DEFAULT 3"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS emotion VARCHAR(32)"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS access_count INT DEFAULT 0"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS last_accessed TIMESTAMP DEFAULT NOW()"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS session_id VARCHAR(128)"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS confidence FLOAT DEFAULT 1.0"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS event_date DATE"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS event_at TIMESTAMP"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS event_timezone VARCHAR(64)"); } catch (Exception ignored) {}
-            try { jdbc.execute("ALTER TABLE long_term_memory ADD COLUMN IF NOT EXISTS event_precision VARCHAR(16)"); } catch (Exception ignored) {}
-            logger.log("INFO", "PgVector 长期记忆服务已连接 → PostgreSQL:mindpet (v2 分层+遗忘+情感)");
+            logger.log("INFO", "SQLite 长期记忆服务已连接");
         } catch (Exception e) {
-            logger.log("ERROR", "PgVector 数据库连接失败: " + e.getMessage());
+            logger.log("ERROR", "SQLite 数据库连接失败: " + e.getMessage());
         }
     }
 
@@ -79,44 +70,17 @@ public class PgVectorMemoryService {
                 logger.log("ERROR", "Embedding返回空: " + content.substring(0, Math.min(20, content.length())));
                 return;
             }
-            String vecStr = EmbeddingService.toPgVectorString(vec);
             double safeImportance = clamp(importance);
             double safeConfidence = clamp(confidence);
             int layer = MemoryLayer.fromImportance(safeImportance).getLevel();
             TemporalMemory.Resolved temporal = TemporalMemory.resolve(content, occurredAt, ZoneId.systemDefault());
             Date eventDate = temporal.eventDate() == null ? null : Date.valueOf(temporal.eventDate());
             Timestamp eventAt = temporal.eventAt() == null ? null : Timestamp.valueOf(temporal.eventAt());
-            try {
-                jdbc.update(
-                    "INSERT INTO long_term_memory (user_id, session_id, content, role, embedding, importance, confidence, layer, emotion, event_date, event_at, event_timezone, event_precision, access_count, last_accessed) "
-                    + "VALUES (?,?,?,?,?::vector,?,?,?,?,?,?,?, ?,1,NOW())",
-                    userId, sessionId, content, role, vecStr, safeImportance, safeConfidence, layer, emotion,
-                    eventDate, eventAt, temporal.timezone(), temporal.precision()
-                );
-            } catch (Exception ignored) {
-                // session_id 列可能还未迁移，回退到无 session_id 的 INSERT
-                    try {
-                        jdbc.update(
-                            "INSERT INTO long_term_memory (user_id, content, role, embedding, importance, confidence, layer, emotion, event_date, event_at, event_timezone, event_precision, access_count, last_accessed) "
-                            + "VALUES (?,?,?,?::vector,?,?,?,?,?,?,?, ?,1,NOW())",
-                            userId, content, role, vecStr, safeImportance, safeConfidence, layer, emotion,
-                            eventDate, eventAt, temporal.timezone(), temporal.precision()
-                        );
-                    } catch (Exception extendedSchemaFailure) {
-                        try {
-                            jdbc.update(
-                                "INSERT INTO long_term_memory (user_id, content, role, embedding, importance, layer, emotion, access_count, last_accessed) "
-                                + "VALUES (?,?,?,?::vector,?,?,?,1,NOW())",
-                                userId, content, role, vecStr, safeImportance, layer, emotion
-                            );
-                        } catch (Exception legacyMetadataFailure) {
-                            jdbc.update(
-                                "INSERT INTO long_term_memory (user_id, content, role, embedding) VALUES (?,?,?,?::vector)",
-                                userId, content, role, vecStr
-                            );
-                        }
-                    }
-            }
+            jdbc.update(
+                "INSERT INTO long_term_memory (user_id,session_id,content,role,embedding,importance,confidence,layer,emotion,event_date,event_at,event_timezone,event_precision,access_count,last_accessed) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)",
+                userId, sessionId, content, role, VectorSearchService.encode(vec), safeImportance,
+                safeConfidence, layer, emotion, eventDate, eventAt, temporal.timezone(), temporal.precision());
             // 超过阈值时触发自动清理
             try {
                 Integer total = jdbc.queryForObject(
@@ -127,7 +91,7 @@ public class PgVectorMemoryService {
                 }
             } catch (Exception ignored) {}
         } catch (Exception e) {
-            logger.log("WARN", "PgVector append failed: " + e.getMessage());
+            logger.log("WARN", "SQLite memory append failed: " + e.getMessage());
         }
     }
 
@@ -147,7 +111,7 @@ public class PgVectorMemoryService {
     public List<MemoryResult> search(String userId, String query, float[] vec, int topK) {
         if (vec == null) return List.of();
         try {
-            // 1. 语义召回（pgvector，取更宽的范围供 RRF 融合）
+            // 1. 语义召回（sqlite-vec 或 Java 精确余弦，取更宽的范围供 RRF 融合）
             List<MemoryResult> semanticResults = semanticSearch(userId, vec, 20);
 
             // 2. 关键词召回（中文子串 + 词匹配）
@@ -181,7 +145,7 @@ public class PgVectorMemoryService {
             touchAccessed(userId, ranked);
             return ranked;
         } catch (Exception e) {
-            logger.log("WARN", "PgVector search failed: " + e.getMessage());
+            logger.log("WARN", "SQLite vector search failed: " + e.getMessage());
             return List.of();
         }
     }
@@ -193,20 +157,21 @@ public class PgVectorMemoryService {
     private List<MemoryResult> semanticSearch(String userId, float[] vec, int limit) {
         if (vec == null) return List.of();
         try {
-            String vecStr = EmbeddingService.toPgVectorString(vec);
-            return jdbc.query(
-                "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, "
-                + "embedding <=> ?::vector AS distance FROM long_term_memory WHERE user_id = ? "
-                + "AND importance * EXP(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at))) / 3600.0 "
-                + "  / (CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END * 24 + 1)) > ? "
-                + "ORDER BY embedding <=> ?::vector LIMIT ?",
-                ps -> { ps.setString(1, vecStr); ps.setString(2, userId);
-                        ps.setDouble(3, RETENTION_MIN); ps.setString(4, vecStr); ps.setInt(5, limit); },
-                (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
-                    rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
-                    rs.getString("event_timezone"), rs.getString("event_precision"), rs.getDouble("distance"),
-                    rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"), rs.getInt("layer"), 1.0)
-            );
+            List<MemoryResult> results = new ArrayList<>();
+            for (VectorSearchService.VectorMatch match : vectorSearch.search("long_term_memory", userId, vec, Math.max(limit * 4, limit))) {
+                List<MemoryResult> rows = jdbc.query(
+                    "SELECT id,content,role,created_at,event_date,event_at,event_timezone,event_precision,importance,COALESCE(confidence,1.0) confidence,layer,emotion,last_accessed "
+                        + "FROM long_term_memory WHERE user_id=? AND id=?",
+                    (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
+                        rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
+                        rs.getString("event_timezone"), rs.getString("event_precision"), match.distance(),
+                        rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"), rs.getInt("layer"),
+                        retention(rs.getTimestamp("last_accessed"), rs.getTimestamp("created_at"), rs.getDouble("importance"), rs.getInt("layer"))),
+                    userId, match.id());
+                if (!rows.isEmpty() && rows.get(0).retentionRate() > RETENTION_MIN) results.add(rows.get(0));
+                if (results.size() >= limit) break;
+            }
+            return results;
         } catch (Exception e) { return List.of(); }
     }
 
@@ -216,15 +181,14 @@ public class PgVectorMemoryService {
             return jdbc.query(
                 "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, 0.5 AS distance "
                 + "FROM long_term_memory WHERE user_id = ? "
-                + "AND importance * EXP(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at))) / 3600.0 "
-                + "  / (CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END * 24 + 1)) > ? "
                 + "ORDER BY importance DESC LIMIT 100",
-                ps -> { ps.setString(1, userId); ps.setDouble(2, RETENTION_MIN); },
+                ps -> ps.setString(1, userId),
                 (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
                     rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
                     rs.getString("event_timezone"), rs.getString("event_precision"), 0.5, rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"),
                     rs.getInt("layer"), 1.0)
-            ).stream().filter(r -> matchScore(r.content(), query) > 0)
+            ).stream().filter(r -> retention(r.createdAt(), r.createdAt(), r.importance(), r.layer()) > RETENTION_MIN)
+              .filter(r -> matchScore(r.content(), query) > 0)
               .sorted((a, b) -> Double.compare(matchScore(b.content(), query), matchScore(a.content(), query)))
               .limit(limit).toList();
         } catch (Exception e) { return List.of(); }
@@ -259,9 +223,9 @@ public class PgVectorMemoryService {
             if (result.id() == null || result.id().isBlank()) continue;
             try {
                 jdbc.update("UPDATE long_term_memory SET access_count=COALESCE(access_count,0)+1, "
-                    + "last_accessed=NOW() WHERE user_id=? AND id=?::bigint", userId, result.id());
+                    + "last_accessed=CURRENT_TIMESTAMP WHERE user_id=? AND id=?", userId, result.id());
             } catch (Exception e) {
-                logger.log("DEBUG", "PgVector access refresh failed: " + e.getMessage());
+                logger.log("DEBUG", "SQLite memory access refresh failed: " + e.getMessage());
             }
         }
     }
@@ -275,15 +239,14 @@ public class PgVectorMemoryService {
      */
     public int prune(String userId) {
         try {
-            return jdbc.update(
-                "DELETE FROM long_term_memory WHERE user_id = ? "
-                + "AND importance * EXP(-EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at))) / 3600.0 "
-                + "  / (CASE WHEN layer = 2 THEN 5.0 ELSE 1.0 END * 24 + 1)) < ? "
-                + "AND access_count < 3",
-                userId, RETENTION_MIN
-            );
+            List<String> ids = jdbc.query("SELECT id,importance,layer,last_accessed,created_at FROM long_term_memory WHERE user_id=? AND access_count<3",
+                (rs, row) -> retention(rs.getTimestamp("last_accessed"), rs.getTimestamp("created_at"), rs.getDouble("importance"), rs.getInt("layer")) < RETENTION_MIN
+                    ? rs.getString("id") : null, userId).stream().filter(java.util.Objects::nonNull).toList();
+            int removed = 0;
+            for (String id : ids) removed += jdbc.update("DELETE FROM long_term_memory WHERE user_id=? AND id=?", userId, id);
+            return removed;
         } catch (Exception e) {
-            logger.log("WARN", "PgVector prune failed: " + e.getMessage());
+            logger.log("WARN", "SQLite memory prune failed: " + e.getMessage());
             return 0;
         }
     }
@@ -328,6 +291,13 @@ public class PgVectorMemoryService {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    private double retention(Timestamp lastAccessed, Timestamp createdAt, double importance, int layer) {
+        Timestamp anchor = lastAccessed != null ? lastAccessed : createdAt;
+        double hours = anchor == null ? 0 : Math.max(0, System.currentTimeMillis() - anchor.getTime()) / 3_600_000.0;
+        double strength = layer == 2 ? 5.0 : 1.0;
+        return importance * Math.exp(-hours / (strength * 24 + 1));
     }
 
     public record MemoryResult(

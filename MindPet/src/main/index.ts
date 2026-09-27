@@ -39,6 +39,7 @@ import { ModelRuntimeFactory } from './model-runtime'
 import { localMeetingRuntime } from './local-meeting-runtime'
 import { callJavaBackend, startDesktopNotificationPolling } from './backend-api'
 import { backendBaseUrl, backendUrl, DEFAULT_BACKEND_BASE_URL, endpointFilePath, setBackendBaseUrl, probeBackend } from './backend-endpoint'
+import { startLocalBackend, stopLocalBackend } from './local-backend-runtime'
 
 
 
@@ -1017,7 +1018,12 @@ function createWindow(): void {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    await startLocalBackend()
+  } catch (error) {
+    console.error('[Backend] 本地后端启动失败:', error)
+  }
   // 恢复物理持久化的大模型配置，保证后台微信 Bot 在前端就绪前能拿到有效密钥
   registerBuiltinTools()
   loadSystemLlmConfig()
@@ -4926,6 +4932,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopLocalBackend()
   stopDesktopNotificationPolling?.()
   stopDesktopNotificationPolling = null
 })

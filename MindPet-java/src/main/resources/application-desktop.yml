@@ -1,0 +1,44 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    openai:
+      api-key: ${MINDPET_LLM_API_KEY:local-not-configured}
+      base-url: ${MINDPET_LLM_BASE_URL:https://api.deepseek.com/v1}
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${MINDPET_LLM_MODEL:deepseek-chat}
+
+llm:
+  api:
+    key: ${MINDPET_LLM_API_KEY:}
+    url: ${MINDPET_LLM_CHAT_URL:https://api.deepseek.com/v1/chat/completions}
+  model: ${MINDPET_LLM_MODEL:deepseek-chat}
+
+app:
+  storage:
+    sqlite:
+      path: ${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db
+      vec-extension: ${MINDPET_SQLITE_VEC:}
+  embedding:
+    ollama:
+      endpoint: http://127.0.0.1:11434/api/embed
+      model: bge-m3
+      keep-alive: 30m
+    doubao:
+      endpoint: https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal
+      model: doubao-embedding-vision-251215
+      api-key: ${MINDPET_EMBEDDING_API_KEY:}
+
+logging:
+  level:
+    root: INFO
+    com.zaxxer.hikari: WARN

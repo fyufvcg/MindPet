@@ -97,3 +97,4 @@ temp/
 *.tar.gz
 *.rar
 *.7z
+MindPet/build/backend/

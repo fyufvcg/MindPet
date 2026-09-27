@@ -14,11 +14,14 @@ public class UserInsightService {
 
     private final JdbcTemplate jdbc;
     private final EmbeddingService embedService;
+    private final VectorSearchService vectorSearch;
     private final Logger logger;
 
-    public UserInsightService(JdbcTemplate jdbc, EmbeddingService embedService, Logger logger) {
+    public UserInsightService(JdbcTemplate jdbc, EmbeddingService embedService,
+                              VectorSearchService vectorSearch, Logger logger) {
         this.jdbc = jdbc;
         this.embedService = embedService;
+        this.vectorSearch = vectorSearch;
         this.logger = logger;
     }
 
@@ -27,12 +30,11 @@ public class UserInsightService {
         try {
             float[] vec = embedService.embed(insight);
             if (vec == null) return false;
-            String vecStr = EmbeddingService.toPgVectorString(vec);
             int inserted = jdbc.update(
                 "INSERT INTO user_insight (user_id, insight, context, embedding) " +
-                "SELECT ?,?,?,?::vector WHERE NOT EXISTS (" +
+                "SELECT ?,?,?,? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM user_insight WHERE user_id=? AND insight=?)",
-                userId, insight, context, vecStr, userId, insight
+                userId, insight, context, VectorSearchService.encode(vec), userId, insight
             );
             return inserted > 0;
         } catch (Exception e) {
@@ -77,12 +79,11 @@ public class UserInsightService {
         try {
             float[] vec = embedService.embed(insight);
             if (vec == null) return false;
-            String vecStr = EmbeddingService.toPgVectorString(vec);
             int inserted = jdbc.update(
                 "INSERT INTO llm_growth (user_id, category, insight, context, embedding) " +
-                "SELECT ?,?,?,?,?::vector WHERE NOT EXISTS (" +
+                "SELECT ?,?,?,?,? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM llm_growth WHERE user_id=? AND category=? AND insight=?)",
-                userId, category, insight, context, vecStr, userId, category, insight
+                userId, category, insight, context, VectorSearchService.encode(vec), userId, category, insight
             );
             return inserted > 0;
         } catch (Exception e) {
@@ -135,26 +136,20 @@ public class UserInsightService {
     public String getGrowthContext(String userId, float[] vec) {
         if (vec == null) return null;
         try {
-            String vecStr = EmbeddingService.toPgVectorString(vec);
-
-            List<String> items = jdbc.query(
-                "SELECT category, insight, embedding <=> ?::vector AS distance " +
-                "FROM llm_growth WHERE user_id = ? AND embedding <=> ?::vector < ? " +
-                "ORDER BY embedding <=> ?::vector LIMIT 3",
-                ps -> {
-                    ps.setString(1, vecStr); ps.setString(2, userId);
-                    ps.setString(3, vecStr); ps.setDouble(4, DISTANCE_THRESHOLD);
-                    ps.setString(5, vecStr);
-                },
-                (rs, rowNum) -> {
+            List<String> items = vectorSearch.search("llm_growth", userId, vec, 12).stream()
+                .filter(match -> match.distance() < DISTANCE_THRESHOLD)
+                .limit(3)
+                .map(match -> jdbc.queryForObject(
+                    "SELECT category,insight FROM llm_growth WHERE id=?",
+                    (rs, rowNum) -> {
                     String cat = switch (rs.getString("category")) {
                         case "personality" -> "性格"; case "preference" -> "喜好";
                         case "knowledge" -> "认知"; case "style" -> "风格";
                         default -> rs.getString("category");
                     };
                     return String.format("- [%s] %s", cat, rs.getString("insight"));
-                }
-            );
+                    }, match.id()))
+                .filter(java.util.Objects::nonNull).toList();
 
             if (items.isEmpty()) return null;
             StringBuilder sb = new StringBuilder("【MindPet 的自我成长】\n");
@@ -178,22 +173,13 @@ public class UserInsightService {
     public String getInsightContext(String userId, float[] vec) {
         if (vec == null) return null;
         try {
-            String vecStr = EmbeddingService.toPgVectorString(vec);
-
-            List<String> insights = jdbc.query(
-                "SELECT insight, context, embedding <=> ?::vector AS distance " +
-                "FROM user_insight WHERE user_id = ? AND embedding <=> ?::vector < ? " +
-                "ORDER BY embedding <=> ?::vector LIMIT ?",
-                ps -> {
-                    ps.setString(1, vecStr); ps.setString(2, userId);
-                    ps.setString(3, vecStr); ps.setDouble(4, DISTANCE_THRESHOLD);
-                    ps.setString(5, vecStr); ps.setInt(6, TOP_K);
-                },
-                (rs, rowNum) -> {
-                    double d = rs.getDouble("distance");
-                    return String.format("- (%.2f) %s", d, rs.getString("insight"));
-                }
-            );
+            List<String> insights = vectorSearch.search("user_insight", userId, vec, Math.max(TOP_K * 3, TOP_K)).stream()
+                .filter(match -> match.distance() < DISTANCE_THRESHOLD)
+                .limit(TOP_K)
+                .map(match -> jdbc.queryForObject("SELECT insight FROM user_insight WHERE id=?",
+                    String.class, match.id()))
+                .filter(java.util.Objects::nonNull)
+                .map(insight -> "- " + insight).toList();
 
             if (insights.isEmpty()) return null;
             StringBuilder sb = new StringBuilder("【与用户相处的经验】\n");

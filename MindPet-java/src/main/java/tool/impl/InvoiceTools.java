@@ -6,7 +6,7 @@ import model.InvoiceRecord;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import service.BaiduAiClient;
 import service.ReimbursementExcelService;
@@ -22,7 +22,7 @@ import java.util.Map;
 
 /**
  * 发票报销工具 — OCR识别 + 真伪核验 + 写入报销Excel。
- * OCR 结果缓存到 Redis（30分钟），用户补充信息时无需重发图片。
+ * OCR 结果缓存到 SQLite（30分钟），用户补充信息时无需重发图片。
  */
 @Component
 public class InvoiceTools {
@@ -32,16 +32,16 @@ public class InvoiceTools {
 
     private final BaiduAiClient baiduAi;
     private final ReimbursementExcelService excelService;
-    private final StringRedisTemplate redis;
+    private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Logger logger;
 
     @Autowired
     public InvoiceTools(BaiduAiClient baiduAi, ReimbursementExcelService excelService,
-                        StringRedisTemplate redis, Logger logger) {
+                        JdbcTemplate jdbc, Logger logger) {
         this.baiduAi = baiduAi;
         this.excelService = excelService;
-        this.redis = redis;
+        this.jdbc = jdbc;
         this.mapper = new ObjectMapper();
         this.logger = logger;
     }
@@ -50,7 +50,9 @@ public class InvoiceTools {
 
     private void cacheOcrResult(String userId, Map<String, String> fields) {
         try {
-            redis.opsForValue().set(OCR_CACHE_KEY + userId, mapper.writeValueAsString(fields), OCR_CACHE_TTL);
+            jdbc.update("INSERT INTO local_cache(namespace,cache_key,value_json,expires_at) VALUES('invoice-ocr',?,?,?) "
+                    + "ON CONFLICT(namespace,cache_key) DO UPDATE SET value_json=excluded.value_json,expires_at=excluded.expires_at",
+                userId, mapper.writeValueAsString(fields), System.currentTimeMillis() + OCR_CACHE_TTL.toMillis());
             logger.log("INFO", "OCR结果已缓存(30min) → " + fields.getOrDefault("InvoiceNum", "?"));
         } catch (Exception e) {
             logger.log("WARN", "OCR缓存写入失败: " + e.getMessage());
@@ -59,7 +61,9 @@ public class InvoiceTools {
 
     private Map<String, String> getCachedOcr(String userId) {
         try {
-            String json = redis.opsForValue().get(OCR_CACHE_KEY + userId);
+            List<String> values = jdbc.query("SELECT value_json FROM local_cache WHERE namespace='invoice-ocr' AND cache_key=? AND (expires_at IS NULL OR expires_at>?)",
+                (rs, row) -> rs.getString(1), userId, System.currentTimeMillis());
+            String json = values.isEmpty() ? null : values.get(0);
             if (json == null || json.isBlank()) return null;
             return mapper.readValue(json, new TypeReference<Map<String, String>>() {});
         } catch (Exception e) {
@@ -223,7 +227,7 @@ public class InvoiceTools {
         sb.append("\n报销Excel已更新（第").append(rowNum + 1).append("行）");
 
         // 清除缓存（核验成功后不再需要）
-        try { redis.delete(OCR_CACHE_KEY + userId); } catch (Exception ignored) {}
+        try { jdbc.update("DELETE FROM local_cache WHERE namespace='invoice-ocr' AND cache_key=?", userId); } catch (Exception ignored) {}
 
         return sb.toString();
     }

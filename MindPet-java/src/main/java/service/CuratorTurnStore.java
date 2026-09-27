@@ -1,173 +1,110 @@
 package service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import util.Logger;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
-/** User-wide completed-turn history used only by the memory curator. */
+/** User-wide completed-turn history used by the memory curator. */
 @Service
 public class CuratorTurnStore {
-
-    private static final String COUNT_KEY = "curator:turn_count:";
-    private static final String TURNS_KEY = "curator:turns:";
-    private static final String DEDUP_KEY = "curator:turn_seen:";
-    private static final String CHECKPOINT_KEY = "curator:checkpoint:";
-    private static final String LOCK_KEY = "curator:lock:";
-    private static final String WORKING_MEMORY_KEY = "working_memory:";
-    private static final String RUNS_KEY = "curator:runs:";
     private static final int MAX_STORED_TURNS = 500;
-    private static final Duration TURN_TTL = Duration.ofDays(30);
-
-    private static final DefaultRedisScript<Long> APPEND_SCRIPT = new DefaultRedisScript<>("""
-        if redis.call('SETNX', KEYS[3], '1') == 0 then
-          return 0
-        end
-        redis.call('EXPIRE', KEYS[3], ARGV[3])
-        local seq = redis.call('INCR', KEYS[1])
-        redis.call('ZADD', KEYS[2], seq, ARGV[1])
-        local size = redis.call('ZCARD', KEYS[2])
-        local maxSize = tonumber(ARGV[2])
-        if size > maxSize then
-          redis.call('ZREMRANGEBYRANK', KEYS[2], 0, size - maxSize - 1)
-        end
-        redis.call('EXPIRE', KEYS[2], ARGV[3])
-        return seq
-        """, Long.class);
-
-    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>("""
-        if redis.call('GET', KEYS[1]) == ARGV[1] then
-          return redis.call('DEL', KEYS[1])
-        end
-        return 0
-        """, Long.class);
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
+    private final Logger logger;
+    private final Map<String, LockValue> locks = new ConcurrentHashMap<>();
 
     public record CompletedTurn(String turnId, String sessionId, String source,
                                 String userMessage, String assistantReply, String completedAt) {}
+    private record LockValue(String token, long expiresAt) {}
 
-    private final StringRedisTemplate redis;
-    private final ObjectMapper mapper;
-    private final Logger logger;
-
-    public CuratorTurnStore(StringRedisTemplate redis, ObjectMapper mapper, Logger logger) {
-        this.redis = redis;
-        this.mapper = mapper;
-        this.logger = logger;
+    public CuratorTurnStore(JdbcTemplate jdbc, ObjectMapper mapper, Logger logger) {
+        this.jdbc = jdbc; this.mapper = mapper; this.logger = logger;
     }
 
-    public long append(String userId, String sessionId, String source,
-                       String userMessage, String assistantReply) {
+    @Transactional
+    public long append(String userId, String sessionId, String source, String userMessage, String assistantReply) {
         try {
             String turnId = UUID.randomUUID().toString();
-            CompletedTurn turn = new CompletedTurn(turnId, sessionId, source,
-                userMessage, assistantReply, Instant.now().toString());
-            Long sequence = redis.execute(APPEND_SCRIPT,
-                List.of(COUNT_KEY + userId, TURNS_KEY + userId, DEDUP_KEY + userId + ":" + turnId),
-                mapper.writeValueAsString(turn), String.valueOf(MAX_STORED_TURNS),
-                String.valueOf(TURN_TTL.toSeconds()));
+            jdbc.update("INSERT OR IGNORE INTO curator_turns(user_id,turn_id,session_id,source,user_message,assistant_reply,completed_at) VALUES(?,?,?,?,?,?,?)",
+                userId, turnId, sessionId, source, userMessage, assistantReply, Instant.now().toString());
+            Long sequence = jdbc.queryForObject("SELECT sequence FROM curator_turns WHERE turn_id=?", Long.class, turnId);
+            jdbc.update("DELETE FROM curator_turns WHERE sequence IN (SELECT sequence FROM curator_turns WHERE user_id=? ORDER BY sequence DESC LIMIT -1 OFFSET ?)",
+                userId, MAX_STORED_TURNS);
             return sequence == null ? 0 : sequence;
-        } catch (Exception e) {
-            logger.log("WARN", "记忆馆长回合写入失败: " + e.getMessage());
-            return 0;
-        }
+        } catch (Exception e) { logger.log("WARN", "记忆馆长回合写入失败: " + e.getMessage()); return 0; }
     }
 
     public long count(String userId) {
-        return readLong(COUNT_KEY + userId);
+        Long value = jdbc.queryForObject("SELECT COALESCE(MAX(sequence),0) FROM curator_turns WHERE user_id=?", Long.class, userId);
+        return value == null ? 0 : value;
     }
 
     public long checkpoint(String userId) {
-        return readLong(CHECKPOINT_KEY + userId);
+        List<Long> rows = jdbc.query("SELECT checkpoint FROM curator_state WHERE user_id=?", (rs, row) -> rs.getLong(1), userId);
+        return rows.isEmpty() ? 0 : rows.get(0);
     }
 
     public void saveCheckpoint(String userId, long sequence) {
-        redis.opsForValue().set(CHECKPOINT_KEY + userId, String.valueOf(sequence));
+        jdbc.update("INSERT INTO curator_state(user_id,checkpoint) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET checkpoint=excluded.checkpoint,updated_at=CURRENT_TIMESTAMP",
+            userId, sequence);
     }
 
     public List<CompletedTurn> recentAt(String userId, long targetSequence, int limit) {
-        Set<String> raw = redis.opsForZSet().reverseRangeByScore(
-            TURNS_KEY + userId, 0, targetSequence, 0, limit);
-        if (raw == null || raw.isEmpty()) return List.of();
-
-        List<CompletedTurn> turns = new ArrayList<>(raw.size());
-        for (String json : raw) {
-            try {
-                turns.add(mapper.readValue(json, CompletedTurn.class));
-            } catch (Exception e) {
-                logger.log("WARN", "跳过损坏的馆长回合: " + e.getMessage());
-            }
-        }
+        List<CompletedTurn> turns = jdbc.query("SELECT turn_id,session_id,source,user_message,assistant_reply,completed_at FROM curator_turns "
+                + "WHERE user_id=? AND sequence<=? ORDER BY sequence DESC LIMIT ?",
+            (rs, row) -> new CompletedTurn(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6)),
+            userId, targetSequence, limit);
         Collections.reverse(turns);
         return turns;
     }
 
     public String tryLock(String userId) {
+        long now = System.currentTimeMillis();
         String token = UUID.randomUUID().toString();
-        Boolean acquired = redis.opsForValue().setIfAbsent(
-            LOCK_KEY + userId, token, Duration.ofMinutes(10));
-        return Boolean.TRUE.equals(acquired) ? token : null;
+        LockValue next = new LockValue(token, now + 600_000);
+        LockValue value = locks.compute(userId, (key, existing) -> existing == null || existing.expiresAt < now ? next : existing);
+        return value == next ? token : null;
     }
 
-    public void unlock(String userId, String token) {
-        try {
-            redis.execute(UNLOCK_SCRIPT, List.of(LOCK_KEY + userId), token);
-        } catch (Exception e) {
-            logger.log("WARN", "记忆馆长锁释放失败: " + e.getMessage());
-        }
-    }
+    public void unlock(String userId, String token) { locks.computeIfPresent(userId, (key, value) -> value.token.equals(token) ? null : value); }
 
     public void saveWorkingMemory(String userId, Object value) throws Exception {
-        redis.opsForValue().set(WORKING_MEMORY_KEY + userId,
-            mapper.writeValueAsString(value), Duration.ofDays(30));
+        jdbc.update("INSERT INTO curator_state(user_id,working_memory_json) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET working_memory_json=excluded.working_memory_json,updated_at=CURRENT_TIMESTAMP",
+            userId, mapper.writeValueAsString(value));
     }
 
     public String getWorkingMemory(String userId) {
-        return redis.opsForValue().get(WORKING_MEMORY_KEY + userId);
+        List<String> rows = jdbc.query("SELECT working_memory_json FROM curator_state WHERE user_id=?", (rs, row) -> rs.getString(1), userId);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     public void recordRun(String userId, Object value) {
         try {
-            String key = RUNS_KEY + userId;
-            redis.opsForList().rightPush(key, mapper.writeValueAsString(value));
-            redis.opsForList().trim(key, -100, -1);
-            redis.expire(key, Duration.ofDays(30));
-        } catch (Exception e) {
-            logger.log("WARN", "记忆馆长运行记录写入失败: " + e.getMessage());
-        }
+            jdbc.update("INSERT INTO curator_runs(user_id,payload_json,created_at) VALUES(?,?,?)", userId, mapper.writeValueAsString(value), System.currentTimeMillis());
+            jdbc.update("DELETE FROM curator_runs WHERE id IN (SELECT id FROM curator_runs WHERE user_id=? ORDER BY id DESC LIMIT -1 OFFSET 100)", userId);
+        } catch (Exception e) { logger.log("WARN", "记忆馆长运行记录写入失败: " + e.getMessage()); }
     }
 
     public List<Map<String, Object>> recentRuns(String userId, int limit) {
-        List<String> raw = redis.opsForList().range(RUNS_KEY + userId, -limit, -1);
-        if (raw == null || raw.isEmpty()) return List.of();
-        List<Map<String, Object>> runs = new ArrayList<>();
-        for (String json : raw) {
-            try {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> run = mapper.readValue(json, Map.class);
-                runs.add(run);
-            } catch (Exception e) {
-                logger.log("WARN", "跳过损坏的馆长运行记录: " + e.getMessage());
-            }
-        }
-        return runs;
+        List<Map<String, Object>> rows = jdbc.query("SELECT payload_json FROM curator_runs WHERE user_id=? ORDER BY id DESC LIMIT ?",
+            (rs, row) -> parseMap(rs.getString(1)), userId, limit);
+        Collections.reverse(rows);
+        return rows;
     }
 
-    private long readLong(String key) {
-        try {
-            String value = redis.opsForValue().get(key);
-            return value == null ? 0 : Long.parseLong(value);
-        } catch (Exception e) {
-            return 0;
-        }
+    private Map<String, Object> parseMap(String json) {
+        try { return mapper.readValue(json, new TypeReference<Map<String, Object>>() {}); }
+        catch (Exception e) { return Map.of(); }
     }
 }

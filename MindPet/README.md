@@ -118,7 +118,7 @@ npm run dev
 
 ### 4. 生产包打包发布
 
-项目预置了多平台的 Electron-Builder 配置，你可以根据自身平台一键打包：
+项目预置了多平台的 Electron-Builder 配置。构建命令会先编译 Java 后端、生成精简 JRE，再将它们与 SQLite、sqlite-vec 和 Electron 前端一起装入应用：
 
 ```bash
 # 构建 Windows 包 (便携版/安装版)
@@ -136,10 +136,9 @@ npm run build:linux
 
 ## 💾 数据存储与便携模式 (Portable Mode)
 
-MindPet 默认提供极佳的**便携特性**：
-1. **优先便携目录**：对于打包后的生产应用，默认会在 **可执行文件 (`exe`/`app`) 的同级目录** 下自动创建 `data/` 目录。所有的 SQLite 数据库、全局配置文件、缓存、任务运行日志均会落地于此。这极大方便了用户在不同电脑间备份或迁移桌宠数据，且不会污染系统的 `C` 盘 AppData。
-2. **自定义路径**：你可以通过在 `.env` 中指定 `USER_DATA_PATH` 环境变量来直接重写全局数据存放路径。
-3. **安全后备**：若当前目录无写入权限（如在 C:\Program Files 下），应用将安全退回到系统默认的 `AppData/Local` 目录。
+MindPet 的数据库位于 Electron `userData/backend/mindpet.db`；打包版默认把 `userData` 设为可执行文件同级的 `data/`，因此数据库路径为 `data/backend/mindpet.db`。会话、短期上下文、长期记忆、向量、知识图谱、缓存和 RPA 状态都保存在该文件中。退出应用时内置 Java 后端会随主进程关闭，下次启动继续读取同一数据库。也可通过 `USER_DATA_PATH` 指定其他数据目录。
+
+终端用户无需安装 Node.js、Java、PostgreSQL、pgvector、Redis 或 Docker。Ollama 仅在选择本地 Embedding 时需要；使用云端 Embedding API 时也不需要安装 Ollama。
 
 ---
 

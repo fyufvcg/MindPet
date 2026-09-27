@@ -73,7 +73,8 @@ public class KnowledgeGraphService {
     private final JdbcTemplate jdbc;
     private final DynamicChatClientFactory chatClientFactory;
     private final EmbeddingService embeddingService;
-    private final PgVectorMemoryService memoryService;
+    private final VectorSearchService vectorSearch;
+    private final SqliteMemoryService memoryService;
     private final ObjectMapper mapper;
     private final Executor executor;
     private final Logger logger;
@@ -83,13 +84,15 @@ public class KnowledgeGraphService {
             JdbcTemplate jdbc,
             DynamicChatClientFactory chatClientFactory,
             EmbeddingService embeddingService,
-            PgVectorMemoryService memoryService,
+            VectorSearchService vectorSearch,
+            SqliteMemoryService memoryService,
             ObjectMapper mapper,
             @Qualifier("knowledgeGraphExecutor") Executor executor,
             Logger logger) {
         this.jdbc = jdbc;
         this.chatClientFactory = chatClientFactory;
         this.embeddingService = embeddingService;
+        this.vectorSearch = vectorSearch;
         this.memoryService = memoryService;
         this.mapper = mapper;
         this.executor = executor;
@@ -357,7 +360,7 @@ public class KnowledgeGraphService {
             jdbc.update(
                 "UPDATE kg_entity SET display_name=?, summary=CASE WHEN ?='' THEN summary ELSE ? END, "
                     + "importance=((importance*mention_count)+?)/(mention_count+1), "
-                    + "mention_count=mention_count+1, last_seen=NOW() WHERE id=?",
+                    + "mention_count=mention_count+1, last_seen=CURRENT_TIMESTAMP WHERE id=?",
                 candidate.name(), candidate.summary(), candidate.summary(), candidate.importance(), ref.id());
             return ref;
         }
@@ -367,9 +370,9 @@ public class KnowledgeGraphService {
             : embeddingService.embed(candidate.name() + " " + candidate.summary());
         jdbc.update(
             "INSERT INTO kg_entity(id,user_id,normalized_name,display_name,entity_type,summary,embedding,importance) "
-                + "VALUES (?,?,?,?,?,?,?::vector,?)",
+                + "VALUES (?,?,?,?,?,?,?,?)",
             id, userId, normalized, candidate.name(), candidate.type(), candidate.summary(),
-            EmbeddingService.toPgVectorString(vector), candidate.importance());
+            vector == null ? null : VectorSearchService.encode(vector), candidate.importance());
         return new EntityRef(id, candidate.name());
     }
 
@@ -383,7 +386,7 @@ public class KnowledgeGraphService {
             jdbc.update(
                 "UPDATE kg_relation SET confidence=((confidence*mention_count)+?)/(mention_count+1), "
                     + "importance=((importance*mention_count)+?)/(mention_count+1), "
-                    + "mention_count=mention_count+1,last_seen=NOW() WHERE id=?",
+                    + "mention_count=mention_count+1,last_seen=CURRENT_TIMESTAMP WHERE id=?",
                 candidate.confidence(), candidate.importance(), id);
             return id;
         }
@@ -436,17 +439,15 @@ public class KnowledgeGraphService {
     private List<String> semanticEntityIds(String userId, String query, float[] vector, int limit) {
         if (vector != null) {
             try {
-                return jdbc.query(
-                    "SELECT id FROM kg_entity WHERE user_id=? AND embedding IS NOT NULL "
-                        + "AND " + entityRetention("kg_entity") + " > ? "
-                        + "ORDER BY embedding <=> ?::vector LIMIT ?",
-                    (rs, rowNum) -> rs.getString("id"), userId,
-                    RETENTION_MIN, EmbeddingService.toPgVectorString(vector), limit);
+                return vectorSearch.search("kg_entity", userId, vector, Math.max(limit * 3, limit)).stream()
+                    .map(VectorSearchService.VectorMatch::id)
+                    .filter(id -> count("SELECT COUNT(*) FROM kg_entity WHERE id=? AND " + entityRetention("kg_entity") + ">" + RETENTION_MIN, id) > 0)
+                    .limit(limit).toList();
             } catch (Exception ignored) {}
         }
         if (isBlank(query)) return List.of();
         return jdbc.query(
-            "SELECT id FROM kg_entity WHERE user_id=? AND (display_name ILIKE ? OR summary ILIKE ?) "
+            "SELECT id FROM kg_entity WHERE user_id=? AND (LOWER(display_name) LIKE LOWER(?) OR LOWER(summary) LIKE LOWER(?)) "
                 + "AND " + entityRetention("kg_entity") + " > ? "
                 + "ORDER BY importance DESC,mention_count DESC LIMIT ?",
             (rs, rowNum) -> rs.getString("id"), userId, "%" + query + "%", "%" + query + "%",
@@ -459,8 +460,8 @@ public class KnowledgeGraphService {
         String normalized = normalizeName(query);
         return jdbc.query(
             "SELECT id FROM kg_entity WHERE user_id=? AND "
-                + "(? ILIKE '%' || normalized_name || '%' OR normalized_name=? "
-                + "OR display_name ILIKE ? OR summary ILIKE ?) "
+                + "(LOWER(?) LIKE '%' || LOWER(normalized_name) || '%' OR normalized_name=? "
+                + "OR LOWER(display_name) LIKE LOWER(?) OR LOWER(summary) LIKE LOWER(?)) "
                 + "ORDER BY CASE WHEN normalized_name=? THEN 0 ELSE 1 END, importance DESC, last_seen DESC LIMIT ?",
             (rs, rowNum) -> rs.getString("id"), userId, query, normalized,
             "%" + query + "%", "%" + query + "%", normalized, limit);
@@ -552,33 +553,28 @@ public class KnowledgeGraphService {
         for (Map<String, Object> edge : explicitEdges) {
             explicitPairs.add(pair(String.valueOf(edge.get("source")), String.valueOf(edge.get("target"))));
         }
-        String placeholders = placeholders(ids.size());
-        List<Object> args = new ArrayList<>();
-        args.add(userId);
-        args.addAll(ids);
-        args.addAll(ids);
-        args.add(Math.min(80, ids.size() * 2));
         try {
-            return jdbc.query(
-                "SELECT a.id AS source_id,b.id AS target_id,1-(a.embedding <=> b.embedding) AS similarity "
-                    + "FROM kg_entity a JOIN kg_entity b ON a.id < b.id "
-                    + "WHERE a.user_id=? AND b.user_id=a.user_id AND a.embedding IS NOT NULL AND b.embedding IS NOT NULL "
-                    + "AND a.id IN (" + placeholders + ") AND b.id IN (" + placeholders + ") "
-                    + "AND 1-(a.embedding <=> b.embedding) >= 0.76 "
-                    + "ORDER BY similarity DESC LIMIT ?",
-                (rs, rowNum) -> {
-                    String source = rs.getString("source_id");
-                    String target = rs.getString("target_id");
-                    if (explicitPairs.contains(pair(source, target))) return null;
+            String placeholders = placeholders(ids.size());
+            List<Object> args = new ArrayList<>();
+            args.add(userId); args.addAll(ids);
+            List<EntityVector> vectors = jdbc.query("SELECT id,embedding FROM kg_entity WHERE user_id=? AND embedding IS NOT NULL AND id IN (" + placeholders + ")",
+                (rs, row) -> new EntityVector(rs.getString("id"), VectorSearchService.decode(rs.getBytes("embedding"))), args.toArray());
+            List<Map<String, Object>> edges = new ArrayList<>();
+            for (int i = 0; i < vectors.size(); i++) {
+                for (int j = i + 1; j < vectors.size(); j++) {
+                    EntityVector left = vectors.get(i), right = vectors.get(j);
+                    if (left.vector().length == 0 || left.vector().length != right.vector().length || explicitPairs.contains(pair(left.id(), right.id()))) continue;
+                    double similarity = 1.0 - VectorSearchService.cosineDistance(left.vector(), right.vector());
+                    if (similarity < 0.76) continue;
                     Map<String, Object> edge = new LinkedHashMap<>();
-                    edge.put("id", "semantic:" + source + ":" + target);
-                    edge.put("source", source);
-                    edge.put("target", target);
-                    edge.put("label", "semantic_similarity");
-                    edge.put("kind", "semantic");
-                    edge.put("confidence", rs.getDouble("similarity"));
-                    return edge;
-                }, args.toArray()).stream().filter(java.util.Objects::nonNull).toList();
+                    edge.put("id", "semantic:" + left.id() + ":" + right.id());
+                    edge.put("source", left.id()); edge.put("target", right.id());
+                    edge.put("label", "semantic_similarity"); edge.put("kind", "semantic");
+                    edge.put("confidence", similarity); edges.add(edge);
+                }
+            }
+            edges.sort((a, b) -> Double.compare((double) b.get("confidence"), (double) a.get("confidence")));
+            return edges.stream().limit(Math.min(80, ids.size() * 2L)).toList();
         } catch (Exception e) {
             return List.of();
         }
@@ -605,45 +601,8 @@ public class KnowledgeGraphService {
 
     private void initializeSchema() {
         try {
-            jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
-            jdbc.execute("CREATE TABLE IF NOT EXISTS kg_entity ("
-                + "id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,normalized_name VARCHAR(256) NOT NULL,"
-                + "display_name VARCHAR(256) NOT NULL,entity_type VARCHAR(32) NOT NULL,summary TEXT NOT NULL DEFAULT '',"
-                + "embedding vector(1024),importance DOUBLE PRECISION NOT NULL DEFAULT 0.5,"
-                + "mention_count INTEGER NOT NULL DEFAULT 1,first_seen TIMESTAMP NOT NULL DEFAULT NOW(),"
-                + "last_seen TIMESTAMP NOT NULL DEFAULT NOW(),UNIQUE(user_id,normalized_name,entity_type))");
-            jdbc.execute("CREATE TABLE IF NOT EXISTS kg_relation ("
-                + "id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,"
-                + "source_entity_id VARCHAR(36) NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,"
-                + "target_entity_id VARCHAR(36) NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,"
-                + "predicate VARCHAR(48) NOT NULL,confidence DOUBLE PRECISION NOT NULL DEFAULT 0.5,"
-                + "importance DOUBLE PRECISION NOT NULL DEFAULT 0.5,mention_count INTEGER NOT NULL DEFAULT 1,"
-                + "first_seen TIMESTAMP NOT NULL DEFAULT NOW(),last_seen TIMESTAMP NOT NULL DEFAULT NOW(),"
-                + "UNIQUE(user_id,source_entity_id,target_entity_id,predicate))");
-            jdbc.execute("CREATE TABLE IF NOT EXISTS kg_evidence ("
-                + "id BIGSERIAL PRIMARY KEY,user_id VARCHAR(128) NOT NULL,turn_hash VARCHAR(64) NOT NULL,"
-                + "entity_id VARCHAR(36) REFERENCES kg_entity(id) ON DELETE CASCADE,"
-                + "relation_id VARCHAR(36) REFERENCES kg_relation(id) ON DELETE CASCADE,"
-                + "session_id VARCHAR(256) NOT NULL DEFAULT '',user_message TEXT NOT NULL,"
-                + "assistant_message TEXT NOT NULL DEFAULT '',created_at TIMESTAMP NOT NULL DEFAULT NOW(),"
-                + "UNIQUE(turn_hash,entity_id),UNIQUE(turn_hash,relation_id))");
-            jdbc.execute("CREATE TABLE IF NOT EXISTS kg_turn_ingest ("
-                + "turn_hash VARCHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,"
-                + "session_id VARCHAR(256) NOT NULL DEFAULT '',entity_count INTEGER NOT NULL DEFAULT 0,"
-                + "relation_count INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMP NOT NULL DEFAULT NOW())");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_entity_user_importance "
-                + "ON kg_entity(user_id,importance DESC,last_seen DESC)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_entity_user_last_seen "
-                + "ON kg_entity(user_id,last_seen DESC)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_relation_user_source ON kg_relation(user_id,source_entity_id)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_relation_user_target ON kg_relation(user_id,target_entity_id)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_relation_user_last_seen "
-                + "ON kg_relation(user_id,last_seen DESC)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_evidence_entity "
-                + "ON kg_evidence(entity_id,created_at DESC)");
-            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_evidence_relation "
-                + "ON kg_evidence(relation_id,created_at DESC)");
-            logger.log("INFO", "Knowledge graph storage ready -> PostgreSQL:mindpet");
+            jdbc.queryForObject("SELECT COUNT(*) FROM kg_entity", Integer.class);
+            logger.log("INFO", "Knowledge graph storage ready -> SQLite");
         } catch (Exception e) {
             logger.log("ERROR", "Knowledge graph schema initialization failed: " + e.getMessage());
         }
@@ -698,19 +657,19 @@ public class KnowledgeGraphService {
     }
 
     private String entityRetention(String alias) {
-        return "COALESCE(" + alias + ".importance,0.5) * EXP(-EXTRACT(EPOCH FROM (NOW() - "
-            + "COALESCE(" + alias + ".last_seen,NOW())) / 3600.0 / (CASE "
+        return "COALESCE(" + alias + ".importance,0.5) * EXP(-MAX(0,(julianday('now') - "
+            + "julianday(COALESCE(" + alias + ".last_seen,CURRENT_TIMESTAMP))) * 24.0) / (CASE "
             + "WHEN " + alias + ".importance >= 0.8 THEN 8760.0 "
             + "WHEN " + alias + ".entity_type IN ('person','preference','organization','technology','tool') THEN 4320.0 "
             + "WHEN " + alias + ".entity_type IN ('project','goal') THEN 1440.0 "
             + "WHEN " + alias + ".entity_type IN ('event','topic') THEN 504.0 "
-            + "ELSE 720.0 END)))";
+            + "ELSE 720.0 END))";
     }
 
     private String relationRetention(String alias) {
-        return "COALESCE(" + alias + ".importance,0.5) * EXP(-EXTRACT(EPOCH FROM (NOW() - "
-            + "COALESCE(" + alias + ".last_seen,NOW())) / 3600.0 / (CASE "
-            + "WHEN " + alias + ".importance >= 0.8 THEN 8760.0 ELSE 1440.0 END)))";
+        return "COALESCE(" + alias + ".importance,0.5) * EXP(-MAX(0,(julianday('now') - "
+            + "julianday(COALESCE(" + alias + ".last_seen,CURRENT_TIMESTAMP))) * 24.0) / (CASE "
+            + "WHEN " + alias + ".importance >= 0.8 THEN 8760.0 ELSE 1440.0 END))";
     }
 
     private String timestamp(Timestamp value) { return value == null ? "" : value.toInstant().toString(); }
@@ -726,6 +685,7 @@ public class KnowledgeGraphService {
     private record RelationCandidate(String source, String target, String predicate,
                                      double confidence, double importance) {}
     private record EntityRef(String id, String name) {}
+    private record EntityVector(String id, float[] vector) {}
     private record Extraction(boolean shouldRemember, double importance, double confidence,
                               String evidence, List<EntityCandidate> entities,
                               List<RelationCandidate> relations) {

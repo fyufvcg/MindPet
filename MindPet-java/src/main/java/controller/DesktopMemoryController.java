@@ -3,7 +3,7 @@ package controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
-import service.PgVectorMemoryService;
+import service.SqliteMemoryService;
 import service.ConversationMemoryService;
 import service.MemoryCuratorService;
 import service.SessionService;
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/desktop/memory")
 public class DesktopMemoryController {
 
-    private final PgVectorMemoryService pgMemory;
+    private final SqliteMemoryService memoryStore;
     private final UserProfileService profileService;
     private final ConversationMemoryService convMemory;
     private final MemoryCuratorService memoryCurator;
@@ -35,14 +35,14 @@ public class DesktopMemoryController {
 
     @Autowired
     public DesktopMemoryController(
-            PgVectorMemoryService pgMemory,
+            SqliteMemoryService memoryStore,
             UserProfileService profileService,
             ConversationMemoryService convMemory,
             MemoryCuratorService memoryCurator,
             SessionService sessionService,
             JdbcTemplate jdbc,
             Logger logger) {
-        this.pgMemory = pgMemory;
+        this.memoryStore = memoryStore;
         this.profileService = profileService;
         this.convMemory = convMemory;
         this.memoryCurator = memoryCurator;
@@ -103,10 +103,10 @@ public class DesktopMemoryController {
         try {
             List<Map<String, Object>> results;
             if (!query.isBlank()) {
-                var memories = pgMemory.search(USER_ID, query, limit);
+                var memories = memoryStore.search(USER_ID, query, limit);
                 results = toResultList(memories);
             } else {
-                var memories = pgMemory.getRecent(USER_ID, limit);
+                var memories = memoryStore.getRecent(USER_ID, limit);
                 results = toResultList(memories);
             }
             return Map.of("status", "ok", "memories", results, "count", results.size());
@@ -118,7 +118,7 @@ public class DesktopMemoryController {
     @DeleteMapping("/{id}")
     public Map<String, Object> deleteMemory(@PathVariable String id) {
         try {
-            int deleted = pgMemory.delete(id);
+            int deleted = memoryStore.delete(id);
             logger.log("INFO", "[Desktop] 记忆已删除: " + id + " (" + deleted + "行)");
             return Map.of("status", "ok", "deleted", deleted);
         } catch (Exception e) {
@@ -129,7 +129,7 @@ public class DesktopMemoryController {
     @PostMapping("/purify")
     public Map<String, Object> purifyMemories() {
         try {
-            int pruned = pgMemory.prune(USER_ID);
+            int pruned = memoryStore.prune(USER_ID);
             logger.log("INFO", "[Desktop] 记忆净化完成，清理 " + pruned + " 条");
             return Map.of("status", "ok", "pruned", pruned);
         } catch (Exception e) {
@@ -140,7 +140,7 @@ public class DesktopMemoryController {
     @GetMapping("/stats")
     public Map<String, Object> memoryStats() {
         try {
-            int total = pgMemory.count(USER_ID);
+            int total = memoryStore.count(USER_ID);
             return Map.of("status", "ok", "longTermCount", total);
         } catch (Exception e) {
             return Map.of("status", "error", "message", e.getMessage());
@@ -289,7 +289,7 @@ public class DesktopMemoryController {
     @GetMapping("/export")
     public Map<String, Object> exportMemories() {
         try {
-            var memories = pgMemory.getRecent(USER_ID, 200);
+            var memories = memoryStore.getRecent(USER_ID, 200);
             StringBuilder sb = new StringBuilder();
             sb.append("# MindPet 记忆数据 - 可直接编辑后保存\n");
             sb.append("# 格式: [重要性0-1] [user/mindpet] [时间] 内容\n");
@@ -324,7 +324,7 @@ public class DesktopMemoryController {
                 String content = line.replaceFirst("^\\[\\d\\.?\\d*\\]\\s*\\[\\w+\\]\\s*\\[[^]]+\\]\\s*", "").trim();
                 if (!content.isBlank()) {
                     // TODO: 全量替换逻辑，当前简单追加
-                    pgMemory.append(USER_ID, content, "manual", 0.5, "neutral");
+                    memoryStore.append(USER_ID, content, "manual", 0.5, "neutral");
                     imported++;
                 }
             }
@@ -378,26 +378,26 @@ public class DesktopMemoryController {
                 whereClause.append(" WHERE (");
                 switch (table) {
                     case "long_term_memory" -> {
-                        whereClause.append("content ILIKE ? OR role ILIKE ? OR emotion ILIKE ?");
+                        whereClause.append("LOWER(content) LIKE LOWER(?) OR LOWER(role) LIKE LOWER(?) OR LOWER(emotion) LIKE LOWER(?)");
                         whereParams.add(like); whereParams.add(like); whereParams.add(like);
                     }
                     case "user_profile" -> {
-                        whereClause.append("category ILIKE ? OR prop_key ILIKE ? OR prop_value ILIKE ?");
+                        whereClause.append("LOWER(category) LIKE LOWER(?) OR LOWER(prop_key) LIKE LOWER(?) OR LOWER(prop_value) LIKE LOWER(?)");
                         whereParams.add(like); whereParams.add(like); whereParams.add(like);
                     }
                     case "user_insight" -> {
-                        whereClause.append("insight ILIKE ? OR context ILIKE ?");
+                        whereClause.append("LOWER(insight) LIKE LOWER(?) OR LOWER(context) LIKE LOWER(?)");
                         whereParams.add(like); whereParams.add(like);
                     }
                     case "llm_growth" -> {
-                        whereClause.append("insight ILIKE ? OR category ILIKE ?");
+                        whereClause.append("LOWER(insight) LIKE LOWER(?) OR LOWER(category) LIKE LOWER(?)");
                         whereParams.add(like); whereParams.add(like);
                     }
                 }
                 whereClause.append(")");
             }
 
-            // 总数 — PostgreSQL COUNT(*) 返回 bigint，必须用 Long.class
+            // COUNT(*) may be returned as a 64-bit integer by the JDBC driver.
             Long totalLong;
             if (!whereParams.isEmpty()) {
                 totalLong = jdbc.queryForObject(countSql + whereClause, Long.class, whereParams.toArray());
@@ -611,7 +611,7 @@ public class DesktopMemoryController {
                     if (content.isBlank()) {
                         return Map.of("status", "error", "message", "content 不能为空");
                     }
-                    pgMemory.append(USER_ID, content, role,
+                    memoryStore.append(USER_ID, content, role,
                         Double.parseDouble(importance), emotion);
                     return Map.of("status", "ok", "message", "长期记忆已添加");
                 }
@@ -628,9 +628,9 @@ public class DesktopMemoryController {
                         return Map.of("status", "error", "message", "content 不能为空");
                     }
                     // 生成零向量占位（1024维），后续可由 MemoryCurator 重新生成
-                    String zeroVec = "[" + String.join(",", Collections.nCopies(1024, "0")) + "]";
+                    byte[] zeroVec = service.VectorSearchService.encode(new float[1024]);
                     jdbc.update(
-                        "INSERT INTO user_insight (user_id, insight, context, embedding) VALUES (?,?,?,?::vector)",
+                        "INSERT INTO user_insight (user_id, insight, context, embedding) VALUES (?,?,?,?)",
                         USER_ID, content, body.getOrDefault("context", ""), zeroVec);
                     return Map.of("status", "ok", "message", TABLES.get(table) + "已添加");
                 }
@@ -639,9 +639,9 @@ public class DesktopMemoryController {
                         return Map.of("status", "error", "message", "content 不能为空");
                     }
                     String cat = !category.isBlank() ? category : "manual";
-                    String zeroVec = "[" + String.join(",", Collections.nCopies(1024, "0")) + "]";
+                    byte[] zeroVec = service.VectorSearchService.encode(new float[1024]);
                     jdbc.update(
-                        "INSERT INTO llm_growth (user_id, category, insight, embedding) VALUES (?,?,?,?::vector)",
+                        "INSERT INTO llm_growth (user_id, category, insight, embedding) VALUES (?,?,?,?)",
                         USER_ID, cat, content, zeroVec);
                     return Map.of("status", "ok", "message", TABLES.get(table) + "已添加");
                 }
@@ -694,7 +694,7 @@ public class DesktopMemoryController {
         }
     }
 
-    private List<Map<String, Object>> toResultList(List<PgVectorMemoryService.MemoryResult> memories) {
+    private List<Map<String, Object>> toResultList(List<SqliteMemoryService.MemoryResult> memories) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (var m : memories) {
             Map<String, Object> item = new LinkedHashMap<>();

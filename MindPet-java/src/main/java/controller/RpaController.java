@@ -11,7 +11,7 @@ import jakarta.annotation.PostConstruct;
 import java.util.*;
 
 /**
- * RPA 运行记录持久化 API — Electron 通过 HTTP 写入 PostgreSQL。
+ * RPA 运行记录持久化 API — Electron 通过 HTTP 写入本地数据库。
  */
 @RestController
 @RequestMapping("/api/desktop/rpa")

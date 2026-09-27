@@ -18,9 +18,9 @@ public class UserProfileService {
     public void save(String userId, String category, String key, String value) {
         jdbc.update(
             "INSERT INTO user_profile (user_id, category, prop_key, prop_value, updated_at) " +
-            "VALUES (?,?,?,?,NOW()) ON CONFLICT (user_id, category, prop_key) " +
-            "DO UPDATE SET prop_value=?, updated_at=NOW()",
-            userId, category, key, value, value
+            "VALUES (?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT (user_id, category, prop_key) " +
+            "DO UPDATE SET prop_value=excluded.prop_value, updated_at=CURRENT_TIMESTAMP",
+            userId, category, key, value
         );
     }
 
@@ -56,7 +56,7 @@ public class UserProfileService {
 
     /** Get relevant memories for LLM context (used by AssistantBot) */
     public String getRelevantMemoryContext(String userId, String query, int limit) {
-        // Now handled by PgVectorMemoryService — keep stub for compatibility
+        // Now handled by SqliteMemoryService — keep stub for compatibility.
         return null;
     }
 

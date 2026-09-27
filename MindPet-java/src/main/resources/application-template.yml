@@ -39,8 +39,6 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
-      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
   main:
     web-application-type: servlet
   ai:
@@ -62,23 +60,16 @@ spring:
       backoff:
         initial-interval: 1000
         max-interval: 5000
-  data:
-    redis:
-      host: localhost
-      port: 6379
-  datasource:
-    url: jdbc:postgresql://localhost:5432/mindpet
-    username: postgres
-    password: <your-postgres-password>
-    driver-class-name: org.postgresql.Driver
-
 app:
+  storage:
+    sqlite:
+      # Electron sets MINDPET_DATA_DIR to app.getPath('userData').
+      path: ${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db
+      # Optional external override. The packaged Windows build uses its bundled vec0.dll.
+      vec-extension: ${MINDPET_SQLITE_VEC:}
   chart:
     # Remote HTTP rendering only; no local Python or chart server is started.
     api-url: https://quickchart.io/chart
-  memory:
-    redis:
-      enabled: true
   embedding:
     # true: Ollama/BGE-M3; false: Doubao embedding
     use-ollama: true
