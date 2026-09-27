@@ -1,6 +1,6 @@
 {
   "name": "mindpet",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "author": "cheer.com",
