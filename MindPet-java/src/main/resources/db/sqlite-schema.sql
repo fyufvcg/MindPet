@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS long_term_memory (
   last_accessed TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ltm_user_created ON long_term_memory(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ltm_user_importance ON long_term_memory(user_id, importance DESC, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_profile (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,12 +131,35 @@ CREATE TABLE IF NOT EXISTS curator_turns (
   completed_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_seq ON curator_turns(user_id, sequence DESC);
+CREATE INDEX IF NOT EXISTS idx_curator_turns_user_completed ON curator_turns(user_id, completed_at DESC);
 CREATE TABLE IF NOT EXISTS curator_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   payload_json TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memory_gallery (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'manual',
+  source_message_id TEXT,
+  session_id TEXT,
+  image_uri TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  story TEXT NOT NULL DEFAULT '',
+  mood TEXT NOT NULL DEFAULT 'neutral',
+  ai_summary TEXT NOT NULL DEFAULT '',
+  source_context TEXT NOT NULL DEFAULT '',
+  event_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, source_message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_gallery_user_event
+  ON memory_gallery(user_id, event_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_gallery_user_session_created
+  ON memory_gallery(user_id, session_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS kg_entity (
   id TEXT PRIMARY KEY,
@@ -185,6 +209,7 @@ CREATE TABLE IF NOT EXISTS kg_turn_ingest (
   relation_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_kg_evidence_user_created ON kg_evidence(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_kg_entity_user_importance ON kg_entity(user_id, importance DESC, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_kg_relation_user_source ON kg_relation(user_id, source_entity_id);
 CREATE INDEX IF NOT EXISTS idx_kg_relation_user_target ON kg_relation(user_id, target_entity_id);

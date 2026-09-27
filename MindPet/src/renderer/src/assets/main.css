@@ -9886,91 +9886,7 @@ body.session-dragging * {
   color: var(--text-menu-active);
 }
 
-/* ── 记忆回廊占位页 ── */
-
-.memory-gallery-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 40px;
-}
-
-.memory-gallery-hero {
-  text-align: center;
-  max-width: 480px;
-}
-
-.memory-gallery-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 88px;
-  height: 88px;
-  border-radius: 24px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  color: var(--text-muted);
-  margin-bottom: 24px;
-}
-
-.memory-gallery-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 12px;
-}
-
-.memory-gallery-desc {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--text-secondary);
-  margin: 0 0 32px;
-}
-
-.memory-gallery-features {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  text-align: left;
-  margin-bottom: 28px;
-}
-
-.memory-gallery-feature {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-}
-
-.memory-gallery-feature svg {
-  color: var(--ds-color-23336238326636, #3976f6);
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.memory-gallery-feature strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-.memory-gallery-feature span {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.memory-gallery-coming {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0;
-}
+/* Memory gallery scene styles live in memory-cosmos.css. */
 
 /* Generated files are a responsive rounded side surface, with breathing room
    around the resize handle and the conversation surface. */
@@ -12554,4 +12470,17 @@ body.session-dragging * {
     animation: none;
     transition-duration: 1ms;
   }
+}
+
+/* The memory experience owns its canvas and inherits the workspace clipping. */
+.workspace-panel-column > .content-body.tab-memory_gallery {
+  min-height: 0;
+  padding: 0 !important;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.workspace-panel-column:has(> .content-body.tab-memory_gallery) {
+  overflow: hidden;
+  border-radius: 26px;
 }

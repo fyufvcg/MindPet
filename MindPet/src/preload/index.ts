@@ -282,6 +282,20 @@ const api = {
     ipcRenderer.invoke('api:append-memory-summary', sessionId, text),
   writeMemoryProfile: (text: string): Promise<boolean> =>
     ipcRenderer.invoke('api:write-memory-profile', text),
+  getMemoryGallery: (): Promise<any> =>
+    ipcRenderer.invoke('api:get-memory-gallery'),
+  createMemoryGalleryItem: (data: Record<string, string>): Promise<any> =>
+    ipcRenderer.invoke('api:create-memory-gallery-item', data),
+  shareMemoryGalleryItem: (data: Record<string, string>): Promise<any> =>
+    ipcRenderer.invoke('api:share-memory-gallery-item', data),
+  summarizeMemoryGalleryItem: (id: string): Promise<any> =>
+    ipcRenderer.invoke('api:summarize-memory-gallery-item', id),
+  deleteMemoryGalleryItem: (id: string): Promise<any> =>
+    ipcRenderer.invoke('api:delete-memory-gallery-item', id),
+  getMemoryPortrait: (): Promise<any> =>
+    ipcRenderer.invoke('api:get-memory-portrait'),
+  teachMemoryAboutUser: (data: { content: string; sessionId?: string }): Promise<any> =>
+    ipcRenderer.invoke('api:teach-memory-about-user', data),
   purifyMemoryPipeline: (): Promise<{ success: boolean; count: number; insertCount?: number }> =>
     ipcRenderer.invoke('api:purify-memory-pipeline'),
   strengthenExperiences: (ids: string[]): Promise<boolean> =>

@@ -4,6 +4,7 @@
 # Windows 脚本必须保持 CRLF，否则 cmd.exe 解析异常
 *.bat text eol=crlf
 *.cmd text eol=crlf
+*.vbs text working-tree-encoding=UTF-16LE-BOM eol=crlf
 
 # 容器内 / Linux 侧脚本与配置必须 LF
 # （Dockerfile 若含 CRLF，构建时会出现 "no such file or directory" 一类诡异错误）

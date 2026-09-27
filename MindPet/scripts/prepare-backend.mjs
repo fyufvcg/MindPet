@@ -21,6 +21,42 @@ function run(command, args, cwd) {
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status}`)
 }
 
+function stopRunningSourceBackend() {
+  if (!isWindows) return
+  const jar = join(backendDir, 'target', 'weather-wechat-bot-1.0.0.jar')
+  const script = `$target = [IO.Path]::GetFullPath('${jar.replaceAll("'", "''")}'); `
+    + "Get-CimInstance Win32_Process | Where-Object { "
+    + "($_.Name -eq 'java.exe' -or $_.Name -eq 'javaw.exe') -and "
+    + "$_.CommandLine -and $_.CommandLine.IndexOf($target,[StringComparison]::OrdinalIgnoreCase) -ge 0 "
+    + '} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    cwd: backendDir,
+    stdio: 'inherit',
+    shell: false
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`Unable to stop the running source backend (${result.status})`)
+}
+
+function resolveJavaHome() {
+  const configured = process.env.JAVA_HOME?.trim()
+  if (configured) return configured
+
+  const probe = spawnSync('java', ['-XshowSettings:properties', '-version'], {
+    cwd: desktopDir,
+    encoding: 'utf8',
+    shell: false
+  })
+  if (probe.error) throw probe.error
+  const output = `${probe.stdout || ''}\n${probe.stderr || ''}`
+  const match = output.match(/^\s*java\.home\s*=\s*(.+?)\s*$/m)
+  if (!match?.[1]) {
+    throw new Error('Unable to locate the JDK. Install JDK 17+ or set JAVA_HOME before packaging.')
+  }
+  return match[1]
+}
+
+stopRunningSourceBackend()
 run(mvn, ['clean', 'package', '-DskipTests'], backendDir)
 const jar = join(backendDir, 'target', 'weather-wechat-bot-1.0.0.jar')
 if (!existsSync(jar)) throw new Error(`Backend JAR missing: ${jar}`)
@@ -29,8 +65,7 @@ rmSync(outputDir, { recursive: true, force: true })
 mkdirSync(outputDir, { recursive: true })
 cpSync(jar, join(outputDir, 'mindpet-backend.jar'))
 
-const javaHome = process.env.JAVA_HOME
-if (!javaHome) throw new Error('JAVA_HOME is required to build the bundled Java runtime')
+const javaHome = resolveJavaHome()
 const jlink = join(javaHome, 'bin', isWindows ? 'jlink.exe' : 'jlink')
 if (!existsSync(jlink)) throw new Error(`jlink missing: ${jlink}`)
 

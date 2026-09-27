@@ -869,7 +869,7 @@ export function AgentWindow(): React.JSX.Element {
 
         <div className="content-layout">
           <div className={`content-main-column workspace-panel-column ${activeTab === 'chat' ? 'chat-panel-column' : ''}`}>
-          {activeTab !== 'rpa' && (
+          {activeTab !== 'rpa' && activeTab !== 'memory_gallery' && (
         <div className={`content-header ${activeTab === 'chat' ? 'chat-content-header' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="content-title">

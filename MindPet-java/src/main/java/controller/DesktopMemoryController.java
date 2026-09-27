@@ -4,10 +4,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import service.SqliteMemoryService;
+import service.AiService;
 import service.ConversationMemoryService;
 import service.MemoryCuratorService;
+import service.PortraitMemoryService;
 import service.SessionService;
 import service.UserProfileService;
+import tool.ToolUserContext;
 import util.Logger;
 
 import java.time.Instant;
@@ -27,6 +30,8 @@ public class DesktopMemoryController {
     private final UserProfileService profileService;
     private final ConversationMemoryService convMemory;
     private final MemoryCuratorService memoryCurator;
+    private final PortraitMemoryService portraitMemoryService;
+    private final AiService aiService;
     private final SessionService sessionService;
     private final JdbcTemplate jdbc;
     private final Logger logger;
@@ -39,6 +44,8 @@ public class DesktopMemoryController {
             UserProfileService profileService,
             ConversationMemoryService convMemory,
             MemoryCuratorService memoryCurator,
+            PortraitMemoryService portraitMemoryService,
+            AiService aiService,
             SessionService sessionService,
             JdbcTemplate jdbc,
             Logger logger) {
@@ -46,6 +53,8 @@ public class DesktopMemoryController {
         this.profileService = profileService;
         this.convMemory = convMemory;
         this.memoryCurator = memoryCurator;
+        this.portraitMemoryService = portraitMemoryService;
+        this.aiService = aiService;
         this.sessionService = sessionService;
         this.jdbc = jdbc;
         this.logger = logger;
@@ -91,6 +100,171 @@ public class DesktopMemoryController {
             return Map.of("status", "ok");
         } catch (Exception e) {
             return Map.of("status", "error", "message", e.getMessage());
+        }
+    }
+
+    // ==================== 记忆画廊 ====================
+
+    @GetMapping("/gallery")
+    public Map<String, Object> getGallery() {
+        try {
+            syncChatImagesToGallery();
+            List<Map<String, Object>> items = jdbc.queryForList(
+                "SELECT id, source_type, source_message_id, session_id, image_uri, title, story, "
+                    + "mood, ai_summary, source_context, event_at, created_at, updated_at "
+                    + "FROM memory_gallery WHERE user_id=? ORDER BY event_at DESC, created_at DESC",
+                USER_ID);
+            return Map.of("status", "ok", "items", items, "count", items.size());
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()), "items", List.of());
+        }
+    }
+
+    @PostMapping("/gallery")
+    public Map<String, Object> createGalleryMemory(@RequestBody Map<String, String> body) {
+        try {
+            String id = UUID.randomUUID().toString();
+            String title = body.getOrDefault("title", "").trim();
+            String story = body.getOrDefault("story", "").trim();
+            String imageUri = body.getOrDefault("imageUri", "").trim();
+            if (title.isBlank() && story.isBlank() && imageUri.isBlank()) {
+                return Map.of("status", "error", "message", "请至少添加一张照片或写下一段回忆");
+            }
+            if (title.isBlank()) title = story.isBlank() ? "一段新回忆" : shorten(story, 28);
+            String mood = body.getOrDefault("mood", "neutral").trim();
+            String eventAt = body.getOrDefault("eventAt", "").trim();
+            if (eventAt.isBlank()) eventAt = Instant.now().toString();
+            String sourceType = body.getOrDefault("sourceType", "manual").trim();
+            if (!Set.of("manual", "shared", "chat").contains(sourceType)) sourceType = "manual";
+            String sessionId = body.getOrDefault("sessionId", "").trim();
+            String aiSummary = body.getOrDefault("aiSummary", "").trim();
+            String sourceContext = body.getOrDefault("sourceContext", "").trim();
+            jdbc.update(
+                "INSERT INTO memory_gallery(id,user_id,source_type,session_id,image_uri,title,story,mood,"
+                    + "ai_summary,source_context,event_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                id, USER_ID, sourceType, sessionId, imageUri, title, story, mood,
+                aiSummary, sourceContext, eventAt);
+            return Map.of("status", "ok", "id", id);
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/gallery/{id}/summary")
+    public Map<String, Object> summarizeGalleryMemory(@PathVariable String id) {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT title,story,mood,source_context,event_at FROM memory_gallery WHERE user_id=? AND id=?",
+                USER_ID, id);
+            if (rows.isEmpty()) return Map.of("status", "error", "message", "没有找到这段回忆");
+            Map<String, Object> item = rows.get(0);
+            String prompt = "请以熟悉用户的长期陪伴者口吻，为下面这段私人回忆写一段简短总结。"
+                + "只写总结正文，保持事实边界，不推测未提供的信息，使用中文，80到140字。\n\n"
+                + "标题：" + value(item.get("title")) + "\n"
+                + "用户记录：" + value(item.get("story")) + "\n"
+                + "当时状态：" + value(item.get("mood")) + "\n"
+                + "相关对话：" + shorten(value(item.get("source_context")), 1200) + "\n"
+                + "时间：" + value(item.get("event_at"));
+            String summary = aiService.chatSimple(prompt);
+            if (summary == null || summary.isBlank()) {
+                return Map.of("status", "error", "message", "暂时无法生成总结，请检查模型配置后重试");
+            }
+            summary = summary.trim();
+            jdbc.update("UPDATE memory_gallery SET ai_summary=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?",
+                summary, USER_ID, id);
+            return Map.of("status", "ok", "summary", summary);
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/gallery/{id}")
+    public Map<String, Object> deleteGalleryMemory(@PathVariable String id) {
+        try {
+            int deleted = jdbc.update("DELETE FROM memory_gallery WHERE user_id=? AND id=?", USER_ID, id);
+            return Map.of("status", "ok", "deleted", deleted);
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/portrait")
+    public Map<String, Object> getMemoryPortrait(
+            @RequestParam(defaultValue = "60") int limit) {
+        try {
+            Map<String, Object> result = new LinkedHashMap<>();
+            List<Map<String, Object>> memories = portraitMemoryService.listStableMemories(USER_ID, limit);
+            result.put("status", "ok");
+            result.put("memories", memories);
+            result.put("count", memories.size());
+            result.put("generatedAt", Instant.now().toString());
+            result.put("workingMemory", memoryCurator.getWorkingMemoryPrompt(USER_ID));
+            result.put("profile", jdbc.queryForList(
+                "SELECT category,prop_key,prop_value,updated_at FROM user_profile WHERE user_id=? ORDER BY category,updated_at DESC",
+                USER_ID));
+            result.put("insights", jdbc.queryForList(
+                "SELECT id,insight,context,created_at FROM user_insight WHERE user_id=? ORDER BY created_at DESC LIMIT 50",
+                USER_ID));
+            result.put("growth", jdbc.queryForList(
+                "SELECT id,category,insight,context,created_at FROM llm_growth WHERE user_id=? ORDER BY created_at DESC LIMIT 30",
+                USER_ID));
+            return result;
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()),
+                "memories", List.of(), "count", 0, "workingMemory", "",
+                "profile", List.of(), "insights", List.of(), "growth", List.of());
+        }
+    }
+
+    /**
+     * The input at the bottom of "MindPet remembers" is a real conversation,
+     * rather than a direct database insert. AiService persists both messages and
+     * submits the completed turn to MemoryCurator and durable-memory extraction.
+     */
+    @PostMapping("/portrait/share")
+    public Map<String, Object> sharePortraitMemory(@RequestBody Map<String, Object> body) {
+        String text = value(body.get("text")).trim();
+        if (text.isBlank()) {
+            return Map.of("status", "error", "message", "请先告诉 MindPet 一件关于你的事");
+        }
+        if (text.length() > 8000) {
+            return Map.of("status", "error", "message", "一次分享请控制在 8000 字以内");
+        }
+
+        String sessionId = value(body.get("sessionId")).trim();
+        if (sessionId.isBlank() || sessionId.length() > 160) sessionId = "memory-portrait";
+        String requestId = "portrait-" + UUID.randomUUID();
+        String occurredAt = Instant.now().toString();
+        ToolUserContext.set(USER_ID, sessionId);
+        ToolUserContext.setRequestId(requestId);
+        try {
+            sessionService.upsertSession(USER_ID, sessionId,
+                Map.of("name", "MindPet 记得", "pinned", true));
+            model.ChatResult result = aiService.chat(USER_ID, text, 20, Set.of());
+            String reply = result.reply() == null ? "" : result.reply().trim();
+            if (reply.isBlank() || "请先配置 LLM API。".equals(reply)
+                    || "MindPet 暂时有点累，稍后再试试吧~".equals(reply)) {
+                return Map.of(
+                    "status", "error",
+                    "message", reply.isBlank() ? "MindPet 暂时无法回应" : reply,
+                    "sessionId", sessionId,
+                    "occurredAt", occurredAt
+                );
+            }
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("status", "ok");
+            response.put("reply", reply);
+            response.put("sessionId", sessionId);
+            response.put("occurredAt", occurredAt);
+            response.put("pipeline", "submitted");
+            response.put("toolsUsed", result.toolsUsed());
+            return response;
+        } catch (Exception e) {
+            logger.log("ERROR", "[Desktop] MindPet 记得分享失败: " + e.getMessage());
+            return Map.of("status", "error", "message", "这次分享没有保存成功，请稍后重试");
+        } finally {
+            ToolUserContext.clear();
         }
     }
 
@@ -656,6 +830,70 @@ public class DesktopMemoryController {
     }
 
     // ==================== helper ====================
+
+    private void syncChatImagesToGallery() {
+        List<Map<String, Object>> messages = sessionService.loadAllMessages(USER_ID, 1000);
+        Map<String, String> nextAssistantBySession = new HashMap<>();
+        for (Map<String, Object> message : messages) {
+            String sessionId = value(message.get("sessionId"));
+            String sender = value(message.get("sender"));
+            if ("agent".equals(sender) || "assistant".equals(sender)) {
+                String reply = value(message.get("text")).trim();
+                if (!reply.isBlank()) nextAssistantBySession.put(sessionId, reply);
+                continue;
+            }
+            if (!"user".equals(sender)) continue;
+            Object rawFiles = message.get("fileInfos");
+            if (!(rawFiles instanceof List<?> files)) continue;
+            String story = value(message.get("text")).trim();
+            if (story.startsWith("📄 上传了附件:")) story = "";
+            String messageId = value(message.get("id"));
+            String eventAt = value(message.get("time"));
+            if (eventAt.isBlank()) eventAt = Instant.now().toString();
+            String sourceContext = nextAssistantBySession.getOrDefault(sessionId, "");
+            int imageIndex = 0;
+            for (Object rawFile : files) {
+                if (!(rawFile instanceof Map<?, ?> file)) continue;
+                String path = value(file.get("path"));
+                String name = value(file.get("name"));
+                if (path.isBlank() || !isImageFile(name, path)) continue;
+                String imageUri = path.startsWith("local-file:///")
+                    ? path : "local-file:///" + path.replace('\\', '/');
+                String sourceId = sessionId + "|" + messageId + "|" + imageIndex++;
+                String title = story.isBlank() ? removeExtension(name) : shorten(story, 28);
+                jdbc.update(
+                    "INSERT OR IGNORE INTO memory_gallery(id,user_id,source_type,source_message_id,session_id,"
+                        + "image_uri,title,story,mood,source_context,event_at) VALUES(?,?, 'chat',?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), USER_ID, sourceId, sessionId, imageUri,
+                    title.isBlank() ? "一张被记住的照片" : title, story,
+                    value(message.get("emotion")).isBlank() ? "neutral" : value(message.get("emotion")),
+                    shorten(sourceContext, 3000), eventAt);
+            }
+        }
+    }
+
+    private boolean isImageFile(String name, String path) {
+        String candidate = (name + " " + path).toLowerCase(Locale.ROOT);
+        return candidate.matches(".*\\.(png|jpe?g|gif|webp|bmp|svg)(\\?.*)?$");
+    }
+
+    private String removeExtension(String name) {
+        if (name == null) return "";
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    private String value(Object raw) {
+        if (raw == null) return "";
+        String value = String.valueOf(raw);
+        return "null".equalsIgnoreCase(value) ? "" : value;
+    }
+
+    private String shorten(String text, int maxLength) {
+        if (text == null) return "";
+        String clean = text.trim();
+        return clean.length() <= maxLength ? clean : clean.substring(0, maxLength) + "…";
+    }
 
     /** 解析复合ID（2段）：category||prop_key → [category, prop_key] */
     private String[] parseCompositeId(String id) {

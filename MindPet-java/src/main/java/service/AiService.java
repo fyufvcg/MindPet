@@ -824,6 +824,7 @@ public class AiService {
         if (!isConfigured()) {
             return model.ChatResult.of("请先配置 LLM API。", false);
         }
+        final org.springframework.util.MimeType mimeType = resolveImageMimeType(imageBytes, fileName);
         tool.ToolUserContext.set(userId);
         tool.ToolUserContext.setImageData(imageBytes);  // 存储图片数据，供发票OCR等工具使用
         try {
@@ -843,18 +844,6 @@ public class AiService {
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
                 systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
-            }
-
-            // Determine mime type (must be effectively final for lambda)
-            final org.springframework.util.MimeType mimeType;
-            if (fileName != null) {
-                String lower = fileName.toLowerCase();
-                if (lower.endsWith(".png")) mimeType = MimeTypeUtils.IMAGE_PNG;
-                else if (lower.endsWith(".gif")) mimeType = MimeTypeUtils.IMAGE_GIF;
-                else if (lower.endsWith(".webp")) mimeType = new org.springframework.util.MimeType("image", "webp");
-                else mimeType = MimeTypeUtils.IMAGE_JPEG;
-            } else {
-                mimeType = MimeTypeUtils.IMAGE_JPEG;
             }
 
             var imgChatSpec = buildChatClient()
@@ -950,6 +939,7 @@ public class AiService {
             return model.ChatResult.of(message, false);
         }
 
+        final org.springframework.util.MimeType mimeType = resolveImageMimeType(imageBytes, fileName);
         tool.ToolUserContext.set(userId);
         tool.ToolUserContext.setImageData(imageBytes);
         AtomicBoolean emitted = new AtomicBoolean();
@@ -972,17 +962,6 @@ public class AiService {
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
                 systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
                     + "\n\n" + systemPrompt;
-            }
-
-            final org.springframework.util.MimeType mimeType;
-            if (fileName != null) {
-                String lower = fileName.toLowerCase();
-                if (lower.endsWith(".png")) mimeType = MimeTypeUtils.IMAGE_PNG;
-                else if (lower.endsWith(".gif")) mimeType = MimeTypeUtils.IMAGE_GIF;
-                else if (lower.endsWith(".webp")) mimeType = new org.springframework.util.MimeType("image", "webp");
-                else mimeType = MimeTypeUtils.IMAGE_JPEG;
-            } else {
-                mimeType = MimeTypeUtils.IMAGE_JPEG;
             }
 
             ToolCallLimitAdvisor.reset();
@@ -1029,6 +1008,65 @@ public class AiService {
             return model.ChatResult.of(fallback, streamedToolsUsed.get());
         } finally {
             tool.ToolUserContext.clear();
+        }
+    }
+
+    private static org.springframework.util.MimeType resolveImageMimeType(byte[] imageBytes, String fileName) {
+        String lowerName = fileName == null ? "" : fileName.trim().toLowerCase(Locale.ROOT);
+        if (isBmp(imageBytes) || lowerName.endsWith(".bmp")) {
+            throw new UnsupportedImageFormatException(
+                "暂不支持 BMP 图片，请先转换为 JPG、PNG、GIF 或 WebP 后再分享");
+        }
+
+        org.springframework.util.MimeType detected = detectSupportedImageMimeType(imageBytes);
+        if (detected != null) return detected;
+
+        if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+                || lowerName.endsWith(".jfif") || lowerName.endsWith(".pjpe")
+                || lowerName.endsWith(".pjpeg")) {
+            return MimeTypeUtils.IMAGE_JPEG;
+        }
+        if (lowerName.endsWith(".png")) return MimeTypeUtils.IMAGE_PNG;
+        if (lowerName.endsWith(".gif")) return MimeTypeUtils.IMAGE_GIF;
+        if (lowerName.endsWith(".webp")) return new org.springframework.util.MimeType("image", "webp");
+
+        throw new UnsupportedImageFormatException(
+            "无法确认图片格式，请使用 JPG、PNG、GIF 或 WebP 图片");
+    }
+
+    private static org.springframework.util.MimeType detectSupportedImageMimeType(byte[] bytes) {
+        if (startsWith(bytes, 0xff, 0xd8, 0xff)) return MimeTypeUtils.IMAGE_JPEG;
+        if (startsWith(bytes, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) {
+            return MimeTypeUtils.IMAGE_PNG;
+        }
+        if (startsWith(bytes, 0x47, 0x49, 0x46, 0x38, 0x37, 0x61)
+                || startsWith(bytes, 0x47, 0x49, 0x46, 0x38, 0x39, 0x61)) {
+            return MimeTypeUtils.IMAGE_GIF;
+        }
+        if (bytes != null && bytes.length >= 12
+                && startsWith(bytes, 0x52, 0x49, 0x46, 0x46)
+                && bytes[8] == 0x57 && bytes[9] == 0x45
+                && bytes[10] == 0x42 && bytes[11] == 0x50) {
+            return new org.springframework.util.MimeType("image", "webp");
+        }
+        return null;
+    }
+
+    private static boolean isBmp(byte[] bytes) {
+        return startsWith(bytes, 0x42, 0x4d);
+    }
+
+    private static boolean startsWith(byte[] bytes, int... signature) {
+        if (bytes == null || bytes.length < signature.length) return false;
+        for (int i = 0; i < signature.length; i++) {
+            if ((bytes[i] & 0xff) != signature[i]) return false;
+        }
+        return true;
+    }
+
+    public static final class UnsupportedImageFormatException extends IllegalArgumentException {
+        public UnsupportedImageFormatException(String message) {
+            super(message);
         }
     }
 

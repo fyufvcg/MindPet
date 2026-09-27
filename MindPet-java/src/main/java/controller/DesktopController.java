@@ -90,6 +90,8 @@ public class DesktopController {
         @SuppressWarnings("unchecked")
         List<String> images = (List<String>) body.getOrDefault("images", List.of());
         @SuppressWarnings("unchecked")
+        List<String> imageNames = (List<String>) body.getOrDefault("imageNames", List.of());
+        @SuppressWarnings("unchecked")
         List<String> activeSkills = (List<String>) body.getOrDefault("activeSkills", List.of());
         // 前端注入的技能规约全文（SKILL.md）。仅用于本次请求，不写入 DynamicLlmConfig。
         String extraSystemPrompt = String.valueOf(body.getOrDefault("systemPrompt", ""));
@@ -152,7 +154,8 @@ public class DesktopController {
             } else if (hasImages) {
                 byte[] imageBytes = java.util.Base64.getDecoder().decode(images.get(0));
                 result = aiService.chatWithImageStream(userId,
-                    message.isBlank() ? null : message, imageBytes, "image.png", contextRounds, onDelta,
+                    message.isBlank() ? null : message, imageBytes,
+                    imageNames.isEmpty() ? "image.png" : imageNames.get(0), contextRounds, onDelta,
                     skills, thinkingEnabled, onReasoningDelta);
             } else {
                 result = aiService.chatStream(userId, message, contextRounds, onDelta, skills,
@@ -180,6 +183,14 @@ public class DesktopController {
 
             logger.log("INFO", "[Desktop] 流式回复完成 - userId: " + userId);
 
+        } catch (AiService.UnsupportedImageFormatException e) {
+            logger.log("WARN", "[Desktop] 拒绝不支持的图片格式: " + e.getMessage());
+            if (out != null) {
+                try {
+                    writeNdjson(out, "error", null, e.getMessage());
+                    out.flush();
+                } catch (Exception ignored) {}
+            }
         } catch (Exception e) {
             logger.log("ERROR", "[Desktop] 流式聊天失败: " + e.getMessage());
             if (out != null) {

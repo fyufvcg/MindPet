@@ -771,9 +771,6 @@ function createWindow(): void {
     win.show()
     // 初始开启穿透，直到鼠标移动到宠物元素上
     win.setIgnoreMouseEvents(true, { forward: true })
-    if (is.dev) {
-      win.webContents.openDevTools({ mode: 'detach' })
-    }
 
     // 启动 3 秒后自动执行一次即时垃圾回收和内存修剪
     // 清除启动初始化阶段（模块加载、Live2D 纹理载入等）产生的大量临时内存垃圾
@@ -2954,6 +2951,10 @@ app.whenReady().then(async () => {
       const sessions = (data.sessions || []) as any[]
       const result: any[] = []
       for (const s of sessions) {
+        const sessionId = String(s?.id || '')
+        if (sessionId === 'memory-portrait' || sessionId === 'memory-gallery' || sessionId.startsWith('memory-gallery:')) {
+          continue
+        }
         const msgsRes = await fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(s.id)}/messages?userId=desktop-user&limit=50`)
         const msgsData = msgsRes.ok ? await msgsRes.json() as any : { messages: [] }
         result.push({
@@ -3355,6 +3356,137 @@ app.whenReady().then(async () => {
       })
       return true
     } catch { return false }
+  })
+
+  ipcMain.handle('api:get-memory-gallery', async () => {
+    try {
+      const res = await fetch(BACKEND + '/gallery')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', items: [], message: '记忆画廊暂时无法读取' } }
+  })
+
+  ipcMain.handle('api:create-memory-gallery-item', async (_, data: Record<string, string>) => {
+    try {
+      const res = await fetch(BACKEND + '/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      return await res.json()
+    } catch { return { status: 'error', message: '保存失败，请稍后重试' } }
+  })
+
+  ipcMain.handle('api:share-memory-gallery-item', async (_, data: Record<string, string>) => {
+    const imageUri = String(data?.imageUri || '').trim()
+    const story = String(data?.story || '').trim()
+    if (!imageUri) return { status: 'error', message: '请先选择一张想分享的照片' }
+
+    const eventAt = String(data?.eventAt || '').trim() || new Date().toISOString()
+    const messageId = `memory-${Date.now()}`
+    const sessionId = `memory-gallery:${messageId}`
+    const userMessage = story
+      ? `我想和你分享这张照片。${story}`
+      : '我想和你分享这个瞬间。请先看看照片，再和我聊聊。'
+    let reply = ''
+    let replyError = ''
+
+    try {
+      reply = await callLlmInternal({
+        sessionId,
+        messageId,
+        mode: 'chat',
+        contextRounds: 20,
+        isBackground: true
+      }, [{
+        role: 'user',
+        content: [
+          { type: 'text', text: userMessage },
+          { type: 'image_url', image_url: { url: imageUri } }
+        ]
+      }])
+      const normalizedReply = reply.trim()
+      const nonReplies = new Set([
+        '请先配置 LLM API。',
+        '图片识别失败，请稍后再试试吧~',
+        'MindPet 暂时有点累，稍后再试试吧~'
+      ])
+      if (!normalizedReply || nonReplies.has(normalizedReply)) {
+        reply = ''
+        replyError = normalizedReply || 'MindPet 没有返回有效回应'
+      }
+    } catch (error: any) {
+      replyError = error?.message || 'MindPet 暂时没有回应'
+    }
+
+    try {
+      const res = await fetch(BACKEND + '/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUri,
+          story,
+          mood: String(data?.mood || 'neutral'),
+          eventAt,
+          sourceType: 'shared',
+          sessionId,
+          aiSummary: reply,
+          sourceContext: reply
+        })
+      })
+      const saved = await res.json() as Record<string, any>
+      if (saved.status !== 'ok') return saved
+      if (replyError) {
+        return {
+          ...saved,
+          status: 'partial',
+          reply: '',
+          message: `照片已经留在星河里，但 MindPet 暂时无法回应：${replyError}`
+        }
+      }
+      return { ...saved, reply }
+    } catch (error: any) {
+      return { status: 'error', message: error?.message || '这次分享没有保存成功' }
+    }
+  })
+
+  ipcMain.handle('api:summarize-memory-gallery-item', async (_, id: string) => {
+    try {
+      const res = await fetch(`${BACKEND}/gallery/${encodeURIComponent(id)}/summary`, { method: 'POST' })
+      return await res.json()
+    } catch { return { status: 'error', message: '总结生成失败，请检查模型配置' } }
+  })
+
+  ipcMain.handle('api:delete-memory-gallery-item', async (_, id: string) => {
+    try {
+      const res = await fetch(`${BACKEND}/gallery/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      return await res.json()
+    } catch { return { status: 'error', deleted: 0, message: '删除失败' } }
+  })
+
+  ipcMain.handle('api:get-memory-portrait', async () => {
+    try {
+      const res = await fetch(BACKEND + '/portrait')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', workingMemory: '', profile: [], insights: [], growth: [], memories: [] } }
+  })
+
+  ipcMain.handle('api:teach-memory-about-user', async (_, data: { content?: string; sessionId?: string }) => {
+    const content = String(data?.content || '').trim()
+    if (!content) return { status: 'error', message: '先告诉 MindPet 一件关于你的事' }
+    try {
+      const res = await fetch(BACKEND + '/portrait/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: content, sessionId: data?.sessionId || 'memory-portrait' })
+      })
+      const payload = await res.json()
+      if (!res.ok) return { status: 'error', message: payload?.message || `HTTP ${res.status}` }
+      return payload
+    } catch (error: any) {
+      return { status: 'error', message: error?.message || '这件事暂时没有记下来' }
+    }
   })
 
   ipcMain.handle('api:purify-memory-pipeline', async () => {

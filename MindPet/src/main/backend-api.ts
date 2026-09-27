@@ -68,6 +68,7 @@ interface BackendMessage {
   role: string
   content: string
   images?: string[]  // base64 encoded images
+  imageNames?: string[]
 }
 
 /**
@@ -161,6 +162,7 @@ function convertMessages(messages: any[]): BackendMessage[] {
     .map((m) => {
       let text = ''
       const images: string[] = []
+      const imageNames: string[] = []
 
       if (typeof m.content === 'string') {
         text = m.content
@@ -180,6 +182,7 @@ function convertMessages(messages: any[]): BackendMessage[] {
                 if (fs.existsSync(filePath)) {
                   const buf = fs.readFileSync(filePath)
                   images.push(buf.toString('base64'))
+                  imageNames.push(filePath.split(/[\\/]/).pop() || 'image.png')
                 }
               }
             } catch { /* ignore */ }
@@ -187,7 +190,12 @@ function convertMessages(messages: any[]): BackendMessage[] {
         }
       }
 
-      return { role: m.role, content: text, images: images.length > 0 ? images : undefined }
+      return {
+        role: m.role,
+        content: text,
+        images: images.length > 0 ? images : undefined,
+        imageNames: imageNames.length > 0 ? imageNames : undefined
+      }
     })
 }
 
@@ -209,6 +217,7 @@ export async function* callJavaBackend(
     userId,
     message: lastMsg ? lastMsg.content : '',
     images: lastMsg?.images || [],
+    imageNames: lastMsg?.imageNames || [],
     sessionId: config.sessionId,
     messageId: config.messageId,
     mode: config.mode || 'chat',

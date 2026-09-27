@@ -204,6 +204,13 @@ declare global {
       onSessionsUpdated: (callback: (mutation?: SessionMutation) => void) => () => void
       appendMemorySummary: (sessionId: string, text: string) => Promise<boolean>
       writeMemoryProfile: (text: string) => Promise<boolean>
+      getMemoryGallery: () => Promise<any>
+      createMemoryGalleryItem: (data: Record<string, string>) => Promise<any>
+      shareMemoryGalleryItem: (data: Record<string, string>) => Promise<any>
+      summarizeMemoryGalleryItem: (id: string) => Promise<any>
+      deleteMemoryGalleryItem: (id: string) => Promise<any>
+      getMemoryPortrait: () => Promise<any>
+      teachMemoryAboutUser: (data: { content: string; sessionId?: string }) => Promise<any>
       purifyMemoryPipeline: () => Promise<{ success: boolean; count: number; insertCount?: number }>
       strengthenExperiences: (ids: string[]) => Promise<boolean>
       getConversations: () => Promise<{ status: string; messages: any[] }>

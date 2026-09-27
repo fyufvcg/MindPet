@@ -95,7 +95,7 @@ src/main/resources/
 └─ log4j2.xml               日志配置
 
 sql/                        历史数据库迁移脚本（不参与桌面版运行）
-..\XiaoqingDesktop.bat      唯一源码启动入口：构建后端并启动 Electron
+..\XiaoqingDesktop.vbs      唯一源码启动入口：后台构建后端并启动 Electron
 ..\scripts\check.bat       可选的 SQLite 存储检查
 ```
 
@@ -131,13 +131,13 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 
 ### 5.1 一键启动 Electron 和 SQLite 后端
 
-在仓库根目录运行 `XiaoqingDesktop.bat`。脚本构建 Java 后端；Electron 启动时自动运行该后端并使用 SQLite，无需单独启动 Redis、Docker 或另开前端命令。源码调试需要 JDK 21、Maven、Node.js 20 和 npm；已打包的桌面应用会自带 Java 运行时，直接打开应用即可。
+在仓库根目录双击 `XiaoqingDesktop.vbs`。脚本在后台构建 Java 后端并启动 Electron，不显示或保留命令行窗口；应用界面与本地后端都就绪后脚本正常结束。启动进度写入 `%LOCALAPPDATA%\MindPet\logs\dev-launcher.log`，失败时会弹出具体步骤和日志路径。Electron 启动时自动运行该后端并使用 SQLite，无需单独启动 Redis、Docker 或另开前端命令。源码调试需要 JDK 21、Maven、Node.js 20 和 npm；已打包的桌面应用会自带 Java 运行时，直接打开应用即可。
 
 后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。可选的存储检查入口是 `scripts/check.bat`。
 
 ### 5.2 前端开发命令
 
-通常使用 `XiaoqingDesktop.bat` 同时启动前后端。需要单独调试前端时，在 `MindPet` 目录运行 `npm run dev`；该方式要求后端 JAR 已构建。
+通常使用 `XiaoqingDesktop.vbs` 同时启动前后端。需要单独调试前端时，在 `MindPet` 目录运行 `npm run dev`；该方式要求后端 JAR 已构建。
 
 常用命令：
 
