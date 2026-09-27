@@ -108,7 +108,13 @@ function ChatPageImpl(): React.JSX.Element {
   const [showMcpPopover, setShowMcpPopover] = useState(false)
   const [showModelPopover, setShowModelPopover] = useState(false)
   const [showMeetingRecorder, setShowMeetingRecorder] = useState(false)
-  const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [thinkingEnabled, setThinkingEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('mindpet_deep_thinking_enabled') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [approvalDetailsExpanded, setApprovalDetailsExpanded] = useState(false)
   const [approvalMenuOpen, setApprovalMenuOpen] = useState(false)
   const skillsPopoverRef = useRef<HTMLDivElement>(null)
@@ -639,13 +645,20 @@ function ChatPageImpl(): React.JSX.Element {
     return Math.min(100, (estimatedContextTokens / contextLimit) * 100)
   }, [contextLimit, estimatedContextTokens])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('mindpet_deep_thinking_enabled', String(thinkingEnabled))
+    } catch {
+      // Keep the in-memory toggle usable if local storage is unavailable.
+    }
+  }, [thinkingEnabled])
+
   const handleSendIntercept = () => {
     if (estimatedContextTokens >= contextLimit) {
       showToast('上下文额度已用满，请创建新会话以继续对话！', 'error')
       return
     }
     void handleSendChat(thinkingEnabled)
-    setThinkingEnabled(false)
   }
 
   // SSH 弹窗控制本地状态
@@ -740,7 +753,6 @@ function ChatPageImpl(): React.JSX.Element {
   // 切换会话时重置滚动状态
   useEffect(() => {
     setShowScrollToBottom(false)
-    setThinkingEnabled(false)
   }, [activeSessionId])
 
   useEffect(() => {
@@ -1237,7 +1249,7 @@ function ChatPageImpl(): React.JSX.Element {
                 aria-pressed={thinkingEnabled}
                 aria-label="深度思考"
                 onClick={() => setThinkingEnabled(enabled => !enabled)}
-                title="按次开启深度思考，尝试显示 DeepSeek 或兼容模型返回的推理内容"
+                title={`${thinkingEnabled ? '深度思考已开启，再次点击关闭' : '点击持续开启深度思考'}，尝试显示 DeepSeek 或兼容模型返回的推理内容`}
               >
                 <Brain size={15} strokeWidth={2} aria-hidden="true" />
                 <span>深度思考</span>

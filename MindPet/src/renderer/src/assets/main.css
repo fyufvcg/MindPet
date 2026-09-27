@@ -12489,3 +12489,199 @@ body.session-dragging * {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
+
+@property --temperature-progress {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 35%;
+}
+
+/* A precise, soft-gliding range control for model temperature. */
+.settings-panel-card .temperature-control {
+  gap: 15px;
+  padding: 9px 11px 8px 13px;
+  border: 1px solid var(--border-input);
+  border-radius: 13px;
+  background: linear-gradient(145deg, var(--bg-card), color-mix(in srgb, var(--bg-card) 96%, var(--color-primary)));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-card) 92%, var(--text-primary)), 0 2px 8px var(--shadow-surface);
+  transition: border-color 180ms ease, box-shadow 200ms ease;
+}
+
+.settings-panel-card .temperature-control:focus-within {
+  border-color: color-mix(in srgb, var(--color-focus-ring) 58%, var(--border-input));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-card) 92%, var(--text-primary)), 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 14%, transparent);
+}
+
+.settings-panel-card .temperature-slider-wrap {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+
+.settings-panel-card .temperature-slider {
+  --temperature-progress: 35%;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  cursor: grab;
+  transition: --temperature-progress 190ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-panel-card .temperature-slider:active {
+  cursor: grabbing;
+}
+
+.settings-panel-card .temperature-slider::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 58%, var(--bg-card)) 0%, var(--color-primary) var(--temperature-progress), color-mix(in srgb, var(--color-primary) 15%, var(--bg-card)) var(--temperature-progress), color-mix(in srgb, var(--color-primary) 15%, var(--bg-card)) 100%);
+  transition: filter 180ms ease;
+}
+
+.settings-panel-card .temperature-slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  margin-top: -6.5px;
+  appearance: none;
+  border: 3px solid var(--bg-card);
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--color-primary) 24%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-primary) 16%, transparent);
+  transition: transform 170ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 190ms ease;
+}
+
+.settings-panel-card .temperature-slider:hover::-webkit-slider-runnable-track {
+  filter: saturate(1.06);
+}
+
+.settings-panel-card .temperature-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.08);
+  box-shadow: 0 3px 9px color-mix(in srgb, var(--color-primary) 25%, transparent), 0 0 0 4px color-mix(in srgb, var(--color-primary) 11%, transparent);
+}
+
+.settings-panel-card .temperature-slider:active::-webkit-slider-thumb {
+  transform: scale(1.14);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--color-primary) 28%, transparent), 0 0 0 5px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.settings-panel-card .temperature-slider::-moz-range-track {
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 15%, var(--bg-card));
+}
+
+.settings-panel-card .temperature-slider::-moz-range-progress {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
+.settings-panel-card .temperature-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--bg-card);
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--color-primary) 24%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-primary) 16%, transparent);
+  transition: transform 170ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 190ms ease;
+}
+
+.settings-panel-card .temperature-slider:hover::-moz-range-thumb {
+  transform: scale(1.08);
+  box-shadow: 0 3px 9px color-mix(in srgb, var(--color-primary) 25%, transparent), 0 0 0 4px color-mix(in srgb, var(--color-primary) 11%, transparent);
+}
+
+.settings-panel-card .temperature-slider:active::-moz-range-thumb {
+  transform: scale(1.14);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--color-primary) 28%, transparent), 0 0 0 5px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.settings-panel-card .temperature-scale {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.settings-panel-card .temperature-value {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--border-input));
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--color-primary) 76%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--bg-card));
+  box-shadow: none;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  animation: temperature-value-arrive 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes temperature-value-arrive {
+  from { opacity: 0.68; transform: translateY(2px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.agent-window-container.dark .settings-panel-card .temperature-control {
+  border-color: var(--border-input);
+  background: linear-gradient(145deg, var(--bg-card), color-mix(in srgb, var(--bg-card) 96%, var(--color-primary)));
+  color: var(--text-secondary);
+}
+
+.agent-window-container.dark .settings-panel-card .temperature-control:focus-within {
+  border-color: color-mix(in srgb, var(--color-focus-ring) 58%, var(--border-input));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-card) 92%, var(--text-primary)), 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 18%, transparent);
+}
+
+.agent-window-container.dark .settings-panel-card .temperature-slider {
+  background: transparent;
+}
+
+.agent-window-container.dark .settings-panel-card .temperature-slider::-webkit-slider-thumb,
+.agent-window-container.dark .settings-panel-card .temperature-slider::-moz-range-thumb {
+  border-color: var(--bg-card);
+  background: var(--color-primary);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 24%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.agent-window-container.dark .settings-panel-card .temperature-value {
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--border-input));
+  color: color-mix(in srgb, var(--color-primary) 76%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--bg-card));
+}
+
+.agent-window-container .settings-panel-card .temperature-slider:focus-visible {
+  outline: none;
+}
+
+.agent-window-container .settings-panel-card .temperature-slider:focus-visible::-webkit-slider-thumb,
+.agent-window-container .settings-panel-card .temperature-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent), 0 0 0 4px color-mix(in srgb, var(--color-focus-ring) 24%, transparent) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel-card .temperature-control,
+  .settings-panel-card .temperature-slider,
+  .settings-panel-card .temperature-slider::-webkit-slider-runnable-track,
+  .settings-panel-card .temperature-slider::-webkit-slider-thumb,
+  .settings-panel-card .temperature-slider::-moz-range-thumb,
+  .settings-panel-card .temperature-value {
+    animation: none !important;
+    transition: none !important;
+  }
+}

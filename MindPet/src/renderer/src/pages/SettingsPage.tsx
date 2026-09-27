@@ -540,19 +540,30 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
 
             {/* Temperature */}
             <div className="form-group">
-              <label className="form-label">核采样温度 (Temperature)</label>
-              <div className="slider-group">
-                <input
-                  type="range"
-                  min="0.0"
-                  max="2.0"
-                  step="0.1"
-                  className="form-slider"
-                  value={llmConfig.temperature}
-                  style={{ '--slider-progress': `${(llmConfig.temperature / 2) * 100}%` } as React.CSSProperties}
-                  onChange={e => saveLlmConfig({ ...llmConfig, temperature: parseFloat(e.target.value) })}
-                />
-                <span className="slider-val">{llmConfig.temperature.toFixed(1)}</span>
+              <label className="form-label" htmlFor="llm-temperature">核采样温度 (Temperature)</label>
+              <div className="slider-group temperature-control">
+                <div className="temperature-slider-wrap">
+                  <input
+                    id="llm-temperature"
+                    type="range"
+                    min="0.0"
+                    max="2.0"
+                    step="0.1"
+                    className="form-slider temperature-slider"
+                    value={llmConfig.temperature}
+                    aria-valuetext={llmConfig.temperature.toFixed(1)}
+                    style={{ '--temperature-progress': `${(llmConfig.temperature / 2) * 100}%` } as React.CSSProperties}
+                    onChange={e => saveLlmConfig({ ...llmConfig, temperature: parseFloat(e.target.value) })}
+                  />
+                  <div className="temperature-scale" aria-hidden="true">
+                    <span>0.0</span>
+                    <span>1.0</span>
+                    <span>2.0</span>
+                  </div>
+                </div>
+                <output key={llmConfig.temperature} className="slider-val temperature-value">
+                  {llmConfig.temperature.toFixed(1)}
+                </output>
               </div>
             </div>
 
