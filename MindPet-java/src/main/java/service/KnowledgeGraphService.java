@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
@@ -161,17 +162,13 @@ public class KnowledgeGraphService {
                                    String emotion, Instant occurredAt) {
         if (isBlank(userId) || isBlank(userMessage) || !chatClientFactory.isConfigured()) return false;
         String safeSessionId = sessionId == null ? "" : sessionId;
-        String turnHash = sha256(userId + "\n" + safeSessionId + "\n" + userMessage + "\n" + assistantMessage);
+        String turnHash = turnHash(userId, safeSessionId, userMessage, assistantMessage);
         if (isIngested(turnHash) || !inFlight.add(turnHash)) return false;
         try {
             executor.execute(() -> {
                 try {
-                    Extraction extraction = extract(userMessage, assistantMessage);
-                    persist(userId, safeSessionId, turnHash, userMessage, assistantMessage, extraction);
-                    if (extraction.shouldPersistMemory()) {
-                        memoryService.appendTurn(userId, safeSessionId, userMessage,
-                            extraction.importance(), extraction.confidence(), emotion, occurredAt);
-                    }
+                    processCompletedTurn(userId, safeSessionId, turnHash, userMessage,
+                        assistantMessage, emotion, occurredAt);
                 } catch (Exception e) {
                     logger.log("WARN", "Knowledge graph extraction failed: " + e.getMessage());
                 } finally {
@@ -184,6 +181,83 @@ public class KnowledgeGraphService {
             logger.log("WARN", "Knowledge graph task submission failed: " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Evaluation-only completion signal for the real production completed-turn processor.
+     * The same executor, extraction, parser, thresholds, KG persistence and LTM append are used.
+     * Unlike the production fire-and-forget entry point, the returned future completes only
+     * after appendTurn() has returned, so an evaluation caller can inspect final database state.
+     */
+    public CompletableFuture<CompletedTurnResult> onCompletedTurnForEvaluation(
+            String userId, String sessionId, String userMessage, String assistantMessage,
+            String emotion, Instant occurredAt) {
+        if (isBlank(userId) || isBlank(userMessage)) {
+            return CompletableFuture.failedFuture(new CompletedTurnFailure(
+                "VALIDATION", "INVALID_INPUT", "Completed turn input is invalid", null));
+        }
+        if (!chatClientFactory.isConfigured()) {
+            return CompletableFuture.failedFuture(new CompletedTurnFailure(
+                "EXTRACTION", "MODEL_NOT_CONFIGURED", "Production extraction model is not configured", null));
+        }
+        String safeSessionId = sessionId == null ? "" : sessionId;
+        String hash = turnHash(userId, safeSessionId, userMessage, assistantMessage);
+        if (isIngested(hash)) {
+            return CompletableFuture.completedFuture(CompletedTurnResult.duplicate(
+                hash, chatClientFactory.effectiveModel()));
+        }
+        if (!inFlight.add(hash)) {
+            return CompletableFuture.failedFuture(new CompletedTurnFailure(
+                "SUBMISSION", "TURN_IN_FLIGHT", "The same completed turn is already being processed", null));
+        }
+
+        CompletableFuture<CompletedTurnResult> completion = new CompletableFuture<>();
+        try {
+            executor.execute(() -> {
+                try {
+                    completion.complete(processCompletedTurn(userId, safeSessionId, hash,
+                        userMessage, assistantMessage, emotion, occurredAt));
+                } catch (Exception e) {
+                    completion.completeExceptionally(e);
+                } finally {
+                    inFlight.remove(hash);
+                }
+            });
+        } catch (Exception e) {
+            inFlight.remove(hash);
+            completion.completeExceptionally(new CompletedTurnFailure(
+                "SUBMISSION", "TASK_SUBMISSION_FAILED", "Knowledge graph task submission failed", e));
+        }
+        return completion;
+    }
+
+    private CompletedTurnResult processCompletedTurn(
+            String userId, String sessionId, String hash,
+            String userMessage, String assistantMessage, String emotion, Instant occurredAt) {
+        Extraction extraction;
+        try {
+            extraction = extract(userMessage, assistantMessage);
+        } catch (Exception e) {
+            throw new CompletedTurnFailure(
+                "EXTRACTION", "EXTRACTION_FAILED", "Production extraction failed", e);
+        }
+        try {
+            persist(userId, sessionId, hash, userMessage, assistantMessage, extraction);
+        } catch (Exception e) {
+            throw new CompletedTurnFailure(
+                "KG_PERSISTENCE", "KG_PERSISTENCE_FAILED", "Knowledge graph persistence failed", e);
+        }
+        boolean ltmAttempted = extraction.shouldPersistMemory();
+        if (ltmAttempted) {
+            try {
+                memoryService.appendTurn(userId, sessionId, userMessage,
+                    extraction.importance(), extraction.confidence(), emotion, occurredAt);
+            } catch (Exception e) {
+                throw new CompletedTurnFailure(
+                    "LTM_PERSISTENCE", "LTM_APPEND_FAILED", "Long-term memory append failed", e);
+            }
+        }
+        return CompletedTurnResult.completed(hash, chatClientFactory.effectiveModel(), extraction, ltmAttempted);
     }
 
     public Map<String, Object> getGraph(String userId, String query, int requestedLimit) {
@@ -755,6 +829,11 @@ public class KnowledgeGraphService {
         }
     }
 
+    private String turnHash(String userId, String sessionId,
+                            String userMessage, String assistantMessage) {
+        return sha256(userId + "\n" + sessionId + "\n" + userMessage + "\n" + assistantMessage);
+    }
+
     private String placeholders(int count) {
         return String.join(",", java.util.Collections.nCopies(count, "?"));
     }
@@ -806,6 +885,56 @@ public class KnowledgeGraphService {
         boolean shouldPersistMemory() {
             return shouldRemember && importance >= 0.35 && confidence >= 0.45;
         }
+    }
+
+    /** Debug-safe result emitted only to the Evaluation-only orchestration layer. */
+    public record CompletedTurnResult(
+        String turnHash,
+        String model,
+        boolean duplicate,
+        boolean extractionCompleted,
+        Boolean worthRemembering,
+        Boolean shouldRemember,
+        Double importance,
+        Double confidence,
+        boolean ltmAttempted,
+        boolean memoryObjectPresent,
+        boolean importanceFallbackUsed,
+        boolean confidenceFallbackUsed,
+        boolean importanceClamped,
+        boolean confidenceClamped
+    ) {
+        private static CompletedTurnResult completed(
+                String turnHash, String model, Extraction extraction, boolean ltmAttempted) {
+            return new CompletedTurnResult(
+                turnHash, model, false, true,
+                extraction.worthRemembering(), extraction.shouldRemember(),
+                extraction.importance(), extraction.confidence(), ltmAttempted,
+                extraction.memoryObjectPresent(), extraction.importanceFallbackUsed(),
+                extraction.confidenceFallbackUsed(), extraction.importanceClamped(),
+                extraction.confidenceClamped());
+        }
+
+        private static CompletedTurnResult duplicate(String turnHash, String model) {
+            return new CompletedTurnResult(
+                turnHash, model, true, false, null, null, null, null, false,
+                false, false, false, false, false);
+        }
+    }
+
+    public static final class CompletedTurnFailure extends RuntimeException {
+        private final String stage;
+        private final String type;
+
+        public CompletedTurnFailure(
+                String stage, String type, String message, Throwable cause) {
+            super(message, cause);
+            this.stage = stage;
+            this.type = type;
+        }
+
+        public String stage() { return stage; }
+        public String type() { return type; }
     }
 
     public static final class ImportanceEvaluationFailure extends RuntimeException {

@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import util.Logger;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -121,5 +122,29 @@ class KnowledgeGraphImportanceEvaluationTest {
         assertEquals("MODEL_NOT_CONFIGURED", failure.code());
         verify(factory, never()).build();
         verifyNoInteractions(jdbc, embeddingService, memoryService);
+    }
+
+    @Test
+    void evaluationCompletionSignalFinishesAfterRealKgAndLtmPipeline() throws Exception {
+        modelReturns("""
+            {"worthRemembering":true,"memory":{"shouldRemember":true,
+             "importance":0.7,"confidence":0.9,"evidence":"explicit"},
+             "entities":[],"relations":[]}
+            """);
+
+        KnowledgeGraphService.CompletedTurnResult result = service.onCompletedTurnForEvaluation(
+            "e2e_memory_eval_user", "e2e:pilot01:p001",
+            "我长期喜欢羽毛球", "明白了", "neutral", java.time.Instant.EPOCH
+        ).get(1, TimeUnit.SECONDS);
+
+        assertTrue(result.extractionCompleted());
+        assertTrue(result.ltmAttempted());
+        assertFalse(result.duplicate());
+        var order = inOrder(jdbc, memoryService);
+        order.verify(jdbc).update(contains("INSERT INTO kg_turn_ingest"),
+            anyString(), eq("e2e_memory_eval_user"), eq("e2e:pilot01:p001"));
+        order.verify(memoryService).appendTurn(
+            "e2e_memory_eval_user", "e2e:pilot01:p001", "我长期喜欢羽毛球",
+            .7, .9, "neutral", java.time.Instant.EPOCH);
     }
 }
