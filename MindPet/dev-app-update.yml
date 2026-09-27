@@ -1,3 +1,4 @@
-provider: generic
-url: https://example.com/auto-updates
+provider: github
+owner: fyufvcg
+repo: MindPet
 updaterCacheDirName: mindpet-updater

@@ -1,6 +1,6 @@
 {
   "name": "mindpet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "author": "cheer.com",
@@ -33,6 +33,7 @@
     "@tencent-connect/qqbot-connector": "^1.2.0",
     "@tencent-connect/qqbot-nodejs": "^1.0.4",
     "docx": "^9.7.1",
+    "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "iconv-lite": "^0.7.2",
     "jszip": "^3.10.1",

@@ -130,7 +130,7 @@ npm run build:mac
 # 构建 Linux 包
 npm run build:linux
 ```
-打包输出后的应用程序及安装包均位于项目根目录的 `dist/` 下。
+打包输出后的应用程序及安装包均位于项目根目录的 `release/` 下。
 
 ---
 

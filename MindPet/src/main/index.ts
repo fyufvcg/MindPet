@@ -40,6 +40,7 @@ import { localMeetingRuntime } from './local-meeting-runtime'
 import { callJavaBackend, startDesktopNotificationPolling } from './backend-api'
 import { backendBaseUrl, backendUrl, DEFAULT_BACKEND_BASE_URL, endpointFilePath, setBackendBaseUrl, probeBackend } from './backend-endpoint'
 import { startLocalBackend, stopLocalBackend } from './local-backend-runtime'
+import { initializeAppUpdater } from './app-updater'
 
 
 
@@ -1019,6 +1020,7 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  initializeAppUpdater()
   try {
     await startLocalBackend()
   } catch (error) {

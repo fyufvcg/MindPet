@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Download,
   Eye,
   EyeOff,
   FolderOpen,
@@ -15,6 +16,7 @@ import {
   Pencil,
   Plug,
   RotateCcw,
+  RefreshCw,
   Save,
   Server,
   Settings2,
@@ -39,6 +41,14 @@ interface BackendProbeView {
 
 interface SettingsPageProps {
   store: AppStore
+}
+
+type AppUpdateStateView = {
+  state: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+  currentVersion: string
+  version?: string
+  percent?: number
+  message?: string
 }
 
 export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
@@ -103,6 +113,34 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
   const [isSavingApiKey, setIsSavingApiKey] = React.useState(false)
   const [toolCacheStats, setToolCacheStats] = React.useState({ fileCount: 0, totalBytes: 0 })
   const [isLoadingToolCache, setIsLoadingToolCache] = React.useState(false)
+  const [appUpdateState, setAppUpdateState] = React.useState<AppUpdateStateView | null>(null)
+  const [isCheckingAppUpdate, setIsCheckingAppUpdate] = React.useState(false)
+
+  React.useEffect(() => {
+    if (settingsSubTab !== 'updates') return
+    let active = true
+    const unsubscribe = window.api.onAppUpdateState((state) => setAppUpdateState(state))
+    void window.api.getAppUpdateState().then((state) => {
+      if (active) setAppUpdateState(state)
+    }).catch((error) => {
+      if (active) setAppUpdateState({ state: 'error', currentVersion: '', message: String(error) })
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [settingsSubTab])
+
+  const handleCheckAppUpdate = async (): Promise<void> => {
+    setIsCheckingAppUpdate(true)
+    try {
+      setAppUpdateState(await window.api.checkAppForUpdates())
+    } catch (error: any) {
+      setAppUpdateState({ state: 'error', currentVersion: appUpdateState?.currentVersion || '', message: error?.message || String(error) })
+    } finally {
+      setIsCheckingAppUpdate(false)
+    }
+  }
 
   // ── 后端地址（本地部署 / 云端部署）──
   const [backendUrlInput, setBackendUrlInput] = React.useState('')
@@ -253,6 +291,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
         </div>
         <div className={`sub-tab-item ${settingsSubTab === 'avatar' ? 'active' : ''}`} onClick={() => setSettingsSubTab('avatar')}>
           虚拟体设置
+        </div>
+        <div className={`sub-tab-item ${settingsSubTab === 'updates' ? 'active' : ''}`} onClick={() => setSettingsSubTab('updates')}>
+          应用更新
         </div>
       </div>
 
@@ -836,6 +877,46 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {settingsSubTab === 'updates' && (
+          <div className="settings-sub-panel settings-panel-card">
+            <div className="form-desc-text">
+              MindPet 会在启动后检查 GitHub Releases。发现新版本后会在后台下载，并在退出应用时自动安装；也可以在这里手动检查。
+            </div>
+            <div className="form-group">
+              <label className="form-label">当前版本</label>
+              <div className="storage-path-display">{appUpdateState?.currentVersion ? `v${appUpdateState.currentVersion}` : '正在读取…'}</div>
+            </div>
+            <div className={`test-res-box ${appUpdateState?.state === 'error' ? 'failed' : 'success'}`} role="status">
+              {appUpdateState?.message || '准备检查更新…'}
+            </div>
+            <div className="action-row">
+              {appUpdateState?.state === 'downloaded' ? (
+                <button type="button" className="btn-primary" onClick={() => void window.api.installAppUpdate()}>
+                  <Download size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                  立即重启并安装
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void handleCheckAppUpdate()}
+                  disabled={isCheckingAppUpdate || appUpdateState?.state === 'checking' || appUpdateState?.state === 'downloading'}
+                >
+                  <RefreshCw size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
+                  {isCheckingAppUpdate || appUpdateState?.state === 'checking'
+                    ? '正在检查…'
+                    : appUpdateState?.state === 'downloading'
+                      ? `正在下载 ${appUpdateState.percent ?? 0}%`
+                      : '检查更新'}
+                </button>
+              )}
+            </div>
+            {appUpdateState?.state === 'unsupported' && (
+              <div className="form-desc-text">开发模式不支持在线更新；请在已安装的 MindPet 桌面版中检查。</div>
+            )}
           </div>
         )}
 

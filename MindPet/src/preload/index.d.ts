@@ -20,6 +20,14 @@ type OfficeRuntimeStatus = {
   pythonVersion: string
 }
 
+type AppUpdateView = {
+  state: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+  currentVersion: string
+  version?: string
+  percent?: number
+  message?: string
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -173,6 +181,10 @@ declare global {
           error?: string
         }
       }>
+      getAppUpdateState: () => Promise<AppUpdateView>
+      checkAppForUpdates: () => Promise<AppUpdateView>
+      installAppUpdate: () => Promise<boolean>
+      onAppUpdateState: (callback: (state: AppUpdateView) => void) => () => void
       getToolCacheStats: () => Promise<{ fileCount: number; totalBytes: number }>
       clearToolCache: () => Promise<{ success: boolean; deletedDirectories: number }>
       selectDirectory: (options?: { title?: string }) => Promise<string | null>

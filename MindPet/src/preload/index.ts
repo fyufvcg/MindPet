@@ -233,6 +233,14 @@ const api = {
     ipcRenderer.invoke('api:test-backend-endpoint', url),
   setBackendEndpoint: (url: string): Promise<{ url: string; file: string; probe: any }> =>
     ipcRenderer.invoke('api:set-backend-endpoint', url),
+  getAppUpdateState: (): Promise<any> => ipcRenderer.invoke('app-update:get-state'),
+  checkAppForUpdates: (): Promise<any> => ipcRenderer.invoke('app-update:check'),
+  installAppUpdate: (): Promise<boolean> => ipcRenderer.invoke('app-update:install'),
+  onAppUpdateState: (callback: (state: any) => void): (() => void) => {
+    const handler = (_event: any, state: any): void => callback(state)
+    ipcRenderer.on('app-update:state', handler)
+    return () => ipcRenderer.removeListener('app-update:state', handler)
+  },
   getToolCacheStats: (): Promise<{ fileCount: number; totalBytes: number }> => ipcRenderer.invoke('api:get-tool-cache-stats'),
   clearToolCache: (): Promise<{ success: boolean; deletedDirectories: number }> => ipcRenderer.invoke('api:clear-tool-cache'),
   selectDirectory: (options?: { title?: string }): Promise<string | null> =>

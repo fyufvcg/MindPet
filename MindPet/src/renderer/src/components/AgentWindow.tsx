@@ -89,7 +89,8 @@ const AGENT_SUB_TAB_LABELS: Record<string, string> = {
 const SETTINGS_SUB_TAB_LABELS: Record<string, string> = {
   keys: '模型配置',
   storage: '存储管理',
-  avatar: '虚拟体'
+  avatar: '虚拟体',
+  updates: '应用更新'
 }
 
 const isFunctionPage = (tab: string): tab is FunctionPageId =>

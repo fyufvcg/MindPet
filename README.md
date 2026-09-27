@@ -188,6 +188,14 @@ npm run build:win
 
 构建过程会编译 Java 后端并用 `jlink` 生成随包运行时；安装后的应用自动启动后端和本地数据库。
 
+### 自动更新与发布
+
+自动更新使用本仓库的 GitHub Releases。当前源码版本已提升到 `1.0.1`，这是首个带更新器的版本。之前安装的 `1.0.0` 不包含更新器，用户需要先手动安装一次 `1.0.1`；后续版本会在启动时自动检查并下载，也可在应用内 **设置 → 应用更新** 手动检查。
+
+发布 Windows 更新时，在 `MindPet` 目录运行 `npm run build:win`，构建产物在 `MindPet/release/`。在 GitHub 的 `fyufvcg/MindPet` 仓库创建 tag 为 `v<版本号>` 的 Release，并上传该目录生成的安装程序、对应 `.blockmap` 和 `latest.yml`。`latest.yml` 是更新检查所需的版本清单；不能只上传安装程序。用户端从 GitHub Release 下载更新，不需要另部署更新服务器。仓库 Release 及资产必须允许目标用户读取；私有仓库需要改用公开的静态下载地址。
+
+更新只替换应用文件，用户的 SQLite 数据仍保存在本机 `data/backend/mindpet.db`。
+
 **两种 Embedding 模式**（同一份代码，靠 profile 切换）：
 
 | 模式 | 命令 | 说明 |
