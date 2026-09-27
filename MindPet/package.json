@@ -1,6 +1,6 @@
 {
   "name": "mindpet",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "author": "cheer.com",
@@ -35,6 +35,7 @@
     "docx": "^9.7.1",
     "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
+    "fs-extra": "^10.1.0",
     "iconv-lite": "^0.7.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.0",

@@ -40,7 +40,6 @@ import { localMeetingRuntime } from './local-meeting-runtime'
 import { callJavaBackend, startDesktopNotificationPolling } from './backend-api'
 import { backendBaseUrl, backendUrl, DEFAULT_BACKEND_BASE_URL, endpointFilePath, setBackendBaseUrl, probeBackend } from './backend-endpoint'
 import { startLocalBackend, stopLocalBackend } from './local-backend-runtime'
-import { initializeAppUpdater } from './app-updater'
 
 
 
@@ -1020,7 +1019,13 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-  initializeAppUpdater()
+  try {
+    const { initializeAppUpdater } = await import('./app-updater')
+    initializeAppUpdater()
+  } catch (error) {
+    // A packaging issue in the optional updater must not prevent the desktop app from starting.
+    console.error('[Updater] 更新模块加载失败，应用将继续启动:', error)
+  }
   try {
     await startLocalBackend()
   } catch (error) {
