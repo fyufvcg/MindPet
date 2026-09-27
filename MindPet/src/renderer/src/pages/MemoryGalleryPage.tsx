@@ -132,6 +132,142 @@ function dateLabel(value?: string): string {
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(parsed)
 }
 
+function localDateValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseLocalDate(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return new Date()
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}
+
+function MemoryDatePicker({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }): React.JSX.Element {
+  const selectedDate = parseLocalDate(value)
+  const [open, setOpen] = React.useState(false)
+  const [visibleMonth, setVisibleMonth] = React.useState(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
+  const [activeDate, setActiveDate] = React.useState(selectedDate)
+  const pickerRef = React.useRef<HTMLDivElement | null>(null)
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null)
+  const dayRefs = React.useRef(new Map<string, HTMLButtonElement>())
+  const activeValue = localDateValue(activeDate)
+
+  React.useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [open])
+
+  React.useEffect(() => {
+    if (open) requestAnimationFrame(() => dayRefs.current.get(activeValue)?.focus())
+  }, [activeValue, open])
+
+  const focusDate = (date: Date): void => {
+    setActiveDate(date)
+    if (date.getMonth() !== visibleMonth.getMonth() || date.getFullYear() !== visibleMonth.getFullYear()) {
+      setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1))
+    }
+  }
+
+  const shiftMonth = (amount: number): void => {
+    const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + amount, 1)
+    const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate()
+    const nextActive = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), Math.min(activeDate.getDate(), lastDay))
+    setVisibleMonth(nextMonth)
+    setActiveDate(nextActive)
+  }
+
+  const changeActiveBy = (amount: number): void => {
+    const next = new Date(activeDate.getFullYear(), activeDate.getMonth(), activeDate.getDate() + amount)
+    focusDate(next)
+  }
+
+  const chooseDate = (date: Date): void => {
+    onChange(localDateValue(date))
+    setOpen(false)
+    requestAnimationFrame(() => triggerRef.current?.focus())
+  }
+
+  const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(visibleMonth)
+  const selectedLabel = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(selectedDate)
+  const todayValue = localDateValue(new Date())
+  const firstWeekday = (new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1).getDay() + 6) % 7
+  const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate()
+  const cells: (Date | null)[] = [...Array.from({ length: firstWeekday }, () => null), ...Array.from({ length: daysInMonth }, (_, index) => new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), index + 1))]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  return <div ref={pickerRef} className={`memory-date-picker ${open ? 'is-open' : ''}`}>
+    <button
+      ref={triggerRef}
+      className="memory-date-trigger"
+      type="button"
+      disabled={disabled}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-label={`发生日期：${selectedLabel}`}
+      aria-controls={open ? 'memory-share-calendar' : undefined}
+      onClick={() => {
+        if (!open) {
+          const current = parseLocalDate(value)
+          setVisibleMonth(new Date(current.getFullYear(), current.getMonth(), 1))
+          setActiveDate(current)
+        }
+        setOpen(current => !current)
+      }}
+    ><span>{selectedLabel}</span><CalendarDays size={16} aria-hidden="true" /></button>
+    {open && <div id="memory-share-calendar" className="memory-calendar-popover" role="dialog" aria-label="选择发生日期" onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus() }
+    }}>
+      <div className="memory-calendar-heading">
+        <strong>{monthTitle}</strong>
+        <div>
+          <button type="button" aria-label="上个月" onClick={() => shiftMonth(-1)}><ChevronLeft size={16} /></button>
+          <button type="button" aria-label="下个月" onClick={() => shiftMonth(1)}><ChevronRight size={16} /></button>
+        </div>
+      </div>
+      <div className="memory-calendar-grid" role="grid" aria-label={monthTitle} onKeyDown={event => {
+        if (event.key === 'ArrowLeft') { event.preventDefault(); changeActiveBy(-1) }
+        else if (event.key === 'ArrowRight') { event.preventDefault(); changeActiveBy(1) }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); changeActiveBy(-7) }
+        else if (event.key === 'ArrowDown') { event.preventDefault(); changeActiveBy(7) }
+        else if (event.key === 'Home') { event.preventDefault(); changeActiveBy(-((activeDate.getDay() + 6) % 7)) }
+        else if (event.key === 'End') { event.preventDefault(); changeActiveBy(6 - ((activeDate.getDay() + 6) % 7)) }
+        else if (event.key === 'PageUp') { event.preventDefault(); shiftMonth(event.shiftKey ? -12 : -1) }
+        else if (event.key === 'PageDown') { event.preventDefault(); shiftMonth(event.shiftKey ? 12 : 1) }
+        else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus() }
+      }}>
+        <div className="memory-calendar-week" role="row">{['一', '二', '三', '四', '五', '六', '日'].map((day, index) => <span key={day} role="columnheader" aria-label={`星期${day}`} className={index > 4 ? 'is-weekend' : ''}>{day}</span>)}</div>
+        {Array.from({ length: cells.length / 7 }, (_, row) => <div className="memory-calendar-week" role="row" key={row}>
+          {cells.slice(row * 7, row * 7 + 7).map((date, column) => {
+            if (!date) return <span className="memory-calendar-blank" key={`blank-${row}-${column}`} aria-hidden="true" />
+            const dateValue = localDateValue(date)
+            return <button
+              key={dateValue}
+              ref={element => { if (element) dayRefs.current.set(dateValue, element); else dayRefs.current.delete(dateValue) }}
+              type="button"
+              role="gridcell"
+              tabIndex={dateValue === activeValue ? 0 : -1}
+              aria-label={new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(date)}
+              aria-selected={dateValue === value}
+              aria-current={dateValue === todayValue ? 'date' : undefined}
+              className={`${dateValue === value ? 'is-selected' : ''} ${dateValue === todayValue ? 'is-today' : ''} ${column > 4 ? 'is-weekend' : ''}`}
+              onFocus={() => setActiveDate(date)}
+              onClick={() => chooseDate(date)}
+            >{date.getDate()}</button>
+          })}
+        </div>)}
+      </div>
+      <button className="memory-calendar-today" type="button" onClick={() => chooseDate(new Date())}>回到今天</button>
+    </div>}
+  </div>
+}
+
 function shortDate(value?: string): string {
   if (!value) return '此刻'
   const parsed = new Date(value)
@@ -200,7 +336,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
   const [draft, setDraft] = React.useState({
     story: '',
     mood: 'neutral',
-    eventAt: new Date().toISOString().slice(0, 10),
+    eventAt: localDateValue(new Date()),
     imageUri: '',
     imageName: ''
   })
@@ -343,7 +479,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
   }
 
   const resetDraft = (): void => {
-    setDraft({ story: '', mood: 'neutral', eventAt: new Date().toISOString().slice(0, 10), imageUri: '', imageName: '' })
+    setDraft({ story: '', mood: 'neutral', eventAt: localDateValue(new Date()), imageUri: '', imageName: '' })
   }
 
   const shareMemory = async (): Promise<void> => {
@@ -553,7 +689,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
                         '--memory-scale': Math.max(0.5, 1 - distance * 0.14),
                         '--memory-opacity': visuallyHidden ? 0 : distance === 0 ? 1 : Math.max(0.14, 0.58 - distance * 0.12),
                         '--memory-accent': itemMood.color,
-                        zIndex: 40 - distance,
+                        zIndex: offset === 0 ? 52 : 40 - distance,
                         pointerEvents: visuallyHidden ? 'none' : 'auto'
                       } as React.CSSProperties}>
                         <button className="memory-planet" type="button" tabIndex={visuallyHidden ? -1 : 0} aria-hidden={visuallyHidden ? true : undefined} onClick={() => setSelectedId(item.id)} aria-label={`查看 ${memoryTitle(item)}`}>
@@ -574,6 +710,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
                             aria-hidden={offset === 0 ? undefined : true}
                             aria-live="polite"
                             aria-label={confirmDeleteId === item.id ? `再次点击，确认移除 ${memoryTitle(item)}` : `移除 ${memoryTitle(item)}`}
+                            onPointerDown={event => event.stopPropagation()}
                             onBlur={() => setConfirmDeleteId(current => current === item.id ? null : current)}
                             onClick={() => {
                               if (confirmDeleteId === item.id) void removeMemory(item)
@@ -659,7 +796,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
             <div className="memory-share-fields">
               <label><span>你想对我说</span><textarea value={draft.story} maxLength={800} disabled={saving} onChange={event => setDraft(current => ({ ...current, story: event.target.value }))} placeholder="可以说说照片里的故事，也可以留空，让我先看看。" /></label>
               <div className="memory-share-meta">
-                <label><span><CalendarDays size={14} />发生在</span><input type="date" value={draft.eventAt} disabled={saving} onChange={event => setDraft(current => ({ ...current, eventAt: event.target.value }))} /></label>
+                <div className="memory-share-date-row"><div className="memory-share-date-label"><CalendarDays size={14} /><span>发生在</span></div><MemoryDatePicker value={draft.eventAt} disabled={saving} onChange={eventAt => setDraft(current => ({ ...current, eventAt }))} /></div>
                 <div className="memory-share-moods" aria-label="当时的心情">{['happy', 'neutral', 'excited', 'grateful', 'sad', 'stressed'].map(mood => <button key={mood} type="button" disabled={saving} className={draft.mood === mood ? 'active' : ''} onClick={() => setDraft(current => ({ ...current, mood }))}><i style={{ background: moodMeta[mood].color }} />{moodMeta[mood].label}</button>)}</div>
               </div>
               <button className="memory-share-submit" type="button" disabled={saving || !draft.imageUri} onClick={() => void shareMemory()}>{saving ? <><span className="memory-share-spinner" />MindPet 正在看这张照片…</> : <><Send size={16} />分享给 MindPet</>}</button>

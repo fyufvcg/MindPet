@@ -13,7 +13,11 @@ colors:
   light-card: "#ffffff"
   text-dark-primary: "#f8fafc"
   text-light-primary: "#000000"
-  text-muted: "#64748b"
+  text-muted: "#566277"
+  action-foreground: "#0b1220"
+  memory-share-gold: "#94611e"
+  memory-share-gold-hover: "#805215"
+  memory-share-gold-border: "#94611e"
   success: "#10b981"
   danger: "#ef4444"
   warning: "#f97316"
@@ -88,12 +92,17 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.primary-blue}"
-    textColor: "#ffffff"
+    textColor: "{colors.action-foreground}"
     rounded: "{rounded.lg}"
     padding: "10px 12px"
   button-secondary:
     backgroundColor: "{colors.dark-card}"
     textColor: "{colors.primary-blue-dark}"
+    rounded: "{rounded.lg}"
+    padding: "10px 12px"
+  memory-share-primary:
+    backgroundColor: "{colors.light-card}"
+    textColor: "{colors.memory-share-gold}"
     rounded: "{rounded.lg}"
     padding: "10px 12px"
   input:
@@ -140,7 +149,7 @@ The palette is a cool neutral foundation with a clear blue interaction voice. Da
 - **Cool Mist** (`#f1f5f9`): Light application background.
 - **Cool Paper** (`#f8fafc`): Light content surface.
 - **White Surface** (`#ffffff`): Light cards, inputs, and active titlebar tabs.
-- **Muted Slate** (`#64748b`): Secondary labels, metadata, and inactive controls.
+- **Muted Slate** (`#566277`): Secondary labels, metadata, and inactive controls with readable contrast on the light workspace surfaces.
 
 ### Named Rules
 **The Signal, Not Decoration Rule.** Blue, green, orange, and red accents should communicate interaction or status; do not add them merely to make a surface busier.
@@ -190,7 +199,8 @@ Avoid decorative pills for ordinary controls. The 100px pill shape belongs to ta
 
 ### Buttons
 - **Shape:** Gently rounded, usually 6-10px; icon-only controls may be circular.
-- **Primary:** Blue emphasis with white text when the action is central; use compact 10px vertical padding.
+- **Primary:** Blue emphasis with deep-navy text for readable central actions; use compact 10px vertical padding.
+- **Memory sharing:** The “分享给 MindPet” action uses a white surface with deep-gold text and border, and sits 22px below the mood choices.
 - **Secondary / Ghost:** Transparent or tonal surface with a low-contrast border and muted text; blue appears on hover or active state.
 - **Hover / Focus:** Prefer a small tonal shift or 1px lift. Focus must remain visible through a blue border or outline.
 
