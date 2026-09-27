@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
+const DOMESTIC_UPDATE_FEED_URL =
+  'https://gh-proxy.com/https://github.com/fyufvcg/MindPet/releases/latest/download'
+const GITHUB_UPDATE_FEED = { provider: 'github', owner: 'fyufvcg', repo: 'MindPet' } as const
+
 export type AppUpdateState = {
   state: 'unsupported' | 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
   currentVersion: string
@@ -27,13 +31,28 @@ async function checkForUpdates(): Promise<AppUpdateState> {
 
   publishState({ state: 'checking', currentVersion: app.getVersion(), message: '正在检查更新…' })
   try {
-    await autoUpdater.checkForUpdates()
-  } catch (error) {
+    autoUpdater.setFeedURL({ provider: 'generic', url: DOMESTIC_UPDATE_FEED_URL })
+    const result = await autoUpdater.checkForUpdates()
+    if (result?.downloadPromise) await result.downloadPromise
+  } catch (proxyError) {
     publishState({
-      state: 'error',
+      state: 'checking',
       currentVersion: app.getVersion(),
-      message: error instanceof Error ? error.message : String(error)
+      message: '国内镜像暂不可用，正在尝试 GitHub 直连…'
     })
+    try {
+      autoUpdater.setFeedURL(GITHUB_UPDATE_FEED)
+      const result = await autoUpdater.checkForUpdates()
+      if (result?.downloadPromise) await result.downloadPromise
+    } catch (githubError) {
+      const proxyMessage = proxyError instanceof Error ? proxyError.message : String(proxyError)
+      const githubMessage = githubError instanceof Error ? githubError.message : String(githubError)
+      publishState({
+        state: 'error',
+        currentVersion: app.getVersion(),
+        message: `国内镜像和 GitHub 直连均失败。镜像：${proxyMessage}；直连：${githubMessage}`
+      })
+    }
   }
   return updateState
 }

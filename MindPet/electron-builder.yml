@@ -54,9 +54,7 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: github
-  owner: fyufvcg
-  repo: MindPet
-  releaseType: release
+  provider: generic
+  url: https://gh-proxy.com/https://github.com/fyufvcg/MindPet/releases/latest/download
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
