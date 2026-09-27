@@ -1088,37 +1088,39 @@ export function AgentWindow(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="window-controls-overlay" aria-label="窗口控制">
-        <button
-          className="titlebar-control-btn"
-          onClick={() => window.api?.minimizeAgentWindow()}
-          title="最小化"
-          aria-label="最小化"
-        >
-          <Minus size={12} strokeWidth={1.8} aria-hidden="true" />
-        </button>
-        <button
-          className="titlebar-control-btn"
-          onClick={() => {
-            window.api?.maximizeAgentWindow()
-            setTimeout(checkMaximized, 100)
-          }}
-          title={isMaximized ? '向下还原' : '最大化'}
-          aria-label={isMaximized ? '向下还原' : '最大化'}
-        >
-          {isMaximized
-            ? <Copy size={11} strokeWidth={1.6} aria-hidden="true" />
-            : <Square size={10} strokeWidth={1.6} aria-hidden="true" />}
-        </button>
-        <button
-          className="titlebar-control-btn close"
-          onClick={() => window.api?.closeAgentWindow()}
-          title="关闭"
-          aria-label="关闭"
-        >
-          <X size={12} strokeWidth={1.6} aria-hidden="true" />
-        </button>
-      </div>
+      {!showSplash && (
+        <div className="window-controls-overlay" aria-label="窗口控制">
+          <button
+            className="titlebar-control-btn"
+            onClick={() => window.api?.minimizeAgentWindow()}
+            title="最小化"
+            aria-label="最小化"
+          >
+            <Minus size={12} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+          <button
+            className="titlebar-control-btn"
+            onClick={() => {
+              window.api?.maximizeAgentWindow()
+              setTimeout(checkMaximized, 100)
+            }}
+            title={isMaximized ? '向下还原' : '最大化'}
+            aria-label={isMaximized ? '向下还原' : '最大化'}
+          >
+            {isMaximized
+              ? <Copy size={11} strokeWidth={1.6} aria-hidden="true" />
+              : <Square size={10} strokeWidth={1.6} aria-hidden="true" />}
+          </button>
+          <button
+            className="titlebar-control-btn close"
+            onClick={() => window.api?.closeAgentWindow()}
+            title="关闭"
+            aria-label="关闭"
+          >
+            <X size={12} strokeWidth={1.6} aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {/* 删除会话二次确认弹框 */}
       {sessionToDeleteId && (
