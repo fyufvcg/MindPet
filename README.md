@@ -251,31 +251,15 @@ app:
       model: bge-m3
 ```
 
-### 3. 启动后端
+### 3. 一键启动源码版
 
-```bash
-cd MindPet-java
-mvn spring-boot:run
+Windows 开发机在仓库根目录运行唯一启动脚本：
+
+```bat
+XiaoqingDesktop.bat
 ```
 
-### 4. 启动桌面客户端
-
-```bash
-cd MindPet
-npm install
-npm run dev
-```
-
-### 5. 启动微信 Bot（可选）
-
-```bash
-# Windows
-start_bot.bat
-
-# 或手动
-cd MindPet-java
-java -jar target/weather-wechat-bot-1.0.0.jar --mode=bot
-```
+脚本会构建 SQLite 后端并启动 Electron；Electron 随后自动启动 Java 后端。源码调试需要 JDK 21、Maven、Node.js 20 和 npm。安装版已内置运行环境，用户直接打开应用即可。
 
 </details>
 
@@ -313,18 +297,14 @@ MINDPET/
 │   ├── init/01-schema.sql    # 首次启动自动建表
 │   └── backend/Dockerfile
 ├── scripts/
-│   ├── build-backend.bat     # 旧 Docker 方案的后端构建脚本
-│   ├── start.bat             # 启动本地 SQLite 后端，不启动 Redis
-│   ├── check.bat             # 检查 SQLite 文件和本地存储 API
-│   ├── start-docker-legacy.bat # 旧 Docker / PostgreSQL / Redis 启动脚本
-│   └── check-docker-legacy.bat # 旧容器栈检查脚本
-├── start_bot.bat             # 源码模式：后端 + 微信 Bot 一键启动
+│   └── check.bat              # 可选：检查 SQLite 和本地存储 API
+├── XiaoqingDesktop.bat        # 唯一源码启动脚本：构建后端并启动 Electron
 └── README.md
 ```
 
 > ⚠️ **使用长期记忆前需验证 Embedding**：后端在 Embedding 不可达时会**静默降级**——
 > `/api/desktop/health` 与聊天均正常，但长期记忆完全不工作。
-> `scripts\check.bat` 检查本地 SQLite 和主要存储 API；Embedding 连通性需在设置页检查，或手动调用 `POST /api/desktop/embedding-test`。旧 Docker 流程可使用 `scripts\check-docker-legacy.bat`。
+> `scripts\check.bat` 检查本地 SQLite 和主要存储 API；Embedding 连通性需在设置页检查，或手动调用 `POST /api/desktop/embedding-test`。
 
 ---
 

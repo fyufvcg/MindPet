@@ -95,9 +95,8 @@ src/main/resources/
 └─ log4j2.xml               日志配置
 
 sql/migration_v2.sql        数据库迁移脚本
-start.bat                   SQLite 本地开发启动（构建 JAR 并启动后端）
-start_bot.bat               根目录兼容入口，调用本文件的 start.bat
-start-legacy-postgres-redis.bat  旧 Redis / PostgreSQL 启动脚本，仅供参考
+..\XiaoqingDesktop.bat      唯一源码启动入口：构建后端并启动 Electron
+..\scripts\check.bat       可选的 SQLite 存储检查
 ```
 
 ### 前端
@@ -126,7 +125,7 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 - Ollama + `bge-m3`：本地 Embedding
 - Playwright 浏览器：浏览器自动化功能首次使用时需要安装浏览器
 
-数据库无需安装或手工初始化。启动脚本使用 `application-desktop.yml`，将数据写入仓库根目录的 `data/desktop/mindpet.db`。
+数据库无需安装或手工初始化。Electron 首次启动时自动创建数据库；默认开发数据路径为 `%APPDATA%/mindpet/backend/mindpet.db`，也可以通过 `USER_DATA_PATH` 指定用户数据目录。
 
 旧 PostgreSQL、pgvector、Redis 配置和 Docker 启动说明仅适用于历史部署，不是当前桌面版流程；旧数据尚未自动导入 SQLite。
 
@@ -179,27 +178,15 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ## 6. 启动流程
 
-### 6.1 启动 SQLite 本地后端
+### 6.1 一键启动 Electron 和 SQLite 后端
 
-```powershell
-.\start.bat
-```
+在仓库根目录运行 `XiaoqingDesktop.bat`。脚本构建 Java 后端；Electron 启动时自动运行该后端并使用 SQLite，无需单独启动 Redis、Docker 或另开前端命令。源码调试需要 JDK 21、Maven、Node.js 20 和 npm；已打包的桌面应用会自带 Java 运行时，直接打开应用即可。
 
-完整 Bot 启动：
+后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。可选的存储检查入口是 `scripts/check.bat`。
 
-```powershell
-.\start_bot.bat
-```
+### 6.2 前端开发命令
 
-此流程不会检查或启动 Redis。后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。旧 Docker 脚本已改名为 `scripts/start-docker-legacy.bat` 和 `scripts/check-docker-legacy.bat`。
-
-### 6.2 启动前端
-
-```powershell
-cd C:\Users\17547\Desktop\AgentPet-main
-npm install
-npm run dev
-```
+通常使用 `XiaoqingDesktop.bat` 同时启动前后端。需要单独调试前端时，在 `MindPet` 目录运行 `npm run dev`；该方式要求后端 JAR 已构建。
 
 常用命令：
 
@@ -274,7 +261,7 @@ Accept: application/x-ndjson
 
 ### 7.4 微信流程
 
-1. `start_bot.bat` 编译并启动后端及可选 MCP 服务。
+1. 启动桌面端和本地后端后，在应用设置中启用并配置微信通道。
 2. Java 微信 Bot 登录并接收文本、语音、图片和文件。
 3. Bot 将消息交给 AI Service；AI Service 读取历史上下文和记忆，执行工具调用。
 4. 文本回复直接发送；语音先经百度 ASR 转文字，语音回复经百度 TTS 合成后发送；文件先解析，修改/生成后保存并回传。

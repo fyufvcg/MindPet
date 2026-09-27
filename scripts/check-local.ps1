@@ -1,7 +1,17 @@
 $ErrorActionPreference = 'Stop'
 $baseUrl = 'http://127.0.0.1:8080'
-$database = Join-Path $PSScriptRoot '..\data\desktop\mindpet.db'
-$database = [System.IO.Path]::GetFullPath($database)
+$databaseCandidates = @()
+if ($env:USER_DATA_PATH) {
+    $databaseCandidates += Join-Path $env:USER_DATA_PATH 'backend\mindpet.db'
+}
+if ($env:APPDATA) {
+    $databaseCandidates += Join-Path $env:APPDATA 'mindpet\backend\mindpet.db'
+}
+$databaseCandidates += Join-Path $PSScriptRoot '..\data\backend\mindpet.db'
+$database = $databaseCandidates |
+    ForEach-Object { [System.IO.Path]::GetFullPath($_) } |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
 
 function Check-Api($path, $label) {
     $response = Invoke-RestMethod -Uri ($baseUrl + $path) -TimeoutSec 8
@@ -15,8 +25,8 @@ function Check-Api($path, $label) {
 Write-Host 'MindPet local SQLite verification'
 Write-Host "Database: $database"
 
-if (-not (Test-Path -LiteralPath $database -PathType Leaf)) {
-    throw 'SQLite database not found. Start the local backend with scripts\start.bat first.'
+if (-not $database) {
+    throw 'SQLite database not found. Start the desktop app with XiaoqingDesktop.bat first.'
 }
 Write-Host '  PASS  SQLite database file exists'
 
