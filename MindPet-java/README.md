@@ -41,8 +41,8 @@ MindPet 后端 (Spring Boot，默认 127.0.0.1:8080)
 | AgentPet 前端 | 桌面 UI、聊天展示、流式事件消费、会话管理界面、权限确认、文件选择与预览、RPA 编辑器 |
 | Electron 主进程 | 调用后端、管理 IPC、执行本地文件/Office/终端/浏览器能力、保存桌面资源 |
 | MindPet 后端 | 对话上下文、LLM 调用、意图识别、Function Calling、工具注册、记忆写入与检索、微信通道 |
-| PostgreSQL | 结构化数据、用户画像、长期记忆向量和知识图谱 |
-| Redis | 短期对话记忆、运行时缓存和会话同步 |
+| SQLite + sqlite-vec | 会话、缓存、用户画像、长期记忆向量和知识图谱 |
+| SQLite TTL 表 | 短期对话上下文和情绪历史 |
 
 ## 2. 技术栈
 
@@ -65,9 +65,8 @@ MindPet 后端 (Spring Boot，默认 127.0.0.1:8080)
 - Spring Boot `3.3.1`，内嵌 Tomcat，Spring Web
 - Spring AI `1.0.0`：ChatClient、OpenAI-compatible LLM、Tool Calling
 - Jackson：JSON 序列化
-- Spring Data Redis：Redis 访问
-- Spring JDBC + PostgreSQL JDBC `42.7.3`
-- PostgreSQL `14+` + `pgvector`：向量记忆和知识图谱检索
+- Spring JDBC + Xerial SQLite JDBC：本地数据库访问
+- sqlite-vec：向量距离计算；无法加载时回退 Java 精确计算
 - 微信 iLink SDK `2.3.3`：微信机器人通道
 - Apache POI `5.2.5`、PDFBox `2.0.31`：文件解析
 - Playwright Java `1.48.0`：浏览器操作
@@ -96,8 +95,9 @@ src/main/resources/
 └─ log4j2.xml               日志配置
 
 sql/migration_v2.sql        数据库迁移脚本
-start.bat                   开发启动（mvn exec:java）
-start_bot.bat               完整启动（打包 + Redis/MCP + java -jar）
+start.bat                   SQLite 本地开发启动（构建 JAR 并启动后端）
+start_bot.bat               根目录兼容入口，调用本文件的 start.bat
+start-legacy-postgres-redis.bat  旧 Redis / PostgreSQL 启动脚本，仅供参考
 ```
 
 ### 前端
@@ -113,13 +113,11 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 
 ## 4. 环境准备
 
-必须安装：
+源码开发必须安装：
 
 - JDK `21+`
 - Maven `3.6+`
 - Node.js `20+`（前端建议使用 LTS）和 npm
-- PostgreSQL `14+`，并启用 `pgvector`
-- Redis `7+`
 
 可选依赖：
 
@@ -128,7 +126,11 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 - Ollama + `bge-m3`：本地 Embedding
 - Playwright 浏览器：浏览器自动化功能首次使用时需要安装浏览器
 
-## 5. 后端配置
+数据库无需安装或手工初始化。启动脚本使用 `application-desktop.yml`，将数据写入仓库根目录的 `data/desktop/mindpet.db`。
+
+旧 PostgreSQL、pgvector、Redis 配置和 Docker 启动说明仅适用于历史部署，不是当前桌面版流程；旧数据尚未自动导入 SQLite。
+
+## 5. 旧版后端配置（历史部署）
 
 复制模板后填写本机配置：
 
@@ -136,7 +138,7 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 Copy-Item src/main/resources/application-template.yml src/main/resources/application.yml
 ```
 
-至少配置 PostgreSQL、Redis 和 LLM：
+旧版部署至少配置 PostgreSQL、Redis 和 LLM：
 
 ```yaml
 spring:
@@ -177,15 +179,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ## 6. 启动流程
 
-### 6.1 只启动后端
-
-```powershell
-cd D:\youkeda\MindPet-java
-mvn compile
-mvn exec:java
-```
-
-或者使用项目脚本：
+### 6.1 启动 SQLite 本地后端
 
 ```powershell
 .\start.bat
@@ -197,7 +191,7 @@ mvn exec:java
 .\start_bot.bat
 ```
 
-该脚本会尝试启动 Redis、12306 MCP（`8000`）和 HowToCook MCP（`3000`），然后运行微信机器人。后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。
+此流程不会检查或启动 Redis。后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。旧 Docker 脚本已改名为 `scripts/start-docker-legacy.bat` 和 `scripts/check-docker-legacy.bat`。
 
 ### 6.2 启动前端
 
@@ -276,7 +270,7 @@ Accept: application/x-ndjson
 
 ### 7.3 会话与记忆流程
 
-前端启动时读取 `/api/desktop/sessions` 和对应消息；新建、更新、删除会话时同步后端。聊天完成后，后端把消息写入 Redis 短期上下文，并按重要性生成用户画像、长期记忆和知识图谱数据，后续请求通过相似度检索重新注入上下文。
+前端启动时读取 `/api/desktop/sessions` 和对应消息；新建、更新、删除会话时同步后端。聊天完成后，后端把消息写入 SQLite 短期上下文，并按重要性生成用户画像、长期记忆和知识图谱数据，后续请求通过相似度检索重新注入上下文。
 
 ### 7.4 微信流程
 
@@ -304,8 +298,8 @@ Accept: application/x-ndjson
 
 - **前端提示后端连接失败**：确认后端已经启动，并访问 `http://127.0.0.1:8080/api/desktop/health`；确认端口没有被防火墙或其他进程占用。
 - **聊天能打开但没有回复**：检查 `application.yml` 中 `spring.ai.openai`、`llm.api` 的 Key、Base URL 和模型 ID；再看 Java 控制台日志。
-- **记忆/知识图谱不可用**：确认 PostgreSQL 可连接、已安装 `vector` 扩展并执行迁移脚本；确认 Embedding 服务可访问。
-- **历史消息为空**：确认 Redis 已启动且地址为 `127.0.0.1:6379`，并检查前端请求使用的 `userId` 是否为 `desktop-user`。
+- **记忆/知识图谱不可用**：运行 `scripts\check.bat` 检查 SQLite 存储接口，并确认 Embedding 服务可访问。
+- **历史消息为空**：确认 `data/desktop/mindpet.db` 存在，并检查前端请求使用的 `userId` 是否为 `desktop-user`。
 - **车票功能不可用**：确认 12306 MCP 正在监听 `8000`，并按项目约定配置账号 Cookie；不使用车票功能时可以跳过。
 - **菜谱/外卖工具不可用**：确认对应 MCP 服务已启动，并检查 `app.food.*` 配置。
 - **前端依赖安装失败**：使用 Node.js LTS，删除前不要随意清理已有构建目录；优先执行 `npm install`，原生依赖安装完成后再运行 `npm run typecheck`。

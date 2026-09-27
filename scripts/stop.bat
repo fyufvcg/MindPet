@@ -3,11 +3,11 @@ chcp 65001 >nul
 setlocal
 
 REM ============================================================
-REM  Stop MindPet backend infrastructure
+REM  LEGACY: stop Docker + PostgreSQL + Redis backend infrastructure
 REM ============================================================
 REM  Usage:
-REM    scripts\stop.bat            stop containers, KEEP all data
-REM    scripts\stop.bat --purge    stop AND delete data volumes
+REM    scripts\stop.bat            stop old containers, KEEP all data
+REM    scripts\stop.bat --purge    stop AND delete old data volumes
 REM
 REM  --purge erases PostgreSQL data, Redis data and the
 REM  downloaded Ollama model. It cannot be undone.
@@ -26,7 +26,7 @@ if errorlevel 1 (
 )
 echo.
 echo   Stopped. Data volumes kept: pgdata, redisdata, ollama, backenddata
-echo   Restart with: scripts\start.bat
+echo   Restart legacy stack with: scripts\start-docker-legacy.bat
 exit /b 0
 
 :purge

@@ -308,22 +308,23 @@ MINDPET/
 │   │   └── controller/       # REST API
 │   └── pom.xml
 ├── docker/                   # 一键部署
-│   ├── compose.yaml          # PostgreSQL + pgvector / Redis / 后端 / Ollama
+│   ├── compose.yaml          # 旧 Docker 部署：PostgreSQL + pgvector / Redis / 后端 / Ollama
 │   ├── .env.example          # 环境变量模板（复制为 .env 后填密钥）
 │   ├── init/01-schema.sql    # 首次启动自动建表
 │   └── backend/Dockerfile
 ├── scripts/
 │   ├── build-backend.bat     # 旧 Docker 方案的后端构建脚本
-│   ├── start.bat             # 启动（支持 start.bat local 启用 Ollama）
-│   ├── check.bat             # 部署校验（含 Embedding 连通性断言）
-│   └── stop.bat              # 停止（--purge 清空数据）
+│   ├── start.bat             # 启动本地 SQLite 后端，不启动 Redis
+│   ├── check.bat             # 检查 SQLite 文件和本地存储 API
+│   ├── start-docker-legacy.bat # 旧 Docker / PostgreSQL / Redis 启动脚本
+│   └── check-docker-legacy.bat # 旧容器栈检查脚本
 ├── start_bot.bat             # 源码模式：后端 + 微信 Bot 一键启动
 └── README.md
 ```
 
-> ⚠️ **部署时必须验证 Embedding**：后端在 Embedding 不可达时会**静默降级**——
+> ⚠️ **使用长期记忆前需验证 Embedding**：后端在 Embedding 不可达时会**静默降级**——
 > `/api/desktop/health` 与聊天均正常，但长期记忆完全不工作。
-> 因此请务必运行 `scripts\check.bat`，或手动调用 `POST /api/desktop/embedding-test`。
+> `scripts\check.bat` 检查本地 SQLite 和主要存储 API；Embedding 连通性需在设置页检查，或手动调用 `POST /api/desktop/embedding-test`。旧 Docker 流程可使用 `scripts\check-docker-legacy.bat`。
 
 ---
 

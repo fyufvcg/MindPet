@@ -49,5 +49,5 @@ echo   OK  docker\backend\weather-wechat-bot-1.0.0.jar  (!SIZE_MB! MB)
 echo.
 echo Next step:
 echo   copy docker\.env.example docker\.env    ^(then edit it^)
-echo   scripts\start.bat
+echo   scripts\start-docker-legacy.bat
 exit /b 0

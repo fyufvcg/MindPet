@@ -1,162 +1,47 @@
 @echo off
+chcp 65001 >nul
+setlocal
 
 cd /d "%~dp0"
-
-setlocal enabledelayedexpansion
-
-
+set "MINDPET_DATA_DIR=%~dp0..\data\desktop"
 
 echo ========================================
-
-echo   MindPet - 启动脚本
-
+echo  MindPet - SQLite local backend
 echo ========================================
-
+echo Data: %MINDPET_DATA_DIR%\mindpet.db
 echo.
-
-
-
-REM 检查 Java 21+
-
-echo [检查] Java...
 
 java -version >nul 2>&1
-
 if errorlevel 1 (
-
-    echo [错误] 未找到 Java，请安装 JDK 21+
-
+    echo [ERROR] JDK 21 or newer is required for source development.
     pause
-
     exit /b 1
-
 )
 
-echo        Java 已就绪
-
-
-
-REM 检查 Maven
-
-echo [检查] Maven...
-
-mvn -version >nul 2>&1
-
+call mvn -version >nul 2>&1
 if errorlevel 1 (
-
-    echo [错误] 未找到 Maven，请安装 Maven 3.6+
-
+    echo [ERROR] Maven is required to build the backend.
     pause
-
     exit /b 1
-
 )
 
-echo        Maven 已就绪
+if not exist "%MINDPET_DATA_DIR%" mkdir "%MINDPET_DATA_DIR%"
 
-
-
-REM === 自动检测 Redis 安装位置 ===
-
-set REDIS_DIR=
-
-if defined REDIS_HOME if exist "%REDIS_HOME%\redis-server.exe" set REDIS_DIR=%REDIS_HOME%
-
-if not defined REDIS_DIR (
-
-    for /f "delims=" %%i in ('where redis-cli 2^>nul') do (
-
-        if exist "%%~dpi..\redis-server.exe" set REDIS_DIR=%%~dpi..
-
-        if exist "%%~dpiredis-server.exe"  set REDIS_DIR=%%~dpi
-
-    )
-
-)
-
-if not defined REDIS_DIR (
-
-    for %%d in (
-
-        "C:\Program Files\Redis"
-
-        "D:\youkeda\Redis-8.8.0"
-
-        "D:\Redis"
-
-        "%USERPROFILE%\Redis"
-
-    ) do if not defined REDIS_DIR if exist "%%~d\redis-server.exe" set REDIS_DIR=%%~d
-
-)
-
-
-
-REM === 启动 Redis ===
-
-echo [检查] Redis...
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":6379" 2^>nul') do set REDIS_OK=1
-
-if "!REDIS_OK!"=="1" goto :redis_ok
-
-if not defined REDIS_DIR (
-
-    echo        [提示] 未找到 Redis，短期记忆将使用本地内存
-
-    echo        如需 Redis，请设置 REDIS_HOME 环境变量或安装到默认路径
-
-    goto :redis_ok
-
-)
-
-start "Redis" /B /D "!REDIS_DIR!" "!REDIS_DIR!\redis-server.exe" "redis.conf"
-
-timeout /t 2 /nobreak >nul
-
-echo        Redis 已启动
-
-:redis_ok
-
-
-
-echo.
-
-echo [编译] 正在编译项目...
-
-call mvn compile -q
-
+echo [1/2] Building backend...
+call mvn -q -DskipTests package
 if errorlevel 1 (
-
-    echo [错误] 编译失败
-
+    echo [ERROR] Maven package failed.
     pause
-
     exit /b 1
-
 )
 
-echo        编译完成
-
-
-
-echo.
-
-echo [启动] 正在启动服务 (port 8080)...
-
-echo ========================================
+echo [2/2] Starting SQLite-backed MindPet backend on port 8080...
+pushd "%MINDPET_DATA_DIR%"
+java -Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true -jar "%~dp0target\weather-wechat-bot-1.0.0.jar" --mode=bot --spring.config.location=classpath:/application-desktop.yml --app.storage.sqlite.path="%MINDPET_DATA_DIR%\mindpet.db" --server.port=8080
+set "EXIT_CODE=%ERRORLEVEL%"
+popd
 
 echo.
-
-mvn exec:java "-Dexec.args="
-
-echo.
-
-echo ========================================
-
-echo   MindPet 已退出
-
-echo ========================================
-
+echo MindPet backend exited with code %EXIT_CODE%.
 pause
-
+exit /b %EXIT_CODE%
