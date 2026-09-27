@@ -226,7 +226,7 @@ const api = {
   },
   setStoragePath: (pathStr: string): Promise<string> => ipcRenderer.invoke('api:set-storage-path', pathStr),
   getStoragePath: (): Promise<string> => ipcRenderer.invoke('api:get-storage-path'),
-  // ── 后端地址（本地部署 / 云端部署切换）──
+  // ── 本地后端地址 ──
   getBackendEndpoint: (): Promise<{ url: string; defaultUrl: string; file: string }> =>
     ipcRenderer.invoke('api:get-backend-endpoint'),
   testBackendEndpoint: (url: string): Promise<any> =>

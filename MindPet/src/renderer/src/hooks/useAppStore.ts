@@ -1201,7 +1201,7 @@ export function useAppStore() {
               if (!matchedPrev) return ls
               const isGenerating = Boolean(useAppStoreRaw.getState().sendingSessionIds?.[ls.id])
               if (!isGenerating) {
-                // Redis is authoritative for settled history. Keeping arbitrary
+                // The Java backend is authoritative for settled history. Keeping arbitrary
                 // memory-only IDs here caused every refresh to append old messages.
                 return { ...ls, messages: ls.messages || [] }
               }
@@ -1254,6 +1254,28 @@ export function useAppStore() {
             // 合并并追加处于创建流程中的会话
             return [...merged, ...creatingSessions]
           })
+        }
+      } else if (clearThinking) {
+        // First launch (or an empty history) still needs a real session ID so
+        // the composer can save messages and route the request to the backend.
+        const timeStr = formatDateTime()
+        const initialSession: Session = {
+          id: createSessionId(),
+          name: '(未命名)',
+          time: timeStr,
+          createdAt: timeStr,
+          messages: [],
+          pinned: false
+        }
+        creatingSessionIdsRef.current.add(initialSession.id)
+        setSessions([initialSession])
+        setActiveSessionId(initialSession.id)
+        try {
+          await window.api.createSession(initialSession)
+        } catch (error) {
+          console.error('创建初始会话失败', error)
+        } finally {
+          creatingSessionIdsRef.current.delete(initialSession.id)
         }
       }
     } catch (e) {

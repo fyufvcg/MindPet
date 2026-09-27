@@ -670,7 +670,7 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
         fitPendingRef.current = true
       } catch {
         setLoadError('知识图谱暂时无法连接')
-        showToast('无法读取知识图谱，请确认 Java 后端和 PostgreSQL 已启动', 'error')
+        showToast('无法读取知识图谱，请确认 MindPet 本地后端已启动', 'error')
       } finally {
         setLoading(false)
       }

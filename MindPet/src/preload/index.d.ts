@@ -155,7 +155,7 @@ declare global {
       onTokenUsage: (callback: (data: any) => void) => () => void
       setStoragePath: (pathStr: string) => Promise<string>
       getStoragePath: () => Promise<string>
-      /** 后端地址：本地部署默认 http://127.0.0.1:8080，云端部署由用户填写 */
+      /** 本地后端地址，默认 http://127.0.0.1:8080 */
       getBackendEndpoint: () => Promise<{ url: string; defaultUrl: string; file: string }>
       testBackendEndpoint: (url: string) => Promise<{
         ok: boolean

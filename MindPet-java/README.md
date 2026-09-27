@@ -2,7 +2,7 @@
 
 MindPet 是一套由桌面端 AgentPet 和 Java 后端组成的智能助手系统：桌面端负责交互界面、Live2D 宠物、文件/系统操作和本地能力；后端负责大模型编排、工具调用、微信消息接入、会话持久化、用户记忆和知识图谱。
 
-本仓库是后端工程，前端工程位于：`C:\Users\17547\Desktop\AgentPet-main`。
+本仓库同时包含 Electron 桌面端和 Java 后端：前端位于 `MindPet/`，后端位于 `MindPet-java/`。
 
 ## 当前桌面默认存储
 
@@ -10,7 +10,7 @@ MindPet 是一套由桌面端 AgentPet 和 Java 后端组成的智能助手系�
 
 Electron 安装包同时携带后端 JAR、精简 JRE 和各平台 sqlite-vec 原生库。终端用户无需安装 Java、PostgreSQL、Redis 或 Docker。源码开发只需要 JDK 21、Maven 和 Node.js；数据库表会在首次启动时自动创建。
 
-旧 PostgreSQL、pgvector、Redis 与 Docker 文件继续保留，供历史部署迁移使用。Maven profile `legacy-postgres-redis` 只提供旧驱动依赖，不是桌面版默认配置。下文涉及 PostgreSQL、Redis 和 Docker 的章节是旧部署说明。
+MindPet 目前面向用户的部署方式是桌面安装包；仓库不再维护 Docker Compose 或云服务器部署流程。`sql/` 中的旧数据库迁移脚本只供历史数据迁移参考，不参与桌面版运行。旧 PostgreSQL/Redis 数据尚未自动导入 SQLite。
 
 ## 1. 系统架构
 
@@ -94,7 +94,7 @@ src/main/resources/
 ├─ application.yml          本地实际配置（不要提交）
 └─ log4j2.xml               日志配置
 
-sql/migration_v2.sql        数据库迁移脚本
+sql/                        历史数据库迁移脚本（不参与桌面版运行）
 ..\XiaoqingDesktop.bat      唯一源码启动入口：构建后端并启动 Electron
 ..\scripts\check.bat       可选的 SQLite 存储检查
 ```
@@ -127,64 +127,15 @@ resources/live2d/          Live2D 模型与 Cubism Runtime
 
 数据库无需安装或手工初始化。Electron 首次启动时自动创建数据库；默认开发数据路径为 `%APPDATA%/mindpet/backend/mindpet.db`，也可以通过 `USER_DATA_PATH` 指定用户数据目录。
 
-旧 PostgreSQL、pgvector、Redis 配置和 Docker 启动说明仅适用于历史部署，不是当前桌面版流程；旧数据尚未自动导入 SQLite。
+## 5. 启动流程
 
-## 5. 旧版后端配置（历史部署）
-
-复制模板后填写本机配置：
-
-```powershell
-Copy-Item src/main/resources/application-template.yml src/main/resources/application.yml
-```
-
-旧版部署至少配置 PostgreSQL、Redis 和 LLM：
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/mindpet
-    username: postgres
-    password: <postgres-password>
-  data:
-    redis:
-      host: 127.0.0.1
-      port: 6379
-  ai:
-    openai:
-      api-key: <ark-api-key>
-      base-url: https://ark.cn-beijing.volces.com/api/v3
-      chat:
-        options:
-          model: <model-endpoint-id>
-
-llm:
-  api:
-    key: <ark-api-key>
-    url: https://ark.cn-beijing.volces.com/api/v3/chat/completions
-  model: <model-endpoint-id>
-```
-
-天气、腾讯地图、百度 AI/ASR/TTS、Embedding、邮件、MCP 等配置见 `application-template.yml`。密钥只放在本地配置或环境变量中，不要提交 `application.yml`、`config.properties`、`.env` 或任何真实凭证。
-
-初始化数据库：
-
-```sql
-CREATE DATABASE mindpet;
-\c mindpet
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-然后执行 `sql/migration_v2.sql`。如果使用的是已有数据库，先确认迁移脚本中的表和向量维度与当前 Embedding 模型一致。
-
-## 6. 启动流程
-
-### 6.1 一键启动 Electron 和 SQLite 后端
+### 5.1 一键启动 Electron 和 SQLite 后端
 
 在仓库根目录运行 `XiaoqingDesktop.bat`。脚本构建 Java 后端；Electron 启动时自动运行该后端并使用 SQLite，无需单独启动 Redis、Docker 或另开前端命令。源码调试需要 JDK 21、Maven、Node.js 20 和 npm；已打包的桌面应用会自带 Java 运行时，直接打开应用即可。
 
 后端默认端口为 `8080`，可通过 `GET http://127.0.0.1:8080/api/desktop/health` 检查。可选的存储检查入口是 `scripts/check.bat`。
 
-### 6.2 前端开发命令
+### 5.2 前端开发命令
 
 通常使用 `XiaoqingDesktop.bat` 同时启动前后端。需要单独调试前端时，在 `MindPet` 目录运行 `npm run dev`；该方式要求后端 JAR 已构建。
 
@@ -207,9 +158,9 @@ npm run dev
 
 注意：部分历史 IPC 处理器仍直接使用 `http://127.0.0.1:8080`，变更端口时需要同步检查 `src/main/index.ts` 中的会话、记忆、技能和配置请求。
 
-## 7. 具体业务流程
+## 6. 具体业务流程
 
-### 7.1 桌面端聊天流程
+### 6.1 桌面端聊天流程
 
 1. 用户在 AgentPet React 页面输入文字、选择图片或附件。
 2. 渲染进程通过 `window.api` 调用 Preload 暴露的 IPC 方法。
@@ -251,22 +202,22 @@ Accept: application/x-ndjson
 {"type":"text","content":"北京今天天气晴朗。"}
 ```
 
-### 7.2 快捷聊天流程
+### 6.2 快捷聊天流程
 
 桌面悬浮宠物的快捷输入使用 `POST /api/desktop/chat`，请求字段与流式接口相近，后端返回完整 JSON；它不需要前端逐条消费 NDJSON。
 
-### 7.3 会话与记忆流程
+### 6.3 会话与记忆流程
 
 前端启动时读取 `/api/desktop/sessions` 和对应消息；新建、更新、删除会话时同步后端。聊天完成后，后端把消息写入 SQLite 短期上下文，并按重要性生成用户画像、长期记忆和知识图谱数据，后续请求通过相似度检索重新注入上下文。
 
-### 7.4 微信流程
+### 6.4 微信流程
 
 1. 启动桌面端和本地后端后，在应用设置中启用并配置微信通道。
 2. Java 微信 Bot 登录并接收文本、语音、图片和文件。
 3. Bot 将消息交给 AI Service；AI Service 读取历史上下文和记忆，执行工具调用。
 4. 文本回复直接发送；语音先经百度 ASR 转文字，语音回复经百度 TTS 合成后发送；文件先解析，修改/生成后保存并回传。
 
-## 8. 桌面端 API 清单
+## 7. 桌面端 API 清单
 
 | 前缀 | 用途 |
 | --- | --- |
@@ -281,7 +232,7 @@ Accept: application/x-ndjson
 
 接口完整实现以 `src/main/java/controller/` 为准；前端调用封装和 IPC 映射以 `C:\Users\17547\Desktop\AgentPet-main\src\main\backend-api.ts`、`src\main\index.ts` 和 `src\preload\index.ts` 为准。
 
-## 9. 常见问题
+## 8. 常见问题
 
 - **前端提示后端连接失败**：确认后端已经启动，并访问 `http://127.0.0.1:8080/api/desktop/health`；确认端口没有被防火墙或其他进程占用。
 - **聊天能打开但没有回复**：检查 `application.yml` 中 `spring.ai.openai`、`llm.api` 的 Key、Base URL 和模型 ID；再看 Java 控制台日志。
@@ -291,7 +242,7 @@ Accept: application/x-ndjson
 - **菜谱/外卖工具不可用**：确认对应 MCP 服务已启动，并检查 `app.food.*` 配置。
 - **前端依赖安装失败**：使用 Node.js LTS，删除前不要随意清理已有构建目录；优先执行 `npm install`，原生依赖安装完成后再运行 `npm run typecheck`。
 
-## 10. 安全与提交检查
+## 9. 安全与提交检查
 
 - 不提交 `src/main/resources/application.yml`、`config.properties`、前端 `.env`、API Key、数据库密码和微信/12306 凭证。
 - 文件、Shell、SSH、浏览器和 RPA 工具具有本机或远程执行能力，生产使用前应启用最小权限和人工确认。
@@ -301,6 +252,6 @@ Accept: application/x-ndjson
 git status --short
 git ls-files | Select-String 'application.yml|config.properties|\.env'
 mvn compile
-cd C:\Users\17547\Desktop\AgentPet-main
+cd ..\MindPet
 npm run typecheck
 ```

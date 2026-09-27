@@ -1,5 +1,5 @@
 /**
- * HTTP RPA Run Repository — 将 RPA 运行记录通过 HTTP 持久化到 Java 后端 PostgreSQL。
+ * HTTP RPA Run Repository — 将 RPA 运行记录通过 HTTP 持久化到本地 Java/SQLite 后端。
  * 替代原 SqliteRpaRunRepository（依赖 mock-db stub，实际不工作）。
  */
 

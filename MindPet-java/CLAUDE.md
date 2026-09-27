@@ -17,10 +17,10 @@ MindPet 是一个**有情感的行动智能体**，兼具两个看似矛盾的�
 |------|------|
 | 框架 | Spring Boot 3.3 + Spring AI 1.0.0 |
 | LLM | 豆包 (OpenAI 兼容，ChatClient 统一调用) |
-| 对话记忆 | Redis (短期对话历史) + pgvector (长期语义记忆) |
-| 向量 | 豆包 Embedding API (1024维) |
+| 对话记忆 | SQLite 会话表 + TTL 短期上下文 |
+| 向量 | Embedding API / Ollama，sqlite-vec 检索并由 Java 回退计算 |
 | 工具系统 | Spring AI @Tool 注解 + 意图分类过滤 |
-| 数据库 | PostgreSQL 14+ (用户画像 / 长期记忆 / pgvector) |
+| 数据库 | SQLite + sqlite-vec（用户画像 / 会话 / 长期记忆 / 知识图谱） |
 | 浏览器 | Playwright Java SDK (不经过 MCP) |
 | 地图搜索 | 腾讯地图 WebService API |
 | 打车 | 滴滴 MCP 云端服务 |
@@ -74,7 +74,7 @@ MindPet 是一个**有情感的行动智能体**，兼具两个看似矛盾的�
 - [x] **渐进式触发**：首次 20→30→40→50（最大），每次审查上次触发以来的所有新消息
 
 ### Phase 2：记忆分层 ✅ 已完成
-- [x] PgVectorMemoryService — importance/layer/emotion/access_count/last_accessed 字段
+- [x] SqliteMemoryService — importance/layer/emotion/access_count/last_accessed 字段
 - [x] MemoryLayer 枚举 (IMPORTANT S=5.0 / REGULAR S=1.0)
 - [x] 遗忘曲线 `R = e^(-t/S)` + retention_rate()
 - [x] 检索时过滤 retention_rate < 0.1 的记忆
@@ -83,7 +83,7 @@ MindPet 是一个**有情感的行动智能体**，兼具两个看似矛盾的�
 
 ### Phase 3：情感分析 ✅ 已完成
 - [x] EmotionService — 三层架构（危险检测 + LLM + 语境翻转 6 条）
-- [x] 情感历史追踪 (Redis, 最多 50 条)
+- [x] 情感历史追踪 (SQLite，最多 50 条)
 - [x] 情感趋势对比（好转/恶化/稳定）
 - [x] 情感结果注入 system prompt
 
@@ -116,8 +116,9 @@ MindPet 是一个**有情感的行动智能体**，兼具两个看似矛盾的�
 | 文件 | 职责 |
 |------|------|
 | `MemoryCuratorService.java` | 独立 LLM 提取记忆，渐进间隔(20→50)，增量审查 |
-| `PgVectorMemoryService.java` | pgvector 长期记忆，混合检索(RRF+关键词+Reranking)，遗忘曲线 |
-| `ConversationMemoryService.java` | Redis 短期对话历史(200条，7天TTL) |
+| `SqliteMemoryService.java` | SQLite 长期记忆与向量检索，遗忘曲线 |
+| `SqliteSessionStore.java` | SQLite 会话与消息持久化 |
+| `ConversationMemoryService.java` | SQLite 短期上下文和 TTL 管理 |
 | `MemoryLayer.java` | 记忆分层枚举(IMPORTANT/REGULAR)，retention_rate() |
 | `EmbeddingService.java` | 豆包 Embedding API (1024维) |
 
@@ -132,7 +133,7 @@ MindPet 是一个**有情感的行动智能体**，兼具两个看似矛盾的�
 | 文件 | 职责 |
 |------|------|
 | `UserProfileService.java` | 用户画像 KV 存储 (identity/preference/experience/state) |
-| `UserInsightService.java` | 相处经验 + 自我成长 RAG (pgvector) |
+| `UserInsightService.java` | 相处经验 + 自我成长 RAG (SQLite + sqlite-vec) |
 
 ### 浏览器
 

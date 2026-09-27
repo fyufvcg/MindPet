@@ -7,8 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import * as fs from 'fs'
 import * as os from 'os'
-// sqlite3 replaced with mock — Java backend handles all data persistence
-// SQLite 已移除 — 会话数据全部走 Redis
+// Session and memory persistence is handled by the local Java/SQLite backend.
 import { EdgeTTS } from 'node-edge-tts'
 import JSZip from 'jszip'
 import { PDFParse } from 'pdf-parse'
@@ -772,7 +771,7 @@ function createWindow(): void {
     win.show()
     // 初始开启穿透，直到鼠标移动到宠物元素上
     win.setIgnoreMouseEvents(true, { forward: true })
-    if (!is.dev) {
+    if (is.dev) {
       win.webContents.openDevTools({ mode: 'detach' })
     }
 
@@ -1061,8 +1060,8 @@ app.whenReady().then(async () => {
     .catch(() => console.warn('[MCP] ⏳ 后端未就绪，前端 MCP 同步时会补推'))
 
   // ==================== Embedding 配置：启动同步（带重试）====================
-  // 后端可能在 Electron 之后才起来（Docker 部署尤其常见），一次性 fetch 会必然失败，
-  // 因此这里做有限重试；渲染进程获取状态时也会兜底再同步一次。
+  // Electron 启动的本地后端可能尚未就绪，因此这里做有限重试；
+  // 渲染进程获取状态时也会兜底再同步一次。
   const syncEmbeddingConfigToBackend = async (): Promise<boolean> => {
     let cfg
     try {
@@ -2921,7 +2920,7 @@ app.whenReady().then(async () => {
     return (hash >>> 0).toString(16).padStart(8, '0')
   }
 
-  const normalizeRedisMessages = (sessionId: string, rawMessages: any[]): any[] => {
+  const normalizeSessionMessages = (sessionId: string, rawMessages: any[]): any[] => {
     const normalized: any[] = []
     const indexById = new Map<string, number>()
     const indexByFingerprint = new Map<string, number>()
@@ -2947,7 +2946,7 @@ app.whenReady().then(async () => {
     return normalized
   }
 
-  const loadSessionsFromRedis = async (): Promise<any[]> => {
+  const loadSessionsFromBackend = async (): Promise<any[]> => {
     try {
       const res = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user')
       if (!res.ok) return []
@@ -2963,7 +2962,7 @@ app.whenReady().then(async () => {
           createdAt: s.created_at || s.updated_at || '',
           pinned: isRemoteSessionId(s.id || '') || s.pinned === true || s.pinned === 1 || s.pinned === '1' || s.pinned === 'true',
           userId: 'desktop-user', contextSummary: s.context_summary || s.contextSummary || '',
-          messages: normalizeRedisMessages(String(s.id), msgsData.messages || [])
+          messages: normalizeSessionMessages(String(s.id), msgsData.messages || [])
         })
       }
       return result
@@ -2972,9 +2971,9 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('api:get-local-sessions', async () => {
     try {
-      return await loadSessionsFromRedis()
+      return await loadSessionsFromBackend()
     } catch (e) {
-      console.error('Failed to load chat sessions from Redis', e)
+      console.error('Failed to load chat sessions from the local backend', e)
       return null
     }
   })
@@ -3008,7 +3007,7 @@ app.whenReady().then(async () => {
         session.id, session.name || '(未命名)', session.time,
         (session.pinned || isRemote) ? 1 : 0, session.userId || 'system', createdAt)
       }
-      // 同步到后端 Redis
+      // 同步到本地 Java 后端
       fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3055,7 +3054,7 @@ app.whenReady().then(async () => {
       const sql = `UPDATE sessions SET ${sets.join(', ')} WHERE id = ?`
       await database.run(sql, ...values)
       }
-      // 同步到后端 Redis
+      // 同步到本地 Java 后端
       const backendResponse = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3129,7 +3128,7 @@ app.whenReady().then(async () => {
     try {
       const database = await getDB()
       await database.run('DELETE FROM sessions WHERE id = ?', sessionId)
-      // 同步删除后端 Redis 会话
+      // 同步删除本地后端中的会话
       fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(sessionId)}?userId=desktop-user`, { method: 'DELETE' }).catch(() => {})
 
       // 如果删除的是微信会话，同步从微信活跃好友列表中清除该记录
@@ -4316,7 +4315,7 @@ app.whenReady().then(async () => {
     return callLlmInternal(config, messages, workspacePath, event)
   })
 
-  // ==================== 后端地址（本地部署 / 云端部署切换）====================
+  // ==================== 本地后端地址 ====================
   // 读取当前生效地址与来源，设置页用于展示
   ipcMain.handle('api:get-backend-endpoint', () => {
     return {

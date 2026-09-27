@@ -400,7 +400,7 @@ export function PetWidget(): React.JSX.Element {
       if (sessions.length === 0 && savedSessions) {
         try { sessions = JSON.parse(savedSessions) } catch (e) { }
       }
-      // Redis 数据同步回 localStorage，保持格式一致
+      // 后端会话数据同步回 localStorage，保持格式一致
       if (sessions.length > 0) {
         localStorage.setItem('mindpet_sessions', JSON.stringify(sessions))
       }

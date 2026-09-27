@@ -142,7 +142,7 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     }
   }
 
-  // ── 后端地址（本地部署 / 云端部署）──
+  // ── 本地后端地址 ──
   const [backendUrlInput, setBackendUrlInput] = React.useState('')
   const [activeBackendUrl, setActiveBackendUrl] = React.useState('')
   const [defaultBackendUrl, setDefaultBackendUrl] = React.useState('http://127.0.0.1:8080')
@@ -300,13 +300,12 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
       {/* Sub Panel */}
       <div className="sub-content-panel settings-content-panel">
 
-        {/* ── 后端连接（本地部署 / 云端部署）── */}
+        {/* ── 本地后端连接 ── */}
         {settingsSubTab === 'backend' && (
           <div className="settings-sub-panel settings-panel-card">
             <div className="form-desc-text">
-              MindPet 的大脑（LLM 调用、长期记忆、会话）运行在 Java 后端上。
-              <b>本地部署</b>时后端跑在这台电脑上（docker compose），保持默认地址即可；
-              <b>云端部署</b>时把地址改成服务器地址。
+              MindPet 的大脑（LLM 调用、长期记忆、会话）运行在桌面应用自动启动的本地 Java 后端上。
+              一般保持默认地址即可；只有本机后端端口发生变化时才需要修改。
             </div>
 
             <div className="form-group">

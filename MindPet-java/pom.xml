@@ -133,21 +133,4 @@
         </plugins>
     </build>
 
-    <!-- Kept only for importing an old developer database. It is never active in desktop builds. -->
-    <profiles>
-        <profile>
-            <id>legacy-postgres-redis</id>
-            <dependencies>
-                <dependency>
-                    <groupId>org.postgresql</groupId>
-                    <artifactId>postgresql</artifactId>
-                    <version>42.7.3</version>
-                </dependency>
-                <dependency>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-data-redis</artifactId>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
 </project>

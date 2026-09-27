@@ -93,7 +93,7 @@ ${chatLog}
       const displayMarkdown = `## [${time}] 记忆摘要与纠错沉淀\n${result.trim()}`
       const archiveMarkdown = `${displayMarkdown}${backup}`
       if (!(await window.api.appendMemorySummary(sessionId, archiveMarkdown))) {
-        console.warn('[Summary] 本地摘要归档失败，继续保存 Redis 摘要。')
+        console.warn('[Summary] 本地摘要归档失败，继续保存会话摘要。')
       }
 
       const batchIds = new Set(summaryBatch.map((message: any) => message.id))
@@ -102,7 +102,7 @@ ${chatLog}
         ? `${session.contextSummary}\n\n${displayMarkdown}`
         : displayMarkdown
       if (!(await window.api.updateSession(sessionId, { contextSummary }))) {
-        throw new Error('持久化 contextSummary 到 Redis 失败')
+        throw new Error('持久化会话摘要到本地后端失败')
       }
       setSessions(previous => previous.map(item => {
         if (item.id !== sessionId) return item

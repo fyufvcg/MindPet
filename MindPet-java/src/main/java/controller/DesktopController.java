@@ -367,12 +367,12 @@ public class DesktopController {
         int dim = vec.length;
         result.put("ok", true);
         result.put("dim", dim);
-        // 维度必须与数据库 vector(N) 一致，否则写入会报错
+        // 维度必须与 SQLite 向量索引一致，否则写入会失败。
         boolean dimMatchesDb = dim == 1024;
         result.put("dimMatchesDbSchema", dimMatchesDb);
         if (!dimMatchesDb) {
-            result.put("message", "向量维度 " + dim + " 与建表语句的 vector(1024) 不一致，"
-                + "记忆写入将失败。请更换模型或修改 docker/init/01-schema.sql。");
+            result.put("message", "当前 Embedding 向量维度为 " + dim
+                + "，请确认所选模型与本地 SQLite 向量索引配置一致。");
         }
         logger.log("INFO", "[Desktop] Embedding 测试成功 dim=" + dim + " 耗时=" + elapsed + "ms");
         return result;
