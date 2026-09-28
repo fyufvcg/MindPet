@@ -7,6 +7,7 @@ import service.SqliteMemoryService;
 import service.AiService;
 import service.ConversationMemoryService;
 import service.MemoryCuratorService;
+import service.MemoryReflectionService;
 import service.PortraitMemoryService;
 import service.SessionService;
 import service.UserProfileService;
