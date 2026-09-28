@@ -45,7 +45,11 @@ def main() -> int:
         raise RuntimeError("refusing to overwrite existing idempotency output")
     output_dir.mkdir(parents=True)
 
-    with DatabaseConfig.from_env().connect() as connection:
+    database_path = manifest.get("sqlite_canonical_absolute_path")
+    if not isinstance(database_path, str) or not database_path:
+        raise RuntimeError("pilot manifest does not record the Evaluation SQLite path")
+    config = DatabaseConfig(args.base_url, token, Path(database_path), args.timeout)
+    with config.connect() as connection:
         before = snapshot(connection)
         results = []
         for sample_id in args.samples:
@@ -55,7 +59,6 @@ def main() -> int:
                 {
                     "sampleId": sample_id,
                     "runId": run_id,
-                    "userId": "e2e_memory_eval_user",
                     "userMessage": sample["user_message"],
                     "assistantContext": sample["assistant_context"],
                     "emotion": "neutral",

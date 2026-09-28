@@ -1,30 +1,19 @@
-"""Shared fail-closed database helpers for the E2E memory benchmark."""
+"""Shared HTTP and artifact helpers for the isolated SQLite E2E benchmark."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
-from typing import Any, Iterable
-
-try:
-    import psycopg
-except ImportError as exc:  # pragma: no cover - environment preflight
-    raise RuntimeError("psycopg is required; install MindPet-Eval/requirements.txt") from exc
+from pathlib import Path
+from typing import Any
 
 
-REQUIRED_DATABASE = "mindpet_e2e_eval"
 EVAL_USER = "e2e_memory_eval_user"
 TABLES = (
-    ("long_term_memory", "id"),
-    ("kg_entity", "id"),
-    ("kg_relation", "id"),
-    ("kg_evidence", "id"),
-    ("kg_turn_ingest", "turn_hash"),
-)
-DELETE_ORDER = (
-    "kg_evidence", "kg_relation", "kg_entity", "kg_turn_ingest", "long_term_memory",
+    "long_term_memory", "kg_entity", "kg_relation", "kg_evidence", "kg_turn_ingest",
 )
 
 
@@ -32,129 +21,130 @@ class SafetyError(RuntimeError):
     pass
 
 
+def api_request(
+    method: str, url: str, token: str, body: dict[str, Any] | None, timeout: float
+) -> tuple[int, dict[str, Any]]:
+    payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(url, data=payload, method=method, headers={
+        "Accept": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-MindPet-Eval-Token": token,
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            parsed = json.loads(exc.read().decode("utf-8"))
+        except Exception:
+            parsed = {"status": "FAILED", "errorType": "NON_JSON_HTTP_ERROR"}
+        return exc.code, parsed
+
+
 @dataclass(frozen=True)
 class DatabaseConfig:
-    host: str
-    port: int
-    name: str
-    user: str
-    password: str
+    """HTTP Evaluation API configuration; this object never opens SQLite."""
+
+    base_url: str
+    token: str
+    sqlite_path: Path
+    timeout: float
 
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
-        name = os.environ.get("MINDPET_E2E_DB_NAME", REQUIRED_DATABASE)
-        if name != REQUIRED_DATABASE:
-            raise SafetyError(f"MINDPET_E2E_DB_NAME must be {REQUIRED_DATABASE}")
-        password = os.environ.get("MINDPET_E2E_DB_PASSWORD", "")
-        if not password:
-            raise SafetyError("MINDPET_E2E_DB_PASSWORD is required")
+        token = os.environ.get("APP_EVAL_E2E_MEMORY_TOKEN", "")
+        raw_path = os.environ.get("APP_EVAL_E2E_MEMORY_SQLITE_PATH", "")
+        if not token:
+            raise SafetyError("APP_EVAL_E2E_MEMORY_TOKEN is required")
+        if not raw_path:
+            raise SafetyError("APP_EVAL_E2E_MEMORY_SQLITE_PATH is required")
         return cls(
-            host=os.environ.get("MINDPET_E2E_DB_HOST", "127.0.0.1"),
-            port=int(os.environ.get("MINDPET_E2E_DB_PORT", "5432")),
-            name=name,
-            user=os.environ.get("MINDPET_E2E_DB_USER", "mindpet_e2e_runner"),
-            password=password,
+            base_url=os.environ.get("APP_EVAL_E2E_MEMORY_BASE_URL", "http://127.0.0.1:8082"),
+            token=token,
+            sqlite_path=Path(raw_path).resolve(strict=False),
+            timeout=float(os.environ.get("APP_EVAL_E2E_MEMORY_TIMEOUT", "30")),
         )
 
-    def connect(self) -> "psycopg.Connection[Any]":
-        connection = psycopg.connect(
-            host=self.host,
-            port=self.port,
-            dbname=self.name,
-            user=self.user,
-            password=self.password,
-            connect_timeout=10,
-        )
-        require_database(connection)
-        return connection
+    def connect(self) -> "DatabaseConfig":
+        return self
+
+    def __enter__(self) -> "DatabaseConfig":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        return None
 
 
-def require_database(connection: "psycopg.Connection[Any]") -> str:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT current_database()")
-        current = cursor.fetchone()[0]
-    if current != REQUIRED_DATABASE:
-        raise SafetyError(
-            f"refusing E2E operation: current_database()={current!r}, expected {REQUIRED_DATABASE!r}"
-        )
-    return current
+def require_snapshot(
+    state: dict[str, Any], expected_database_path: Path | None = None
+) -> dict[str, Any]:
+    if state.get("status") != "OK" or state.get("userId") != EVAL_USER:
+        raise SafetyError("snapshot is not bound to the fixed evaluation user")
+    raw_path = state.get("databasePath")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise SafetyError("snapshot does not expose a canonical SQLite path")
+    if expected_database_path is not None:
+        actual = Path(raw_path).resolve(strict=False)
+        expected = expected_database_path.resolve(strict=False)
+        if actual != expected:
+            raise SafetyError(f"snapshot path mismatch: {actual} != {expected}")
+    tables = state.get("tables")
+    if not isinstance(tables, dict) or set(tables) != set(TABLES):
+        raise SafetyError("snapshot does not contain exactly the five evaluation tables")
+    for table in TABLES:
+        value = tables[table]
+        if not isinstance(value, dict) or not isinstance(value.get("count"), int):
+            raise SafetyError(f"invalid snapshot table: {table}")
+        if value["count"] != len(value.get("rows", [])):
+            raise SafetyError(f"snapshot count mismatch: {table}")
+    return state
 
 
-def _digest_rows(
-    connection: "psycopg.Connection[Any]",
-    table: str,
-    order_column: str,
-    where_sql: str,
-    params: Iterable[Any],
-) -> str:
-    digest = hashlib.sha256()
-    sql = (
-        f"SELECT to_jsonb(row_data)::text FROM "
-        f"(SELECT * FROM {table} WHERE {where_sql} ORDER BY {order_column}) AS row_data"
+def snapshot(connection: DatabaseConfig) -> dict[str, Any]:
+    status, state = api_request(
+        "GET", connection.base_url.rstrip("/") + "/api/eval/memory/snapshot",
+        connection.token, None, connection.timeout,
     )
-    with connection.cursor() as cursor:
-        cursor.execute(sql, tuple(params))
-        for (payload,) in cursor:
-            digest.update(payload.encode("utf-8"))
-            digest.update(b"\n")
-    return digest.hexdigest()
+    if status != 200:
+        raise SafetyError(f"snapshot failed: HTTP {status} {state.get('errorType')}")
+    return require_snapshot(state, connection.sqlite_path)
 
 
-def snapshot(connection: "psycopg.Connection[Any]") -> dict[str, Any]:
-    database = require_database(connection)
-    tables: dict[str, Any] = {}
-    with connection.cursor() as cursor:
-        for table, order_column in TABLES:
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            total = cursor.fetchone()[0]
-            cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=%s", (EVAL_USER,))
-            eval_count = cursor.fetchone()[0]
-            other_count = total - eval_count
-            tables[table] = {
-                "row_count": total,
-                "eval_user_row_count": eval_count,
-                "other_users_row_count": other_count,
-                "eval_user_digest": _digest_rows(
-                    connection, table, order_column, "user_id=%s", (EVAL_USER,)
-                ),
-                "other_users_digest": _digest_rows(
-                    connection, table, order_column, "user_id<>%s", (EVAL_USER,)
-                ),
-            }
-    return {"database": database, "user_id": EVAL_USER, "tables": tables}
+def reset_eval_user(connection: DatabaseConfig) -> dict[str, int]:
+    status, result = api_request(
+        "POST", connection.base_url.rstrip("/") + "/api/eval/memory/reset",
+        connection.token, {}, connection.timeout,
+    )
+    if status != 200 or result.get("status") != "OK":
+        raise SafetyError(f"reset failed: HTTP {status} {result.get('errorType')}")
+    return result.get("deleted", {})
 
 
-def reset_eval_user(connection: "psycopg.Connection[Any]") -> dict[str, int]:
-    require_database(connection)
-    deleted: dict[str, int] = {}
-    with connection.transaction():
-        with connection.cursor() as cursor:
-            for table in DELETE_ORDER:
-                cursor.execute(f"DELETE FROM {table} WHERE user_id=%s", (EVAL_USER,))
-                deleted[table] = cursor.rowcount
-            for table, _ in TABLES:
-                cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=%s", (EVAL_USER,))
-                remaining = cursor.fetchone()[0]
-                if remaining != 0:
-                    raise SafetyError(f"reset incomplete: {table} still has {remaining} evaluation rows")
-    return deleted
+def commit_and_require_idle(connection: DatabaseConfig) -> None:
+    del connection
+
+
+def require_eval_user_empty(state: dict[str, Any]) -> None:
+    require_snapshot(state)
+    nonempty = {
+        table: state["tables"][table]["count"]
+        for table in TABLES if state["tables"][table]["count"] != 0
+    }
+    if nonempty:
+        raise SafetyError(f"evaluation user is not empty after reset: {nonempty}")
 
 
 def verify_isolation(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
-    if before.get("database") != REQUIRED_DATABASE or after.get("database") != REQUIRED_DATABASE:
-        raise SafetyError("snapshot database is not the dedicated E2E database")
-    checks: dict[str, bool] = {}
-    for table, _ in TABLES:
-        left = before["tables"][table]
-        right = after["tables"][table]
-        unchanged = (
-            left["other_users_row_count"] == right["other_users_row_count"]
-            and left["other_users_digest"] == right["other_users_digest"]
-        )
-        checks[table] = unchanged
-        if not unchanged:
-            raise SafetyError(f"non-evaluation rows changed in {table}")
-    return {"database": REQUIRED_DATABASE, "other_users_unchanged": checks, "passed": True}
+    require_snapshot(before)
+    require_snapshot(after)
+    if before["databasePath"] != after["databasePath"]:
+        raise SafetyError("snapshot database path changed during the run")
+    return {
+        "database_path": after["databasePath"],
+        "user_id": EVAL_USER,
+        "fixed_user_only": True,
+        "passed": True,
+    }
 
 
 def write_json(path: Any, value: Any) -> None:

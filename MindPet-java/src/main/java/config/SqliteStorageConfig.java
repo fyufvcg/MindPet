@@ -27,8 +27,16 @@ public class SqliteStorageConfig {
     @Primary
     public DataSource sqliteDataSource(
         @Value("${app.storage.sqlite.path:${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db}") String configuredPath,
-        @Value("${app.storage.sqlite.vec-extension:}") String extensionPath
+        @Value("${app.storage.sqlite.vec-extension:}") String extensionPath,
+        @Value("${app.eval.e2e-memory.enabled:${APP_EVAL_E2E_MEMORY_ENABLED:false}}") boolean evaluationEnabled,
+        @Value("${app.eval.e2e-memory.sqlite-path:${APP_EVAL_E2E_MEMORY_SQLITE_PATH:}}") String evaluationPath,
+        @Value("${app.eval.e2e-memory.allowed-root:${APP_EVAL_E2E_MEMORY_ALLOWED_ROOT:}}") String allowedRoot,
+        @Value("${user.home}") String userHome
     ) throws Exception {
+        if (evaluationEnabled) {
+            EvaluationSqlitePathGuard.validate(
+                configuredPath, evaluationPath, allowedRoot, userHome);
+        }
         Path dbPath = Path.of(configuredPath).toAbsolutePath().normalize();
         Files.createDirectories(dbPath.getParent());
 

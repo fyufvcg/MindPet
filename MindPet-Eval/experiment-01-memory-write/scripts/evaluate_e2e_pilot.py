@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from e2e_db import DatabaseConfig, EVAL_USER, write_json
+from e2e_db import write_json
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -104,30 +104,18 @@ def expected_sets(sample: dict[str, Any]) -> tuple[set[tuple[str, str]], set[tup
     return entities, relations
 
 
-def actual_sets(connection: Any, mapping: dict[str, Any]) -> tuple[set[tuple[str, str]], set[tuple[Any, str, Any]]]:
-    entity_ids = mapping.get("entity_ids", [])
-    relation_ids = mapping.get("relation_ids", [])
-    entities: set[tuple[str, str]] = set()
+def actual_sets(mapping: dict[str, Any]) -> tuple[set[tuple[str, str]], set[tuple[Any, str, Any]]]:
+    entities = {
+        (normalize(entity.get("normalizedName")), entity.get("entityType"))
+        for entity in mapping.get("entities", [])
+    }
     relations: set[tuple[Any, str, Any]] = set()
-    with connection.cursor() as cursor:
-        if entity_ids:
-            cursor.execute(
-                "SELECT normalized_name,entity_type FROM kg_entity WHERE user_id=%s AND id=ANY(%s)",
-                (EVAL_USER, entity_ids),
-            )
-            entities = {(normalize(name), entity_type) for name, entity_type in cursor.fetchall()}
-        if relation_ids:
-            cursor.execute(
-                "SELECT s.normalized_name,s.entity_type,r.predicate,t.normalized_name,t.entity_type "
-                "FROM kg_relation r JOIN kg_entity s ON s.id=r.source_entity_id "
-                "JOIN kg_entity t ON t.id=r.target_entity_id "
-                "WHERE r.user_id=%s AND r.id=ANY(%s)",
-                (EVAL_USER, relation_ids),
-            )
-            for source_name, source_type, predicate, target_name, target_type in cursor.fetchall():
-                source: Any = "user" if normalize(source_name) == "user" else (normalize(source_name), source_type)
-                target: Any = "user" if normalize(target_name) == "user" else (normalize(target_name), target_type)
-                relations.add((source, predicate, target))
+    for relation in mapping.get("relations", []):
+        source_name = normalize(relation.get("sourceName"))
+        target_name = normalize(relation.get("targetName"))
+        source: Any = "user" if source_name == "user" else (source_name, relation.get("sourceType"))
+        target: Any = "user" if target_name == "user" else (target_name, relation.get("targetType"))
+        relations.add((source, relation.get("predicate"), target))
     return entities, relations
 
 
@@ -167,16 +155,15 @@ def main() -> int:
     expected_relations: list[set[Any]] = []
     actual_entities: list[set[Any]] = []
     actual_relations: list[set[Any]] = []
-    with DatabaseConfig.from_env().connect() as connection:
-        for sample in samples:
-            expected_entity_set, expected_relation_set = expected_sets(sample)
-            actual_entity_set, actual_relation_set = actual_sets(
-                connection, mapping_by_id[sample["sample_id"]]
-            )
-            expected_entities.append(expected_entity_set)
-            expected_relations.append(expected_relation_set)
-            actual_entities.append(actual_entity_set)
-            actual_relations.append(actual_relation_set)
+    for sample in samples:
+        expected_entity_set, expected_relation_set = expected_sets(sample)
+        actual_entity_set, actual_relation_set = actual_sets(
+            mapping_by_id[sample["sample_id"]]
+        )
+        expected_entities.append(expected_entity_set)
+        expected_relations.append(expected_relation_set)
+        actual_entities.append(actual_entity_set)
+        actual_relations.append(actual_relation_set)
 
     kg_positive = [
         index for index, sample in enumerate(samples)

@@ -6,15 +6,15 @@ import argparse
 import csv
 import difflib
 import json
-import subprocess
 import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
 
-TABLE_DIR = Path("MindPet-Eval/results/e2e_pilot/tables")
-REPORT_PATH = Path("MindPet-Eval/reports/e2e-pilot-error-analysis.md")
+SCRIPT_DIR = Path(__file__).resolve().parent
+EXPERIMENT_ROOT = SCRIPT_DIR.parent
+DEFAULT_DATASET = EXPERIMENT_ROOT / "02-pilot-v1" / "datasets" / "pilot_30.jsonl"
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -75,36 +75,29 @@ def name_equivalent_for_type_diagnosis(left: str, right: str) -> bool:
     ).ratio() >= NORMALIZED_NAME_SIMILARITY_THRESHOLD
 
 
-def query_json_lines(docker: str, sql: str) -> list[dict[str, Any]]:
-    process = subprocess.run(
-        [docker, "exec", "mindpet-postgres", "psql", "-U", "mindpet_e2e_runner",
-         "-d", "mindpet_e2e_eval", "-X", "-Atc", sql],
-        check=True, capture_output=True, text=True, encoding="utf-8",
-    )
-    return [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
-
-
-def fetch_actual(docker: str) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
-    entity_sql = (
-        "SELECT json_build_object('turn_hash',v.turn_hash,'id',e.id,'name',e.display_name,"
-        "'normalized_name',e.normalized_name,'type',e.entity_type)::text "
-        "FROM kg_evidence v JOIN kg_entity e ON e.id=v.entity_id "
-        "WHERE v.user_id='e2e_memory_eval_user' ORDER BY v.turn_hash,e.id"
-    )
-    relation_sql = (
-        "SELECT json_build_object('turn_hash',v.turn_hash,'id',r.id,"
-        "'source_name',s.display_name,'source_type',s.entity_type,'predicate',r.predicate,"
-        "'target_name',t.display_name,'target_type',t.entity_type)::text "
-        "FROM kg_evidence v JOIN kg_relation r ON r.id=v.relation_id "
-        "JOIN kg_entity s ON s.id=r.source_entity_id JOIN kg_entity t ON t.id=r.target_entity_id "
-        "WHERE v.user_id='e2e_memory_eval_user' ORDER BY v.turn_hash,r.id"
-    )
+def fetch_actual(
+    mappings: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
     entities: dict[str, list[dict[str, Any]]] = defaultdict(list)
     relations: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in query_json_lines(docker, entity_sql):
-        entities[row.pop("turn_hash")].append(row)
-    for row in query_json_lines(docker, relation_sql):
-        relations[row.pop("turn_hash")].append(row)
+    for mapping in mappings:
+        turn_hash = mapping["turn_hash"]
+        for row in mapping.get("entities", []):
+            entities[turn_hash].append({
+                "id": row.get("id"),
+                "name": row.get("displayName"),
+                "normalized_name": row.get("normalizedName"),
+                "type": row.get("entityType"),
+            })
+        for row in mapping.get("relations", []):
+            relations[turn_hash].append({
+                "id": row.get("id"),
+                "source_name": row.get("sourceName"),
+                "source_type": row.get("sourceType"),
+                "predicate": row.get("predicate"),
+                "target_name": row.get("targetName"),
+                "target_type": row.get("targetType"),
+            })
     return entities, relations
 
 
@@ -201,20 +194,18 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project-root", type=Path, required=True)
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--docker", required=True)
+    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument("--run-dir", type=Path, required=True)
     args = parser.parse_args()
-    project = args.project_root
-    run_dir = project / "MindPet-Eval" / "results" / "e2e_pilot" / args.run_id
-    samples = load_jsonl(project / "MindPet-Eval" / "datasets" / "e2e_memory" / "pilot_30.jsonl")
+    run_dir = args.run_dir
+    samples = load_jsonl(args.dataset)
     records = load_jsonl(run_dir / "raw" / "ingest_results.jsonl")
     mappings = load_jsonl(run_dir / "raw" / "sample_mapping.jsonl")
     if len(samples) != 30 or len(records) != 30 or len(mappings) != 30:
         raise ValueError("analysis requires the completed 30-sample formal Pilot")
     response_by_id = {row["sample_id"]: row["response"] for row in records}
     mapping_by_id = {row["sample_id"]: row for row in mappings}
-    entities_by_hash, relations_by_hash = fetch_actual(args.docker)
+    entities_by_hash, relations_by_hash = fetch_actual(mappings)
 
     entity_rows: list[dict[str, Any]] = []
     relation_rows: list[dict[str, Any]] = []
@@ -378,7 +369,7 @@ def main() -> int:
         response = response_by_id[sample_id]
         actual_entities, actual_relations = actual_by_sample[sample_id]
         parse = response.get("parse", {})
-        if not parse.get("memoryObjectPresent", False):
+        if "memoryObjectPresent" in parse and not parse.get("memoryObjectPresent", False):
             fallback_categories[sample["category"]] += 1
             if sample["human_should_remember"]:
                 fallback_class = "clearly_problematic"
@@ -424,7 +415,7 @@ def main() -> int:
                 "actual_relations": dumps(actual_relations),
             })
 
-    output_table_dir = project / TABLE_DIR
+    output_table_dir = run_dir / "tables"
     write_csv(output_table_dir / "entity_error_analysis.csv", entity_rows)
     write_csv(output_table_dir / "relation_error_analysis.csv", relation_rows)
     write_csv(output_table_dir / "fallback_analysis.csv", fallback_rows)
@@ -437,6 +428,7 @@ def main() -> int:
     primary_entity = entity_error_counts.most_common(1)[0] if entity_error_counts else ("none", 0)
     primary_relation = relation_error_counts.most_common(1)[0] if relation_error_counts else ("none", 0)
     fallback_focus = sum(fallback_categories[name] for name in ("temporary_state", "one_off_information", "small_talk"))
+    fallback_rate = fallback_focus / len(fallback_rows) if fallback_rows else 0.0
     fallback_detail_lines = [
         "| sample | category | difficulty | human remember | human importance | AI worth | AI remember | AI importance | AI confidence | fallback class v1 |",
         "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
@@ -469,8 +461,8 @@ def main() -> int:
 
 ## Scope
 
-- Run: `{args.run_id}`
-- Source: archived raw results, sample mapping, confirmed Ground Truth, and read-only E2E database rows.
+- Run: `{run_dir.name}`
+- Source: archived raw results, sample mapping, and confirmed Ground Truth.
 - AI calls: none during this analysis.
 - Ground Truth and production algorithms were not changed.
 
@@ -508,7 +500,7 @@ Case folding and whitespace normalization were already present in the strict eva
 - memoryObjectPresent=false: {len(fallback_rows)}
 - Category distribution: {dumps(dict(sorted(fallback_categories.items())))}
 - v1 classification: {dumps(dict(sorted(fallback_classes.items())))}
-- temporary_state + one_off_information + small_talk: {fallback_focus}/{len(fallback_rows)} ({fallback_focus / len(fallback_rows):.2%})
+- temporary_state + one_off_information + small_talk: {fallback_focus}/{len(fallback_rows)} ({fallback_rate:.2%})
 
 Fallbacks are therefore concentrated in the three short-lived/negative categories, although four negative controls also come from stable_fact, long_term_preference, and long_term_goal.
 
@@ -539,7 +531,7 @@ p019 is a confirmed but explicitly six-week rehabilitation schedule. The model e
 
 Exact matching materially underestimates KG performance, but matching is not the only bottleneck. Remaining errors show schema/type ambiguity, wrong predicates, over-splitting, generic related_to overuse, KG suppression on memory-negative turns, and fallback behavior. The Pilot does not yet support moving directly to 600 samples without first resolving the evaluation-policy question for LTM-negative/KG-positive turns and diagnosing the production extraction/fallback path.
 """
-    report_path = project / REPORT_PATH
+    report_path = run_dir / "error-analysis.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report, encoding="utf-8")
     summary = {
