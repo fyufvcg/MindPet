@@ -1,7 +1,7 @@
 # MindPet Importance 生成链路审计
 
-> 审计范围：`D:\MindPet-dev\MindPet-java` 当前生产源码。
-> 审计方式：静态源码追踪；未调用 API、未连接数据库、未运行实验。
+> 审计范围：`D:\MindPet-dev\MindPet-java` 当前生产源码。  
+> 审计方式：静态源码追踪；未调用 API、未连接数据库、未运行实验。  
 > 本报告只记录现状，不提出或实施算法修改。
 
 ## 1. 结论摘要
@@ -347,3 +347,4 @@ importance × exp(-time / layerStrength)
 - 默认值：importance `0.5`；自动解析 confidence fallback `0.5`；数据库/手工 confidence 默认 `1.0`；layer 默认 `3`。
 - parse 整体失败：不保存，而不是默认保存。
 - 下游影响：写入门槛、layer、retention、关键词候选池、Full rerank、bonus、prune 和 Prompt 标记。
+
