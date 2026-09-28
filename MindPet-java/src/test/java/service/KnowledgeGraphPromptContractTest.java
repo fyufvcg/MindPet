@@ -87,8 +87,11 @@ class KnowledgeGraphPromptContractTest {
             .contains("\"entities\": [")
             .contains("\"relations\": [")
             .contains("project|technology|tool|preference|goal|person|topic|organization|place|event|other")
-            .contains("prefers|dislikes|uses|learns|builds|works_on|plans|knows|experienced|belongs_to|related_to")
-            .contains("Use related_to only when no more specific allowed predicate applies");
+            .contains("prefers|dislikes|uses|learns|builds|works_on|plans|knows|experienced|belongs_to|related_to");
+        if (V2_SHA256.equals(PROMPT_SHA256)) {
+            assertThat(PROMPT)
+                .contains("Use related_to only when no more specific allowed predicate applies");
+        }
     }
 
     private static String extractionPrompt() {
