@@ -62,6 +62,7 @@ public class MemoryCuratorService {
     private final CuratorTurnStore turnStore;
     private final UserProfileService profileService;
     private final UserInsightService insightService;
+    private final MemoryReflectionService reflectionService;
     private final Executor executor;
     private final ObjectMapper mapper;
     private final Logger logger;
@@ -70,6 +71,7 @@ public class MemoryCuratorService {
                                 CuratorTurnStore turnStore,
                                 UserProfileService profileService,
                                 UserInsightService insightService,
+                                MemoryReflectionService reflectionService,
                                 @Qualifier("memoryCuratorExecutor") Executor executor,
                                 ObjectMapper mapper,
                                 Logger logger) {
@@ -77,6 +79,7 @@ public class MemoryCuratorService {
         this.turnStore = turnStore;
         this.profileService = profileService;
         this.insightService = insightService;
+        this.reflectionService = reflectionService;
         this.executor = executor;
         this.mapper = mapper;
         this.logger = logger;
@@ -215,6 +218,7 @@ public class MemoryCuratorService {
         workingMemory.put("checkpoint", target);
         workingMemory.put("updated_at", Instant.now().toString());
         turnStore.saveWorkingMemory(userId, workingMemory);
+        reflectionService.scheduleMissingReflections(userId);
         return tools.savedCount();
     }
 
@@ -334,7 +338,7 @@ public class MemoryCuratorService {
                 @ToolParam(description = "应该长期保持的改进") String insight,
                 @ToolParam(description = "产生该改进的对话背景") String context) {
             String cat = category == null ? "style" : category.trim();
-            if (!Set.of("personality", "preference", "knowledge", "style").contains(cat)) cat = "style";
+            if (!Set.of("personality", "preference", "knowledge", "style", "memory_reflection").contains(cat)) cat = "style";
             String cleanInsight = insight == null ? "" : insight.trim();
             if (cleanInsight.isBlank()) return "未保存：缺少成长内容";
             if (insightService.growthExists(userId, cat, cleanInsight)) {

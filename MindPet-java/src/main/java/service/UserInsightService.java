@@ -92,6 +92,42 @@ public class UserInsightService {
         }
     }
 
+    public boolean saveMemoryReflection(String userId, String sourceType, String sourceId,
+                                        String title, String thought, String context) {
+        if (userId == null || userId.isBlank() || sourceType == null || sourceType.isBlank()
+                || sourceId == null || sourceId.isBlank() || thought == null || thought.isBlank()) {
+            return false;
+        }
+        try {
+            float[] vector = embedService.embed(thought);
+            if (vector == null) return false;
+            byte[] embedding = VectorSearchService.encode(vector);
+            int updated = jdbc.update(
+                "UPDATE llm_growth SET title=?,insight=?,context=?,embedding=?,updated_at=CURRENT_TIMESTAMP "
+                    + "WHERE user_id=? AND category='memory_reflection' AND source_type=? AND source_id=?",
+                title == null ? "" : title, thought, context == null ? "" : context, embedding,
+                userId, sourceType, sourceId);
+            if (updated > 0) return true;
+
+            int inserted = jdbc.update(
+                "INSERT OR IGNORE INTO llm_growth "
+                    + "(user_id,category,insight,context,embedding,title,source_type,source_id,updated_at) "
+                    + "VALUES (?,'memory_reflection',?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+                userId, thought, context == null ? "" : context, embedding,
+                title == null ? "" : title, sourceType, sourceId);
+            if (inserted > 0) return true;
+
+            return jdbc.update(
+                "UPDATE llm_growth SET title=?,insight=?,context=?,embedding=?,updated_at=CURRENT_TIMESTAMP "
+                    + "WHERE user_id=? AND category='memory_reflection' AND source_type=? AND source_id=?",
+                title == null ? "" : title, thought, context == null ? "" : context, embedding,
+                userId, sourceType, sourceId) > 0;
+        } catch (Exception e) {
+            logger.log("ERROR", "保存 MindPet 记忆回响失败: " + e.getMessage());
+            return false;
+        }
+    }
+
     public boolean growthExists(String userId, String category, String insight) {
         try {
             Boolean exists = jdbc.queryForObject(
@@ -113,6 +149,7 @@ public class UserInsightService {
                     String cat = switch (rs.getString("category")) {
                         case "personality" -> "性格"; case "preference" -> "喜好";
                         case "knowledge" -> "认知"; case "style" -> "风格";
+                        case "memory_reflection" -> "记忆回响";
                         default -> rs.getString("category");
                     };
                     return "- [" + cat + "] " + rs.getString("insight");
@@ -145,6 +182,7 @@ public class UserInsightService {
                     String cat = switch (rs.getString("category")) {
                         case "personality" -> "性格"; case "preference" -> "喜好";
                         case "knowledge" -> "认知"; case "style" -> "风格";
+                        case "memory_reflection" -> "记忆回响";
                         default -> rs.getString("category");
                     };
                     return String.format("- [%s] %s", cat, rs.getString("insight"));

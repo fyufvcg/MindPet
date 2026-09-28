@@ -49,6 +49,13 @@ interface InsightItem {
 }
 
 interface GrowthItem extends InsightItem { category?: string }
+interface MemoryReflection {
+  title?: string
+  thought?: string
+  createdAt?: string
+  updatedAt?: string
+  stale?: boolean
+}
 interface RememberedItem {
   id: string
   kind?: string
@@ -84,13 +91,15 @@ interface RememberedItem {
     galleryItemId?: string
     imageUri?: string
   }
+  reflection?: MemoryReflection
+  reflectionStatus?: string
 }
 interface PortraitData {
-  workingMemory: string
   profile: ProfileItem[]
   insights: InsightItem[]
   growth: GrowthItem[]
   memories: RememberedItem[]
+  reflectionBackfill: { status?: string; remaining?: number; message?: string }
 }
 
 const moodMeta: Record<string, { label: string; color: string }> = {
@@ -122,6 +131,572 @@ const cosmosStars = Array.from({ length: 84 }, (_, index) => ({
   delay: -((index * 0.61) % 12),
   duration: 8 + (index * 7) % 15
 }))
+
+const COSMOS_LAYOUT = {
+  initialDepth: 820,
+  focusDepth: 700,
+  edgeBuffer: 640,
+  cardRenderDepth: 4_800,
+  distantRenderDepth: 8_600,
+  virtualizeAfter: 60,
+  frameSampleMs: 110
+} as const
+
+interface CosmosNode {
+  item: GalleryItem
+  index: number
+  worldZ: number
+  focusZ: number
+  side: 'left' | 'right'
+  lane: number
+  yaw: number
+  roll: number
+}
+
+interface CameraTarget {
+  from: number
+  to: number
+  startedAt: number
+  duration: number
+}
+
+interface CameraMotion {
+  z: number
+  velocity: number
+  impulse: number
+  minZ: number
+  maxZ: number
+  target: CameraTarget | null
+}
+
+interface PointerTrailPoint { x: number; y: number; time: number }
+interface StardustPointer {
+  active: boolean
+  x: number
+  y: number
+  lastMove: number
+  fadingUntil: number
+  samples: PointerTrailPoint[]
+}
+
+interface MemoryPhotoFlight {
+  itemId: string
+  imageUri: string
+  from: { left: number; top: number; width: number; height: number }
+}
+
+const MEMORY_PHOTO_FLIGHT_MS = 240
+const MEMORY_DETAIL_UNFOLD_MS = 210
+const MEMORY_DETAIL_CLOSE_MS = 280
+
+function makeSeededRandom(seedText: string): () => number {
+  let seed = 2166136261
+  for (let index = 0; index < seedText.length; index += 1) {
+    seed ^= seedText.charCodeAt(index)
+    seed = Math.imul(seed, 16777619)
+  }
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 4294967296
+  }
+}
+
+function buildCosmosLayout(items: GalleryItem[]): CosmosNode[] {
+  const nodes: CosmosNode[] = []
+  const sideVisits = { left: 0, right: 0 }
+  let index = 0
+  let cursorZ = COSMOS_LAYOUT.initialDepth
+
+  while (index < items.length) {
+    const groupRandom = makeSeededRandom(`${items[index].id}:memory-group`)
+    const groupSize = Math.min(items.length - index, 2 + Math.floor(groupRandom() * 3))
+    const innerSpacing = 180 + groupRandom() * 70
+    const groupGap = 320 + groupRandom() * 141
+    const firstSide = groupRandom() < 0.5 ? 'left' : 'right'
+
+    for (let localIndex = 0; localIndex < groupSize; localIndex += 1) {
+      const item = items[index]
+      const itemRandom = makeSeededRandom(`${item.id}:memory-photo`)
+      const side = (localIndex % 2 === 0) === (firstSide === 'left') ? 'left' : 'right'
+      const yaw = 23 + itemRandom() * 6 + (itemRandom() - 0.5) * 3
+      const roll = (itemRandom() - 0.5) * 3.2
+      const worldZ = cursorZ + localIndex * innerSpacing
+      const laneBase = (sideVisits[side]++ % 2 === 0 ? -128 : 128)
+      nodes.push({
+        item,
+        index,
+        worldZ,
+        focusZ: worldZ - COSMOS_LAYOUT.focusDepth,
+        side,
+        lane: laneBase + (itemRandom() - 0.5) * 36,
+        yaw: side === 'left' ? yaw : -yaw,
+        roll: side === 'left' ? roll : -roll
+      })
+      index += 1
+    }
+
+    cursorZ += (groupSize - 1) * innerSpacing + groupGap
+  }
+
+  // Approximate the CSS perspective projection and separate any unusually close
+  // same-side frames vertically before their layout becomes interactive.
+  for (let nodeIndex = 1; nodeIndex < nodes.length; nodeIndex += 1) {
+    const node = nodes[nodeIndex]
+    for (let previousIndex = nodeIndex - 1; previousIndex >= 0; previousIndex -= 1) {
+      const previous = nodes[previousIndex]
+      if (node.worldZ - previous.worldZ > 1_150) break
+      if (node.side !== previous.side) continue
+
+      const cameraZ = Math.min(node.worldZ, previous.worldZ) - COSMOS_LAYOUT.focusDepth
+      const nodeDepth = Math.max(120, node.worldZ - cameraZ)
+      const previousDepth = Math.max(120, previous.worldZ - cameraZ)
+      const nodeScale = 1_260 / (1_260 + nodeDepth)
+      const previousScale = 1_260 / (1_260 + previousDepth)
+      const sideSign = node.side === 'left' ? -1 : 1
+      const nodeX = sideSign * 270 * nodeScale
+      const previousX = sideSign * 270 * previousScale
+      const overlapWidth = Math.max(0, (248 * nodeScale + 248 * previousScale) / 2 - Math.abs(nodeX - previousX))
+      const nodeY = node.lane * nodeScale
+      const previousY = previous.lane * previousScale
+      const overlapHeight = Math.max(0, (330 * nodeScale + 330 * previousScale) / 2 - Math.abs(nodeY - previousY))
+      const smallerArea = Math.min(248 * 330 * nodeScale * nodeScale, 248 * 330 * previousScale * previousScale)
+      if (smallerArea > 0 && overlapWidth * overlapHeight / smallerArea > 0.2) {
+        const direction = node.lane >= previous.lane ? 1 : -1
+        const projectedGap = (330 * nodeScale + 330 * previousScale) / 2 - Math.abs(nodeY - previousY) + 28
+        node.lane += direction * projectedGap / nodeScale
+      }
+    }
+  }
+
+  return nodes
+}
+
+function nearestCosmosIndex(nodes: CosmosNode[], cameraZ: number): number {
+  if (nodes.length === 0) return 0
+  const next = firstCosmosNodeAtOrAfter(nodes, cameraZ + COSMOS_LAYOUT.focusDepth)
+  if (next === 0) return nodes[0].index
+  if (next >= nodes.length) return nodes[nodes.length - 1].index
+  const previousDistance = Math.abs(nodes[next - 1].focusZ - cameraZ)
+  const nextDistance = Math.abs(nodes[next].focusZ - cameraZ)
+  return (previousDistance <= nextDistance ? nodes[next - 1] : nodes[next]).index
+}
+
+function firstCosmosNodeAtOrAfter(nodes: CosmosNode[], worldZ: number): number {
+  let low = 0
+  let high = nodes.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (nodes[middle].worldZ < worldZ) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
+function positiveModulo(value: number, modulus: number): number {
+  return ((value % modulus) + modulus) % modulus
+}
+
+interface MemoryParticleCanvasProps {
+  active: boolean
+  hasMemories: boolean
+  reducedMotion: boolean
+  cameraMotionRef: React.MutableRefObject<CameraMotion>
+  worldRef: React.RefObject<HTMLDivElement | null>
+  pointerRef: React.MutableRefObject<StardustPointer>
+  timelineRangeRef: React.RefObject<HTMLInputElement | null>
+  timelineMarkerRef: React.RefObject<HTMLSpanElement | null>
+  timelineBounds: { minimum: number; maximum: number }
+  onCameraSample: (cameraZ: number, velocity: number) => void
+}
+
+function MemoryParticleCanvas({
+  active,
+  hasMemories,
+  reducedMotion,
+  cameraMotionRef,
+  worldRef,
+  pointerRef,
+  timelineRangeRef,
+  timelineMarkerRef,
+  timelineBounds,
+  onCameraSample
+}: MemoryParticleCanvasProps): React.JSX.Element {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const cursorCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d', { alpha: true })
+    const cursorCanvas = cursorCanvasRef.current
+    const cursorContext = cursorCanvas?.getContext('2d', { alpha: true })
+    if (!canvas || !context || !cursorCanvas || !cursorContext || !active) return
+
+    const themeRoot = canvas.closest('.memory-cosmos-page')
+    const isLightTheme = (): boolean => Boolean(themeRoot?.closest('.agent-window-container.light'))
+    let lightTheme = isLightTheme()
+    const readThemeColor = (property: string, fallback: [number, number, number]): [number, number, number] => {
+      const value = themeRoot ? getComputedStyle(themeRoot).getPropertyValue(property).trim() : ''
+      const hex = /^#([0-9a-f]{6})$/i.exec(value)
+      if (hex) {
+        const color = Number.parseInt(hex[1], 16)
+        return [(color >> 16) & 255, (color >> 8) & 255, color & 255]
+      }
+      const rgb = /^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i.exec(value)
+      return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : fallback
+    }
+    let cosmosBlue = readThemeColor('--cosmos-blue', [113, 155, 184])
+    let cosmosGold = readThemeColor('--cosmos-gold', [186, 141, 88])
+    const rgba = (color: [number, number, number], alpha: number): string => `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`
+    const visibleParticleColor = (color: [number, number, number], gold = false): [number, number, number] => {
+      if (!lightTheme) return color
+      const [red, green, blue] = color.map(channel => channel / 255)
+      const maximum = Math.max(red, green, blue)
+      const minimum = Math.min(red, green, blue)
+      const delta = maximum - minimum
+      const originalLightness = (maximum + minimum) / 2
+      let hue = 0
+      let saturation = 0
+      if (delta > 0) {
+        saturation = delta / (1 - Math.abs(2 * originalLightness - 1))
+        if (maximum === red) hue = ((green - blue) / delta) % 6
+        else if (maximum === green) hue = (blue - red) / delta + 2
+        else hue = (red - green) / delta + 4
+        hue = (hue * 60 + 360) % 360
+      }
+      saturation = Math.min(0.84, Math.max(gold ? 0.68 : 0.62, saturation * 1.85))
+      const lightness = clamp(originalLightness + (gold ? 0.09 : 0.05), 0.55, 0.68)
+      const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
+      const second = chroma * (1 - Math.abs((hue / 60) % 2 - 1))
+      const offset = lightness - chroma / 2
+      const rgb = hue < 60 ? [chroma, second, 0]
+        : hue < 120 ? [second, chroma, 0]
+          : hue < 180 ? [0, chroma, second]
+            : hue < 240 ? [0, second, chroma]
+              : hue < 300 ? [second, 0, chroma]
+                : [chroma, 0, second]
+      return rgb.map(channel => Math.round((channel + offset) * 255)) as [number, number, number]
+    }
+
+    interface Particle {
+      x: number
+      y: number
+      depth: number
+      radius: number
+      alpha: number
+      phase: number
+      flicker: number
+      tint: number
+    }
+    const createLayer = (count: number, depthRange: number): Particle[] => Array.from({ length: count }, () => {
+      const sign = Math.random() < 0.5 ? -1 : 1
+      return {
+        x: sign * (0.22 + Math.random() * 0.78),
+        y: (Math.random() - 0.5) * 1.9,
+        depth: Math.random() * depthRange,
+        radius: 0.55 + Math.random() * 1.65,
+        alpha: 0.16 + Math.random() * 0.52,
+        phase: Math.random() * Math.PI * 2,
+        flicker: 0.18 + Math.random() * 0.75,
+        tint: Math.random()
+      }
+    })
+    const farParticles = createLayer(140, 7600)
+    const middleParticles = createLayer(96, 4800)
+    const nearParticles = createLayer(56, 2500)
+    let width = 0
+    let height = 0
+    let pixelRatio = 1
+    let frameId = 0
+    let previousFrame = 0
+    let previousSample = 0
+    let previousQualityCheck = 0
+    let slowFrames = 0
+    let qualityLevel = 0
+    const qualityByLevel = [1, 0.86, 0.72, 0.58, 0.48]
+
+    const resize = (): void => {
+      const bounds = canvas.getBoundingClientRect()
+      width = bounds.width
+      height = bounds.height
+      pixelRatio = Math.min(1.5, window.devicePixelRatio || 1)
+      canvas.width = Math.max(1, Math.round(width * pixelRatio))
+      canvas.height = Math.max(1, Math.round(height * pixelRatio))
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+      cursorCanvas.width = canvas.width
+      cursorCanvas.height = canvas.height
+      cursorContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+    }
+    resize()
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
+    resizeObserver?.observe(canvas)
+    if (!resizeObserver) window.addEventListener('resize', resize)
+
+    const drawLayer = (
+      particles: Particle[],
+      depthRange: number,
+      parallax: number,
+      layer: 'far' | 'middle' | 'near',
+      count: number,
+      time: number,
+      cameraZ: number,
+      velocity: number
+    ): void => {
+      const centerX = width * 0.5
+      const centerY = height * 0.49
+      const focalLength = Math.max(520, Math.min(1180, width * 0.9))
+      const cycleShift = cameraZ * parallax
+      const speedRatio = Math.min(1, Math.abs(velocity) / 1900)
+      const baseTrail = (layer === 'near' ? 23 : layer === 'middle' ? 10 : 3) * (lightTheme ? 1.32 : 1)
+      const trailLength = reducedMotion ? 0 : speedRatio * baseTrail
+
+      for (let index = 0; index < count; index += 1) {
+        const particle = particles[index]
+        const depth = 220 + positiveModulo(particle.depth - cycleShift, depthRange)
+        const scale = focalLength / (focalLength + depth)
+        const x = centerX + particle.x * width * 0.66 * scale
+        const y = centerY + particle.y * height * 0.58 * scale
+        if (x < -36 || x > width + 36 || y < -36 || y > height + 36) continue
+
+        const pulse = reducedMotion ? 0.94 : 0.76 + Math.sin(time * 0.001 * particle.flicker + particle.phase) * 0.16
+        const alpha = Math.min(0.94, particle.alpha * pulse * (layer === 'far' ? 0.72 : 0.92) * (lightTheme ? 1.58 : 1))
+        const radius = Math.min(lightTheme ? 4.2 : 3.4, particle.radius * (lightTheme ? 0.62 + scale * 1.22 : 0.45 + scale * 0.95))
+        const isGoldParticle = particle.tint > (lightTheme ? 0.5 : 0.72)
+        const particleColor = visibleParticleColor(isGoldParticle ? cosmosGold : cosmosBlue, isGoldParticle)
+        if (lightTheme && radius > 1.05) {
+          context.beginPath()
+          context.arc(x, y, radius * 2.65, 0, Math.PI * 2)
+          context.fillStyle = rgba(particleColor, alpha * 0.2)
+          context.fill()
+        }
+        if (trailLength > 0.45) {
+          const directionX = x - centerX
+          const directionY = y - centerY
+          const distance = Math.max(1, Math.hypot(directionX, directionY))
+          const outwardX = (directionX / distance) * trailLength
+          const outwardY = (directionY / distance) * trailLength
+          context.beginPath()
+          if (velocity > 0) context.moveTo(x - outwardX, y - outwardY)
+          else context.moveTo(x, y)
+          if (velocity > 0) context.lineTo(x, y)
+          else context.lineTo(x + outwardX, y + outwardY)
+          context.strokeStyle = rgba(particleColor, alpha * (lightTheme ? 0.72 : 0.58))
+          context.lineWidth = Math.max(0.5, radius * 0.65)
+          context.stroke()
+        }
+
+        context.beginPath()
+        context.arc(x, y, radius, 0, Math.PI * 2)
+        context.fillStyle = rgba(particleColor, alpha)
+        context.fill()
+      }
+    }
+
+    const drawPointer = (time: number): void => {
+      const pointer = pointerRef.current
+      const trailFade = pointer.active ? 1 : clamp((pointer.fadingUntil - time) / 160, 0, 1)
+      if (trailFade <= 0) {
+        pointer.samples.length = 0
+        return
+      }
+      const age = Math.max(0, time - pointer.lastMove)
+      const idleFade = age > 1200 ? Math.max(0.48, 1 - (age - 1200) / 1800) : 1
+
+      if (!reducedMotion) {
+        const visibleSamples = pointer.samples.filter(sample => time - sample.time <= 260)
+        if (visibleSamples.length > 1) {
+          cursorContext.beginPath()
+          visibleSamples.forEach((sample, index) => {
+            if (index === 0) cursorContext.moveTo(sample.x, sample.y)
+            else cursorContext.lineTo(sample.x, sample.y)
+          })
+          cursorContext.strokeStyle = lightTheme ? `rgba(39, 91, 143, ${0.34 * trailFade})` : `rgba(245, 211, 153, ${0.38 * trailFade})`
+          cursorContext.lineWidth = 1.6
+          cursorContext.lineCap = 'round'
+          cursorContext.stroke()
+        }
+        for (let index = pointer.samples.length - 1; index >= 0; index -= 1) {
+          const sample = pointer.samples[index]
+          const sampleAge = time - sample.time
+          if (sampleAge < 0 || sampleAge > 260) continue
+          const life = 1 - sampleAge / 260
+          const along = 1 - index / Math.max(1, pointer.samples.length)
+          const particleCount = 1 + (index % 3)
+          for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+            const scatter = (particleIndex - (particleCount - 1) / 2) * 2.2
+            cursorContext.beginPath()
+            cursorContext.arc(sample.x - scatter * 0.65, sample.y + scatter, Math.max(0.85, 1.9 * life * (1 - along * 0.2)), 0, Math.PI * 2)
+            cursorContext.fillStyle = rgba(visibleParticleColor(cosmosGold, true), life * (lightTheme ? 0.94 : 0.72) * trailFade)
+            cursorContext.fill()
+          }
+        }
+      }
+
+      if (!pointer.active) return
+
+      const glowRadius = (lightTheme ? 21 : 18) + Math.min(2, Math.sin(time * 0.003) * 0.8)
+      const glow = cursorContext.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, glowRadius)
+      glow.addColorStop(0, `rgba(255, 245, 221, ${0.65 * idleFade})`)
+      glow.addColorStop(0.35, rgba(visibleParticleColor(cosmosGold, true), (lightTheme ? 0.46 : 0.32) * idleFade))
+      glow.addColorStop(1, rgba(visibleParticleColor(cosmosBlue), 0))
+      cursorContext.beginPath()
+      cursorContext.arc(pointer.x, pointer.y, glowRadius, 0, Math.PI * 2)
+      cursorContext.fillStyle = glow
+      cursorContext.fill()
+
+      for (let index = 0; index < 3; index += 1) {
+        const angle = time * 0.00045 + index * (Math.PI * 2 / 3)
+        const orbit = 10.5 + (index % 2) * 2.1
+        cursorContext.beginPath()
+        cursorContext.arc(pointer.x + Math.cos(angle) * orbit, pointer.y + Math.sin(angle) * orbit, index === 0 ? 2 : 1.4, 0, Math.PI * 2)
+        cursorContext.fillStyle = rgba(visibleParticleColor(index === 0 ? cosmosGold : cosmosBlue, index === 0), (lightTheme ? 1 : 0.86) * idleFade)
+        cursorContext.fill()
+      }
+
+      cursorContext.beginPath()
+      cursorContext.moveTo(pointer.x, pointer.y - 10)
+      cursorContext.quadraticCurveTo(pointer.x + 1.6, pointer.y - 1.6, pointer.x + 10, pointer.y)
+      cursorContext.quadraticCurveTo(pointer.x + 1.6, pointer.y + 1.6, pointer.x, pointer.y + 10)
+      cursorContext.quadraticCurveTo(pointer.x - 1.6, pointer.y + 1.6, pointer.x - 10, pointer.y)
+      cursorContext.quadraticCurveTo(pointer.x - 1.6, pointer.y - 1.6, pointer.x, pointer.y - 10)
+      cursorContext.closePath()
+      cursorContext.fillStyle = lightTheme ? `rgba(31, 73, 116, ${0.95 * idleFade})` : `rgba(255, 242, 210, ${0.96 * idleFade})`
+      cursorContext.fill()
+      cursorContext.strokeStyle = lightTheme ? `rgba(255, 255, 255, ${0.96 * idleFade})` : `rgba(26, 48, 76, ${0.94 * idleFade})`
+      cursorContext.lineWidth = 1.35
+      cursorContext.stroke()
+      cursorContext.beginPath()
+      cursorContext.arc(pointer.x, pointer.y, 2.8, 0, Math.PI * 2)
+      cursorContext.fillStyle = lightTheme ? `rgba(255, 218, 142, ${idleFade})` : `rgba(197, 145, 71, ${idleFade})`
+      cursorContext.shadowColor = lightTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 227, 177, 0.8)'
+      cursorContext.shadowBlur = 7
+      cursorContext.fill()
+      cursorContext.shadowBlur = 0
+    }
+
+    const frame = (time: number): void => {
+      const rawDelta = previousFrame === 0 ? 16 : time - previousFrame
+      const deltaSeconds = clamp(rawDelta / 1000, 0.001, 0.032)
+      previousFrame = time
+      if (rawDelta > 36) slowFrames += 1
+
+      const motion = cameraMotionRef.current
+      const previousZ = motion.z
+      if (!hasMemories) {
+        motion.velocity = 0
+        motion.impulse = 0
+        motion.target = null
+      } else if (motion.target) {
+        const progress = clamp((time - motion.target.startedAt) / motion.target.duration, 0, 1)
+        const eased = 1 - Math.pow(1 - progress, 4)
+        motion.z = motion.target.from + (motion.target.to - motion.target.from) * eased
+        motion.velocity = (motion.z - previousZ) / deltaSeconds
+        if (progress >= 1) {
+          motion.z = motion.target.to
+          motion.velocity = 0
+          motion.target = null
+        }
+      } else {
+        motion.velocity = clamp(motion.velocity + motion.impulse, -1900, 1900)
+        motion.impulse = 0
+        const towardEdge = motion.velocity < 0 ? motion.z - motion.minZ : motion.maxZ - motion.z
+        const edgeResistance = 0.14 + 0.86 * clamp(towardEdge / 460, 0, 1)
+        motion.z += motion.velocity * deltaSeconds * edgeResistance
+        if (motion.z <= motion.minZ) {
+          motion.z = motion.minZ
+          if (motion.velocity < 0) motion.velocity = 0
+        }
+        if (motion.z >= motion.maxZ) {
+          motion.z = motion.maxZ
+          if (motion.velocity > 0) motion.velocity = 0
+        }
+        motion.velocity *= Math.exp(-4.65 * deltaSeconds)
+        if (Math.abs(motion.velocity) < 4) motion.velocity = 0
+      }
+
+      const world = worldRef.current
+      world?.style.setProperty('--camera-z', `${motion.z.toFixed(2)}px`)
+      if (world) {
+        for (let childIndex = 0; childIndex < world.children.length; childIndex += 1) {
+          const node = world.children[childIndex] as HTMLElement
+          const worldZ = Number(node.dataset.worldZ)
+          if (!Number.isFinite(worldZ)) continue
+          const depth = worldZ - motion.z
+          const approachFade = clamp((depth - 135) / 190, 0, 1)
+          const distanceFade = clamp((8_500 - depth) / 2_600, 0, 1)
+          const pointScale = node.classList.contains('is-distant') ? 0.34 : 1
+          node.style.opacity = String(approachFade * distanceFade * pointScale)
+          node.style.pointerEvents = !node.classList.contains('is-distant') && depth > 150 && depth < COSMOS_LAYOUT.distantRenderDepth ? 'auto' : 'none'
+        }
+      }
+      const range = timelineRangeRef.current
+      if (range) range.value = String(clamp(motion.z, timelineBounds.minimum, timelineBounds.maximum))
+      const timelineProgress = timelineBounds.maximum > timelineBounds.minimum
+          ? clamp((motion.z - timelineBounds.minimum) / (timelineBounds.maximum - timelineBounds.minimum), 0, 1)
+          : 0.5
+      timelineMarkerRef.current?.style.setProperty('left', `${timelineProgress * 100}%`)
+
+      if (time - previousSample >= COSMOS_LAYOUT.frameSampleMs) {
+        previousSample = time
+        onCameraSample(motion.z, motion.velocity)
+      }
+
+      if (time - previousQualityCheck > 2600) {
+        if (slowFrames >= 8) qualityLevel = Math.min(4, qualityLevel + 1)
+        else if (slowFrames <= 1) qualityLevel = Math.max(0, qualityLevel - 1)
+        cosmosBlue = readThemeColor('--cosmos-blue', cosmosBlue)
+        cosmosGold = readThemeColor('--cosmos-gold', cosmosGold)
+        lightTheme = isLightTheme()
+        slowFrames = 0
+        previousQualityCheck = time
+      }
+
+      context.clearRect(0, 0, width, height)
+      const quality = qualityByLevel[qualityLevel]
+      const velocity = !hasMemories || reducedMotion ? 0 : motion.velocity
+      const ambientScale = hasMemories ? 1 : 0.48
+      drawLayer(farParticles, 7600, 0.12, 'far', Math.floor(farParticles.length * quality * ambientScale), time, motion.z, velocity)
+      drawLayer(middleParticles, 4800, 0.42, 'middle', hasMemories ? Math.floor(middleParticles.length * quality) : 7, time, motion.z, velocity)
+      drawLayer(nearParticles, 2500, 1, 'near', hasMemories ? Math.floor(nearParticles.length * quality) : 0, time, motion.z, velocity)
+      cursorContext.clearRect(0, 0, width, height)
+      drawPointer(time)
+      frameId = requestAnimationFrame(frame)
+    }
+
+    const start = (): void => {
+      if (frameId || document.visibilityState === 'hidden') return
+      previousFrame = performance.now()
+      frameId = requestAnimationFrame(frame)
+    }
+    const stop = (): void => {
+      if (frameId) cancelAnimationFrame(frameId)
+      frameId = 0
+      context.clearRect(0, 0, width, height)
+      cursorContext.clearRect(0, 0, width, height)
+    }
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') stop()
+      else start()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    start()
+
+    return () => {
+      stop()
+      resizeObserver?.disconnect()
+      if (!resizeObserver) window.removeEventListener('resize', resize)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [active, cameraMotionRef, hasMemories, onCameraSample, pointerRef, reducedMotion, timelineBounds.maximum, timelineBounds.minimum, timelineMarkerRef, timelineRangeRef, worldRef])
+
+  return <>
+    <canvas ref={canvasRef} className="memory-particle-canvas" aria-hidden="true" />
+    <canvas ref={cursorCanvasRef} className="memory-cursor-canvas" aria-hidden="true" />
+  </>
+}
 
 const text = (value: unknown): string => value == null ? '' : String(value)
 
@@ -275,14 +850,6 @@ function shortDate(value?: string): string {
   return new Intl.DateTimeFormat('zh-CN', { year: '2-digit', month: 'short' }).format(parsed)
 }
 
-function cleanWorkingMemory(value: string): string {
-  return value
-    .replace(/^## 当前状态\s*/m, '')
-    .replace(/^待跟进：/m, '接下来还想聊：')
-    .replace(/^最近情绪：/m, '最近的情绪：')
-    .trim()
-}
-
 function memoryTitle(item: GalleryItem): string {
   if (item.story?.trim()) return item.story.trim().slice(0, 28)
   if (item.title?.trim() && item.title !== '一段新回忆') return item.title.trim()
@@ -290,11 +857,16 @@ function memoryTitle(item: GalleryItem): string {
 }
 
 function rememberedTitle(item: RememberedItem): string {
-  const explicit = text(item.title).trim()
+  if (item.reflection?.stale) {
+    if (item.reflectionStatus === 'failed') return '这段想法暂未整理成功'
+    if (item.reflectionStatus === 'unavailable') return '这段想法等待模型配置'
+    return '我正在重新整理这段想法'
+  }
+  const explicit = text(item.reflection?.title).trim()
   if (explicit) return explicit
-  const understanding = text(item.understanding || item.content).trim()
-  if (!understanding) return '一件我想好好记住的事'
-  return understanding.length > 34 ? `${understanding.slice(0, 34)}…` : understanding
+  if (item.reflectionStatus === 'failed') return '这段想法暂未整理成功'
+  if (item.reflectionStatus === 'unavailable') return '这段想法等待模型配置'
+  return '我正在想这段记忆'
 }
 
 function rememberedDate(item: RememberedItem): string {
@@ -320,19 +892,33 @@ function rememberedReply(item: RememberedItem): string {
   return text(item.assistant_reply)
 }
 
+function correctionPrompt(understanding: string, thought: string): string {
+  const source = understanding.slice(0, 400) || '这段记忆'
+  const reflection = thought.slice(0, 240) || '这段想法还在整理中'
+  return `请更正你对我的这条理解：“${source}”。MindPet 从这段理解中产生的想法是：“${reflection}”。请根据下面的实际情况，一起修正这条理解和对应的想法。\n实际情况是：`
+}
+
 export function MemoryGalleryPage(): React.JSX.Element {
   const [view, setView] = React.useState<ViewMode>('gallery')
   const [items, setItems] = React.useState<GalleryItem[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const [portrait, setPortrait] = React.useState<PortraitData>({ workingMemory: '', profile: [], insights: [], growth: [], memories: [] })
+  const [portrait, setPortrait] = React.useState<PortraitData>({ profile: [], insights: [], growth: [], memories: [], reflectionBackfill: {} })
   const [expandedMemoryId, setExpandedMemoryId] = React.useState<string | null>(null)
+  const [openSourceMemoryId, setOpenSourceMemoryId] = React.useState<string | null>(null)
   const [portraitDraft, setPortraitDraft] = React.useState('')
   const [portraitReply, setPortraitReply] = React.useState('')
   const [portraitSaving, setPortraitSaving] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [composerOpen, setComposerOpen] = React.useState(false)
+  const [detailId, setDetailId] = React.useState<string | null>(null)
+  const [detailPhase, setDetailPhase] = React.useState<'flying' | 'unfolding' | 'ready' | 'closing'>('ready')
+  const [detailFlight, setDetailFlight] = React.useState<MemoryPhotoFlight | null>(null)
+  const [failedGalleryImages, setFailedGalleryImages] = React.useState<Set<string>>(() => new Set())
+  const [cameraZ, setCameraZ] = React.useState(0)
+  const [cameraMoving, setCameraMoving] = React.useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null)
+  const [reducedMotion, setReducedMotion] = React.useState(false)
   const [draft, setDraft] = React.useState({
     story: '',
     mood: 'neutral',
@@ -342,16 +928,32 @@ export function MemoryGalleryPage(): React.JSX.Element {
   })
   const [saving, setSaving] = React.useState(false)
   const sceneRef = React.useRef<HTMLElement | null>(null)
-  const dragRef = React.useRef<{ pointerId: number; startX: number; currentX: number; moved: boolean } | null>(null)
-  const wheelLockRef = React.useRef(0)
+  const worldRef = React.useRef<HTMLDivElement | null>(null)
+  const cameraMotionRef = React.useRef<CameraMotion>({ z: 0, velocity: 0, impulse: 0, minZ: 0, maxZ: 0, target: null })
+  const pointerRef = React.useRef<StardustPointer>({ active: false, x: 0, y: 0, lastMove: 0, fadingUntil: 0, samples: [] })
+  const timelineRangeRef = React.useRef<HTMLInputElement | null>(null)
+  const timelineMarkerRef = React.useRef<HTMLSpanElement | null>(null)
+  const detailCameraPositionRef = React.useRef(0)
   const shareDialogRef = React.useRef<HTMLElement | null>(null)
   const shareCloseRef = React.useRef<HTMLButtonElement | null>(null)
+  const detailDialogRef = React.useRef<HTMLElement | null>(null)
+  const detailLayerRef = React.useRef<HTMLDivElement | null>(null)
+  const detailPhotoRef = React.useRef<HTMLDivElement | null>(null)
+  const detailFlyRef = React.useRef<HTMLDivElement | null>(null)
+  const detailAnimationRef = React.useRef<Animation | null>(null)
+  const detailCloseRef = React.useRef<HTMLButtonElement | null>(null)
+  const detailReturnFocusRef = React.useRef<HTMLElement | null>(null)
+  const detailSourceRef = React.useRef<HTMLElement | null>(null)
   const returnFocusRef = React.useRef<HTMLElement | null>(null)
   const savingRef = React.useRef(false)
+  const selectedIdRef = React.useRef<string | null>(selectedId)
+  selectedIdRef.current = selectedId
 
-  const loadAll = React.useCallback(async (focusId?: string): Promise<void> => {
-    setLoading(true)
-    setError('')
+  const loadAll = React.useCallback(async (focusId?: string, silent = false): Promise<void> => {
+    if (!silent) {
+      setLoading(true)
+      setError('')
+    }
     try {
       const [galleryResult, portraitResult] = await Promise.all([
         window.api.getMemoryGallery(),
@@ -359,36 +961,89 @@ export function MemoryGalleryPage(): React.JSX.Element {
       ])
       if (galleryResult?.status !== 'ok') throw new Error(galleryResult?.message || '记忆星河暂时无法打开')
       const nextItems = Array.isArray(galleryResult.items) ? galleryResult.items : []
+      const nextLayout = buildCosmosLayout(nextItems)
       setItems(nextItems)
-      setSelectedId(current => {
-        if (focusId && nextItems.some((item: GalleryItem) => item.id === focusId)) return focusId
-        if (current && nextItems.some((item: GalleryItem) => item.id === current)) return current
-        return nextItems[0]?.id || null
-      })
+      const currentId = selectedIdRef.current
+      const targetId = focusId && nextItems.some((item: GalleryItem) => item.id === focusId)
+        ? focusId
+        : currentId && nextItems.some((item: GalleryItem) => item.id === currentId)
+          ? currentId
+          : nextItems[0]?.id || null
+      const targetNode = nextLayout.find(node => node.item.id === targetId)
+      const firstFocusZ = nextLayout[0]?.focusZ ?? 0
+      const lastFocusZ = nextLayout[nextLayout.length - 1]?.focusZ ?? 0
+      cameraMotionRef.current.minZ = firstFocusZ - COSMOS_LAYOUT.edgeBuffer
+      cameraMotionRef.current.maxZ = lastFocusZ + COSMOS_LAYOUT.edgeBuffer
+      if (focusId || (!silent && !currentId)) {
+        const targetZ = focusId
+          ? targetNode?.focusZ ?? 0
+          : 0
+        cameraMotionRef.current.z = clamp(targetZ, cameraMotionRef.current.minZ, cameraMotionRef.current.maxZ)
+        cameraMotionRef.current.velocity = 0
+        cameraMotionRef.current.impulse = 0
+        cameraMotionRef.current.target = null
+        setCameraZ(cameraMotionRef.current.z)
+      } else {
+        const preservedZ = clamp(cameraMotionRef.current.z, cameraMotionRef.current.minZ, cameraMotionRef.current.maxZ)
+        if (preservedZ !== cameraMotionRef.current.z) {
+          cameraMotionRef.current.z = preservedZ
+          cameraMotionRef.current.velocity = 0
+          cameraMotionRef.current.impulse = 0
+          cameraMotionRef.current.target = null
+          setCameraZ(preservedZ)
+        }
+      }
+      if (targetNode) selectedIdRef.current = targetNode.item.id
+      setSelectedId(targetId)
       if (portraitResult?.status === 'ok') {
         const nextPortrait = {
-          workingMemory: text(portraitResult.workingMemory),
           profile: Array.isArray(portraitResult.profile) ? portraitResult.profile : [],
           insights: Array.isArray(portraitResult.insights) ? portraitResult.insights : [],
           growth: Array.isArray(portraitResult.growth) ? portraitResult.growth : [],
-          memories: Array.isArray(portraitResult.memories) ? portraitResult.memories : []
+          memories: Array.isArray(portraitResult.memories) ? portraitResult.memories : [],
+          reflectionBackfill: portraitResult.reflectionBackfill || {}
         }
         setPortrait(nextPortrait)
         setExpandedMemoryId(current => {
           if (current && nextPortrait.memories.some((item: RememberedItem) => item.id === current)) return current
-          return nextPortrait.memories[0]?.id || null
+          return null
         })
+        if (!silent) setOpenSourceMemoryId(null)
       } else {
-        setError(portraitResult?.message || 'MindPet 暂时无法整理长期记忆')
+        if (!silent) setError(portraitResult?.message || 'MindPet 暂时无法整理长期记忆')
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '记忆星河暂时无法打开')
+      if (!silent) setError(loadError instanceof Error ? loadError.message : '记忆星河暂时无法打开')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   React.useEffect(() => { void loadAll() }, [loadAll])
+
+  React.useEffect(() => {
+    if (view !== 'portrait' || portrait.reflectionBackfill.status !== 'pending') return
+    const interval = setInterval(() => { void loadAll(undefined, true) }, 5000)
+    return () => clearInterval(interval)
+  }, [loadAll, portrait.reflectionBackfill.status, view])
+
+  React.useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const updatePreference = (): void => setReducedMotion(preference.matches)
+    updatePreference()
+    preference.addEventListener('change', updatePreference)
+    return () => preference.removeEventListener('change', updatePreference)
+  }, [])
+
+  React.useEffect(() => {
+    const clearPointer = (): void => {
+      pointerRef.current.active = false
+      pointerRef.current.fadingUntil = 0
+      pointerRef.current.samples.length = 0
+    }
+    window.addEventListener('blur', clearPointer)
+    return () => window.removeEventListener('blur', clearPointer)
+  }, [])
 
   React.useEffect(() => { savingRef.current = saving }, [saving])
 
@@ -405,6 +1060,12 @@ export function MemoryGalleryPage(): React.JSX.Element {
 
   const openComposer = React.useCallback((): void => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    cameraMotionRef.current.velocity = 0
+    cameraMotionRef.current.impulse = 0
+    cameraMotionRef.current.target = null
+    pointerRef.current.active = false
+    pointerRef.current.fadingUntil = 0
+    pointerRef.current.samples.length = 0
     setComposerOpen(true)
   }, [])
 
@@ -439,7 +1100,204 @@ export function MemoryGalleryPage(): React.JSX.Element {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [closeComposer, composerOpen])
 
-  const selectedIndex = Math.max(0, items.findIndex(item => item.id === selectedId))
+  const finishMemoryDetailClose = React.useCallback((): void => {
+    const returnTarget = detailReturnFocusRef.current
+    detailAnimationRef.current?.cancel()
+    detailAnimationRef.current = null
+    cameraMotionRef.current.z = detailCameraPositionRef.current
+    cameraMotionRef.current.velocity = 0
+    cameraMotionRef.current.impulse = 0
+    cameraMotionRef.current.target = null
+    setCameraZ(detailCameraPositionRef.current)
+    setDetailId(null)
+    setDetailPhase('ready')
+    setDetailFlight(null)
+    detailSourceRef.current = null
+    requestAnimationFrame(() => {
+      if (returnTarget?.isConnected) returnTarget.focus()
+      else sceneRef.current?.focus()
+      detailReturnFocusRef.current = null
+    })
+  }, [])
+
+  const closeMemoryDetail = React.useCallback((): void => {
+    if (!detailId || detailPhase === 'closing') return
+    const dialog = detailDialogRef.current
+    const source = detailSourceRef.current
+    const from = dialog?.getBoundingClientRect()
+    const to = source?.isConnected ? source.getBoundingClientRect() : null
+    if (reducedMotion || detailPhase !== 'ready' || !dialog || !from || !to
+        || from.width < 1 || from.height < 1 || to.width < 24 || to.height < 24) {
+      finishMemoryDetailClose()
+      return
+    }
+
+    const moveX = to.left + to.width / 2 - from.left - from.width / 2
+    const moveY = to.top + to.height / 2 - from.top - from.height / 2
+    const scaleX = to.width / from.width
+    const scaleY = to.height / from.height
+    setDetailPhase('closing')
+    const animation = dialog.animate([
+      { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 1 },
+      { transform: `translate3d(${moveX * 0.78}px, ${moveY * 0.78}px, 0) scale(${1 + (scaleX - 1) * 0.78}, ${1 + (scaleY - 1) * 0.78})`, opacity: 1, offset: 0.78 },
+      { transform: `translate3d(${moveX}px, ${moveY}px, 0) scale(${scaleX}, ${scaleY})`, opacity: 0 }
+    ], { duration: MEMORY_DETAIL_CLOSE_MS, easing: 'cubic-bezier(.55, 0, .85, .36)', fill: 'forwards' })
+    detailAnimationRef.current = animation
+    animation.onfinish = () => {
+      if (detailAnimationRef.current !== animation) return
+      // Keep the finished fill effect in place until React removes the dialog.
+      // Canceling it here briefly restores the full-size dialog before unmount.
+      detailAnimationRef.current = null
+      finishMemoryDetailClose()
+    }
+  }, [detailId, detailPhase, finishMemoryDetailClose, reducedMotion])
+
+  React.useEffect(() => () => detailAnimationRef.current?.cancel(), [])
+
+  React.useLayoutEffect(() => {
+    if (detailPhase !== 'flying' || !detailFlight || detailFlight.itemId !== detailId) return
+    const layer = detailLayerRef.current
+    const photo = detailPhotoRef.current
+    const fly = detailFlyRef.current
+    if (!layer || !photo || !fly || reducedMotion) {
+      setDetailPhase(reducedMotion ? 'ready' : 'unfolding')
+      if (reducedMotion) setDetailFlight(null)
+      return
+    }
+
+    const layerRect = layer.getBoundingClientRect()
+    const target = photo.getBoundingClientRect()
+    const origin = detailFlight.from
+    if (target.width < 1 || target.height < 1 || origin.width < 1 || origin.height < 1) {
+      setDetailPhase('unfolding')
+      return
+    }
+    const scale = Math.min(target.width / origin.width, target.height / origin.height)
+    const targetLeft = target.left + (target.width - origin.width * scale) / 2
+    const targetTop = target.top + (target.height - origin.height * scale) / 2
+    const destination = `translate3d(${targetLeft - origin.left}px, ${targetTop - origin.top}px, 0) scale(${scale})`
+
+    fly.style.left = `${origin.left - layerRect.left}px`
+    fly.style.top = `${origin.top - layerRect.top}px`
+    fly.style.width = `${origin.width}px`
+    fly.style.height = `${origin.height}px`
+    fly.style.opacity = '1'
+
+    const animation = fly.animate([
+      { transform: 'translate3d(0, 0, 0) scale(1)', borderRadius: '15px' },
+      { transform: destination, borderRadius: '6px' }
+    ], { duration: MEMORY_PHOTO_FLIGHT_MS, easing: 'cubic-bezier(.22, 1, .36, 1)', fill: 'forwards' })
+    detailAnimationRef.current = animation
+    animation.onfinish = () => {
+      if (detailAnimationRef.current !== animation) return
+      fly.style.transform = destination
+      fly.style.borderRadius = '6px'
+      animation.cancel()
+      detailAnimationRef.current = null
+      setDetailPhase('unfolding')
+    }
+    return () => {
+      animation.onfinish = null
+      if (detailAnimationRef.current === animation) {
+        animation.cancel()
+        detailAnimationRef.current = null
+      }
+    }
+  }, [detailFlight, detailId, detailPhase, reducedMotion])
+
+  React.useEffect(() => {
+    if (detailPhase !== 'unfolding') return
+    const timer = window.setTimeout(() => {
+      setDetailPhase('ready')
+      setDetailFlight(null)
+    }, MEMORY_DETAIL_UNFOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [detailPhase])
+
+  React.useEffect(() => {
+    if (!detailId) return
+    const focusFrame = requestAnimationFrame(() => {
+      if (detailPhase !== 'closing') {
+        if (detailPhase === 'ready') (detailCloseRef.current || detailDialogRef.current)?.focus()
+        else detailDialogRef.current?.focus()
+      }
+    })
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMemoryDetail()
+        return
+      }
+      if (event.key !== 'Tab' || !detailDialogRef.current) return
+      if (detailPhase === 'closing') {
+        event.preventDefault()
+        return
+      }
+      const controls = Array.from(detailDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [tabindex]:not([tabindex="-1"])'))
+      if (controls.length === 0) {
+        event.preventDefault()
+        detailDialogRef.current.focus()
+        return
+      }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      const activeIndex = controls.indexOf(document.activeElement as HTMLElement)
+      if (event.shiftKey && activeIndex <= 0) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (activeIndex === -1 || document.activeElement === last)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      cancelAnimationFrame(focusFrame)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeMemoryDetail, detailId, detailPhase])
+
+  const layoutNodes = React.useMemo(() => buildCosmosLayout(items), [items])
+  const currentIndex = nearestCosmosIndex(layoutNodes, cameraZ)
+  const detailItem = items.find(item => item.id === detailId) || null
+  const timelineMinimum = layoutNodes.length === 1
+    ? layoutNodes[0].focusZ - 300
+    : layoutNodes[0]?.focusZ ?? cameraZ - 300
+  const timelineMaximum = layoutNodes.length === 1
+    ? layoutNodes[0].focusZ + 300
+    : layoutNodes[layoutNodes.length - 1]?.focusZ ?? cameraZ + 300
+  const timelineSpan = timelineMaximum - timelineMinimum
+  const timelineNodes = React.useMemo(() => {
+    if (layoutNodes.length <= 36) return layoutNodes
+    const stride = Math.ceil(layoutNodes.length / 36)
+    return layoutNodes.filter((_, index) => index % stride === 0 || index === layoutNodes.length - 1)
+  }, [layoutNodes])
+  const visibleGalleryEntries = React.useMemo(() => {
+    if (layoutNodes.length <= COSMOS_LAYOUT.virtualizeAfter) {
+      return layoutNodes.map(node => ({ ...node, distant: false, depth: node.worldZ - cameraZ }))
+    }
+    const entries: (CosmosNode & { distant: boolean; depth: number })[] = []
+    const start = firstCosmosNodeAtOrAfter(layoutNodes, cameraZ + 150)
+    const end = firstCosmosNodeAtOrAfter(layoutNodes, cameraZ + COSMOS_LAYOUT.distantRenderDepth)
+    for (let nodeIndex = start; nodeIndex < end; nodeIndex += 1) {
+      const node = layoutNodes[nodeIndex]
+      const depth = node.worldZ - cameraZ
+      if (depth < COSMOS_LAYOUT.cardRenderDepth) entries.push({ ...node, distant: false, depth })
+      else if (node.index % 3 === 0) entries.push({ ...node, distant: true, depth })
+    }
+    return entries
+  }, [cameraZ, layoutNodes])
+
+  const onCameraSample = React.useCallback((nextZ: number, velocity: number): void => {
+    setCameraZ(nextZ)
+    setCameraMoving(Math.abs(velocity) > 12)
+    const nearest = layoutNodes[nearestCosmosIndex(layoutNodes, nextZ)]
+    if (nearest && selectedIdRef.current !== nearest.item.id) {
+      selectedIdRef.current = nearest.item.id
+      setSelectedId(nearest.item.id)
+    }
+  }, [layoutNodes])
 
   const rememberedItems = React.useMemo<RememberedItem[]>(() => {
     if (portrait.memories.length > 0) return portrait.memories
@@ -514,77 +1372,253 @@ export function MemoryGalleryPage(): React.JSX.Element {
       return
     }
     const nextItems = items.filter(entry => entry.id !== item.id)
+    const nextLayout = buildCosmosLayout(nextItems)
+    const firstFocusZ = nextLayout[0]?.focusZ ?? 0
+    const lastFocusZ = nextLayout[nextLayout.length - 1]?.focusZ ?? 0
+    const nextMinimum = firstFocusZ - COSMOS_LAYOUT.edgeBuffer
+    const nextMaximum = lastFocusZ + COSMOS_LAYOUT.edgeBuffer
+    cameraMotionRef.current.minZ = nextMinimum
+    cameraMotionRef.current.maxZ = nextMaximum
+    const currentZ = cameraMotionRef.current.z
+    const preservedZ = clamp(currentZ, nextMinimum, nextMaximum)
+    if (preservedZ !== cameraMotionRef.current.z) {
+      cameraMotionRef.current.target = {
+        from: currentZ,
+        to: preservedZ,
+        startedAt: performance.now(),
+        duration: reducedMotion ? 160 : 360
+      }
+    } else cameraMotionRef.current.target = null
+    cameraMotionRef.current.velocity = 0
+    cameraMotionRef.current.impulse = 0
+    if (preservedZ === currentZ) cameraMotionRef.current.z = currentZ
+    setCameraZ(preservedZ === currentZ ? currentZ : preservedZ)
     setItems(nextItems)
-    setSelectedId(nextItems[Math.min(selectedIndex, Math.max(0, nextItems.length - 1))]?.id || null)
+    const nextSelected = nextLayout[nearestCosmosIndex(nextLayout, preservedZ)]?.item.id || null
+    selectedIdRef.current = nextSelected
+    setSelectedId(nextSelected)
+    setDetailId(null)
     setConfirmDeleteId(null)
     requestAnimationFrame(() => sceneRef.current?.focus())
   }
 
-  const selectIndex = React.useCallback((nextIndex: number): void => {
-    if (items.length === 0) return
-    const clamped = Math.max(0, Math.min(items.length - 1, nextIndex))
-    setConfirmDeleteId(null)
-    if (document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('memory-orbit-delete')) {
-      sceneRef.current?.focus()
+  const applyCameraPosition = React.useCallback((nextZ: number): void => {
+    const motion = cameraMotionRef.current
+    motion.target = null
+    motion.z = clamp(nextZ, motion.minZ, motion.maxZ)
+    motion.velocity = 0
+    motion.impulse = 0
+    setCameraZ(motion.z)
+    worldRef.current?.style.setProperty('--camera-z', `${motion.z.toFixed(2)}px`)
+    const nearest = layoutNodes[nearestCosmosIndex(layoutNodes, motion.z)]
+    if (nearest && selectedIdRef.current !== nearest.item.id) {
+      selectedIdRef.current = nearest.item.id
+      setSelectedId(nearest.item.id)
     }
-    setSelectedId(items[clamped].id)
-  }, [items])
+    if (timelineRangeRef.current) timelineRangeRef.current.value = String(clamp(motion.z, timelineMinimum, timelineMaximum))
+    timelineMarkerRef.current?.style.setProperty('left', `${(timelineSpan > 0 ? clamp((motion.z - timelineMinimum) / timelineSpan, 0, 1) : 0.5) * 100}%`)
+  }, [layoutNodes, timelineMaximum, timelineMinimum, timelineSpan])
+
+  const navigateToIndex = React.useCallback((nextIndex: number): void => {
+    if (layoutNodes.length === 0) return
+    const index = Math.max(0, Math.min(layoutNodes.length - 1, nextIndex))
+    const node = layoutNodes[index]
+    setConfirmDeleteId(null)
+    const motion = cameraMotionRef.current
+    motion.velocity = 0
+    motion.impulse = 0
+    motion.target = {
+      from: motion.z,
+      to: clamp(node.focusZ, motion.minZ, motion.maxZ),
+      startedAt: performance.now(),
+      duration: reducedMotion ? 160 : 640
+    }
+    selectedIdRef.current = node.item.id
+    setSelectedId(node.item.id)
+  }, [layoutNodes, reducedMotion])
+
+  const navigateByDepth = React.useCallback((distance: number): void => {
+    const motion = cameraMotionRef.current
+    motion.velocity = 0
+    motion.impulse = 0
+    motion.target = {
+      from: motion.z,
+      to: clamp(motion.z + distance, motion.minZ, motion.maxZ),
+      startedAt: performance.now(),
+      duration: reducedMotion ? 160 : 520
+    }
+  }, [reducedMotion])
 
   const onSceneWheel = (event: React.WheelEvent<HTMLElement>): void => {
-    if (items.length < 2) return
-    const now = Date.now()
-    if (now < wheelLockRef.current) return
-    const movement = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
-    if (Math.abs(movement) < 18) return
+    if (items.length < 2 || detailId || composerOpen || view !== 'gallery') return
+    if ((event.target as HTMLElement).closest('.memory-time-axis, .memory-share-layer, .memory-detail-layer, .memory-orbit-controls')) return
+    const lineHeight = 40
+    const movement = event.deltaMode === 1
+      ? event.deltaY * lineHeight
+      : event.deltaMode === 2
+        ? event.deltaY * Math.max(500, sceneRef.current?.clientHeight || 700)
+        : event.deltaY
+    if (Math.abs(movement) < 1) return
     event.preventDefault()
-    wheelLockRef.current = now + 360
-    selectIndex(selectedIndex + (movement > 0 ? 1 : -1))
-  }
-
-  const onScenePointerDown = (event: React.PointerEvent<HTMLElement>): void => {
-    if (event.button !== 0) return
-    if ((event.target as HTMLElement).closest('button, input, textarea, label')) return
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, currentX: event.clientX, moved: false }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const onScenePointerMove = (event: React.PointerEvent<HTMLElement>): void => {
-    const drag = dragRef.current
-    if (drag?.pointerId === event.pointerId) {
-      const distance = event.clientX - drag.startX
-      drag.currentX = event.clientX
-      drag.moved = Math.abs(distance) > 8
-      const preview = Math.max(-110, Math.min(110, distance))
-      event.currentTarget.style.setProperty('--memory-drag-x', `${(preview * 0.14).toFixed(2)}px`)
-      event.currentTarget.style.setProperty('--memory-drag-yaw', `${(preview * 0.025).toFixed(2)}deg`)
+    const boundedMovement = clamp(movement, -180, 180)
+    if (reducedMotion) {
+      applyCameraPosition(cameraMotionRef.current.z + boundedMovement * 1.7)
       return
     }
-    const scene = sceneRef.current
-    if (!scene || event.pointerType === 'touch') return
-    const bounds = scene.getBoundingClientRect()
-    const x = ((event.clientX - bounds.left) / bounds.width) - 0.5
-    const y = ((event.clientY - bounds.top) / bounds.height) - 0.5
-    scene.style.setProperty('--cosmos-shift-x', `${(-x * 16).toFixed(2)}px`)
-    scene.style.setProperty('--cosmos-shift-y', `${(-y * 12).toFixed(2)}px`)
-    scene.style.setProperty('--cosmos-rotate-x', `${(-y * 1.8).toFixed(2)}deg`)
-    scene.style.setProperty('--cosmos-rotate-y', `${(x * 1.6).toFixed(2)}deg`)
-  }
-
-  const onScenePointerUp = (event: React.PointerEvent<HTMLElement>): void => {
-    const drag = dragRef.current
-    if (drag?.pointerId !== event.pointerId) return
-    const distance = drag.currentX - drag.startX
-    if (event.type !== 'pointercancel' && Math.abs(distance) > 58) {
-      selectIndex(selectedIndex + (distance < 0 ? 1 : -1))
-    }
-    event.currentTarget.style.setProperty('--memory-drag-x', '0px')
-    event.currentTarget.style.setProperty('--memory-drag-yaw', '0deg')
-    dragRef.current = null
+    cameraMotionRef.current.target = null
+    cameraMotionRef.current.impulse += boundedMovement * 7.8
   }
 
   const onSceneKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') selectIndex(selectedIndex + 1)
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') selectIndex(selectedIndex - 1)
+    const target = event.target as HTMLElement
+    const corridorCard = target.closest('.memory-corridor-card')
+    if (detailId || composerOpen || target.closest('input, textarea, .memory-time-axis, .memory-orbit-controls')
+        || (target.closest('button') && !corridorCard)) return
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      navigateToIndex(currentIndex + 1)
+      if (target.closest('.memory-corridor-card')) requestAnimationFrame(() => sceneRef.current?.focus())
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      navigateToIndex(currentIndex - 1)
+      if (target.closest('.memory-corridor-card')) requestAnimationFrame(() => sceneRef.current?.focus())
+    }
+    if (event.key === 'PageDown') {
+      event.preventDefault()
+      navigateByDepth(1_100)
+      if (target.closest('.memory-corridor-card')) requestAnimationFrame(() => sceneRef.current?.focus())
+    }
+    if (event.key === 'PageUp') {
+      event.preventDefault()
+      navigateByDepth(-1_100)
+      if (target.closest('.memory-corridor-card')) requestAnimationFrame(() => sceneRef.current?.focus())
+    }
+  }
+
+  const onTimelineChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    applyCameraPosition(Number(event.currentTarget.value))
+  }
+
+  const onScenePointerMove = (event: React.PointerEvent<HTMLElement>): void => {
+    const pointer = pointerRef.current
+    const target = event.target as HTMLElement
+    const interactive = target.closest('button:not(.memory-corridor-card), a, input, textarea, select, [role="slider"], .memory-cosmos-heading, .memory-time-axis, .memory-detail-layer, .memory-share-layer')
+    if (event.pointerType !== 'mouse' || interactive || view !== 'gallery' || detailId || composerOpen) {
+      if (pointer.active && interactive && !detailId && !composerOpen && view === 'gallery') pointer.fadingUntil = performance.now() + 160
+      pointer.active = false
+      return
+    }
+    const bounds = sceneRef.current?.getBoundingClientRect()
+    if (!bounds) return
+    const now = performance.now()
+    pointer.active = true
+    pointer.fadingUntil = 0
+    pointer.x = event.clientX - bounds.left
+    pointer.y = event.clientY - bounds.top
+    pointer.lastMove = now
+    pointer.samples.push({ x: pointer.x, y: pointer.y, time: now })
+    while (pointer.samples.length > 24 || (pointer.samples[0] && now - pointer.samples[0].time > 280)) pointer.samples.shift()
+    let trailLength = 0
+    for (let index = 1; index < pointer.samples.length; index += 1) {
+      trailLength += Math.hypot(
+        pointer.samples[index].x - pointer.samples[index - 1].x,
+        pointer.samples[index].y - pointer.samples[index - 1].y
+      )
+    }
+    while (pointer.samples.length > 1 && trailLength > 104) {
+      const oldest = pointer.samples.shift()
+      const next = pointer.samples[0]
+      if (oldest && next) trailLength -= Math.hypot(next.x - oldest.x, next.y - oldest.y)
+    }
+  }
+
+  const onScenePointerLeave = (): void => {
+    pointerRef.current.active = false
+    pointerRef.current.fadingUntil = 0
+    pointerRef.current.samples.length = 0
+  }
+
+  const openMemoryDetail = (item: GalleryItem, origin?: HTMLElement): void => {
+    detailReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    detailCameraPositionRef.current = cameraMotionRef.current.z
+    cameraMotionRef.current.velocity = 0
+    cameraMotionRef.current.impulse = 0
+    cameraMotionRef.current.target = null
+    pointerRef.current.active = false
+    pointerRef.current.fadingUntil = 0
+    pointerRef.current.samples.length = 0
+    selectedIdRef.current = item.id
+    setSelectedId(item.id)
+    const source = origin?.querySelector<HTMLElement>('.memory-corridor-photo') || origin
+    detailSourceRef.current = source || null
+    const bounds = source?.getBoundingClientRect()
+    if (!reducedMotion && item.image_uri && !failedGalleryImages.has(item.id)
+        && bounds && bounds.width >= 24 && bounds.height >= 24) {
+      setDetailFlight({
+        itemId: item.id,
+        imageUri: item.image_uri,
+        from: { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
+      })
+      setDetailPhase('flying')
+    } else {
+      setDetailFlight(null)
+      setDetailPhase(reducedMotion ? 'ready' : 'unfolding')
+    }
+    setDetailId(item.id)
+  }
+
+  const onCorridorClickCapture = (event: React.MouseEvent<HTMLElement>): void => {
+    if (detailId || composerOpen || view !== 'gallery') return
+
+    const target = event.target as HTMLElement
+    if (target.closest('.memory-cosmos-heading, .memory-cosmos-error, .memory-orbit-controls, .memory-time-axis, .memory-detail-layer, .memory-share-layer, button:not(.memory-corridor-card), a, input, textarea, select')) return
+
+    const stage = sceneRef.current?.querySelector<HTMLElement>('.memory-corridor-stage')
+    if (!stage) return
+    const stageBounds = stage.getBoundingClientRect()
+    if (event.clientX < stageBounds.left || event.clientX > stageBounds.right
+        || event.clientY < stageBounds.top || event.clientY > stageBounds.bottom) return
+
+    let card = target.closest<HTMLButtonElement>('.memory-corridor-stage .memory-corridor-card')
+    if (!card) {
+      const candidates = Array.from(stage.querySelectorAll<HTMLButtonElement>('.memory-corridor-card'))
+        .map(candidate => {
+          const bounds = candidate.getBoundingClientRect()
+          const node = candidate.closest<HTMLElement>('.memory-corridor-node')
+          return {
+            candidate,
+            bounds,
+            opacity: Number.parseFloat(getComputedStyle(node || candidate).opacity),
+            zIndex: Number.parseInt(getComputedStyle(node || candidate).zIndex, 10) || 0
+          }
+        })
+        .filter(({ bounds, opacity }) => opacity > 0.08
+          && event.clientX >= bounds.left && event.clientX <= bounds.right
+          && event.clientY >= bounds.top && event.clientY <= bounds.bottom)
+        .sort((a, b) => b.zIndex - a.zIndex)
+      card = candidates[0]?.candidate || null
+    }
+
+    const itemId = card?.dataset.memoryId
+    const item = items.find(entry => entry.id === itemId)
+    if (!item) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    openMemoryDetail(item, card || undefined)
+  }
+
+  const changeView = (nextView: ViewMode): void => {
+    pointerRef.current.active = false
+    pointerRef.current.fadingUntil = 0
+    pointerRef.current.samples.length = 0
+    if (nextView === 'portrait') {
+      cameraMotionRef.current.velocity = 0
+      cameraMotionRef.current.impulse = 0
+      cameraMotionRef.current.target = null
+    }
+    setView(nextView)
   }
 
   const teachPortraitMemory = async (): Promise<void> => {
@@ -602,7 +1636,7 @@ export function MemoryGalleryPage(): React.JSX.Element {
       setPortraitDraft('')
       setPortraitReply(text(result.reply || result.message || '我记住了。'))
       await loadAll()
-      setView('portrait')
+      changeView('portrait')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : '这件事暂时没有记下来')
     } finally {
@@ -615,35 +1649,46 @@ export function MemoryGalleryPage(): React.JSX.Element {
       <aside className="memory-cosmos-sidebar" aria-label="记忆视图">
         <div className="memory-cosmos-mark"><span>MP</span><i /></div>
         <div className="memory-cosmos-nav">
-          <button type="button" className={view === 'gallery' ? 'active' : ''} onClick={() => setView('gallery')}><Images size={18} /><span><strong>回忆星河</strong><small>在照片间穿行</small></span></button>
-          <button type="button" className={view === 'portrait' ? 'active' : ''} onClick={() => setView('portrait')}><Brain size={18} /><span><strong>MindPet 记得</strong><small>关于你的长期理解</small></span></button>
+          <button type="button" className={view === 'gallery' ? 'active' : ''} onClick={() => changeView('gallery')}><Images size={18} /><span><strong>回忆星河</strong><small>在照片间穿行</small></span></button>
+          <button type="button" className={view === 'portrait' ? 'active' : ''} onClick={() => changeView('portrait')}><Brain size={18} /><span><strong>MindPet 记得</strong><small>关于你的长期理解</small></span></button>
         </div>
-        <button className="memory-cosmos-share" type="button" onClick={() => { setView('gallery'); openComposer() }}><ImagePlus size={18} /><span><strong>分享一段回忆</strong><small>原图保存在本机</small></span></button>
+        <button className="memory-cosmos-share" type="button" onClick={() => { changeView('gallery'); openComposer() }}><ImagePlus size={18} /><span><strong>分享一段回忆</strong><small>原图保存在本机</small></span></button>
         <div className="memory-cosmos-sidebar-note"><i />原图保存在本机</div>
       </aside>
 
       <section
         ref={sceneRef}
-        className={`memory-cosmos-scene is-${view}`}
+        className={`memory-cosmos-scene is-${view} ${cameraMoving ? 'is-camera-moving' : ''}`}
         tabIndex={0}
+        onClickCapture={onCorridorClickCapture}
         onWheel={view === 'gallery' ? onSceneWheel : undefined}
-        onPointerDown={view === 'gallery' ? onScenePointerDown : undefined}
-        onPointerMove={onScenePointerMove}
-        onPointerUp={onScenePointerUp}
-        onPointerCancel={onScenePointerUp}
         onKeyDown={view === 'gallery' ? onSceneKeyDown : undefined}
+        onPointerMove={onScenePointerMove}
+        onPointerLeave={onScenePointerLeave}
       >
         <div className="memory-cosmos-nebula" aria-hidden="true"><i /><i /><i /></div>
-        <div className="memory-cosmos-stars" aria-hidden="true">
+        {(view === 'portrait' || loading) && <div className="memory-cosmos-stars" aria-hidden="true">
           {cosmosStars.map((star, index) => <i key={index} style={{
             '--star-x': `${star.x}%`, '--star-y': `${star.y}%`, '--star-size': `${star.size}px`,
             '--star-delay': `${star.delay}s`, '--star-duration': `${star.duration}s`,
             '--star-opacity': 0.18 + star.depth * 0.14, '--star-glow': `${star.size * 5}px`
           } as React.CSSProperties} />)}
-        </div>
+        </div>}
+        {view === 'gallery' && <MemoryParticleCanvas
+          active={!loading && !detailId && !composerOpen}
+          hasMemories={items.length > 1}
+          reducedMotion={reducedMotion}
+          cameraMotionRef={cameraMotionRef}
+          worldRef={worldRef}
+          pointerRef={pointerRef}
+          timelineRangeRef={timelineRangeRef}
+          timelineMarkerRef={timelineMarkerRef}
+          timelineBounds={{ minimum: timelineMinimum, maximum: timelineMaximum }}
+          onCameraSample={onCameraSample}
+        />}
 
         <header className="memory-cosmos-heading">
-          <div><span>{view === 'gallery' ? 'MEMORY ORBIT' : `WHAT MINDPET REMEMBERS · 共 ${rememberedItems.length} 件`}</span><h1>{view === 'gallery' ? '回忆在时间里发光' : 'MindPet 记得'}</h1><p>{view === 'gallery' ? '滚动、拖动或使用方向键，在回忆的纵深里穿行。' : '这些是我从真实对话中理解并愿意长期保留的、关于你的事。'}</p></div>
+          <div><span>{view === 'gallery' ? 'MEMORY ORBIT' : `WHAT MINDPET REMEMBERS · 共 ${rememberedItems.length} 件`}</span><h1>{view === 'gallery' ? '回忆在时间里发光' : 'MindPet 记得'}</h1><p>{view === 'gallery' ? '滚动前进或后退，在任意位置停下来看看。' : '这些是我从与你相处的片段里生出的想法。'}</p></div>
           <button type="button" className="memory-cosmos-refresh" onClick={() => void loadAll()} aria-label="刷新"><RefreshCw size={16} /></button>
         </header>
 
@@ -657,75 +1702,109 @@ export function MemoryGalleryPage(): React.JSX.Element {
               <div className="memory-cosmos-empty"><div className="memory-empty-orbit"><Images size={28} /><i /><i /></div><h2>这里还没有星光</h2><p>分享一张照片。MindPet 会看见它、回应你，也会把这次相遇写进长期记忆。</p><button type="button" onClick={openComposer}><ImagePlus size={17} />分享第一段回忆</button></div>
             ) : (
               <>
-                <div className="memory-orbit-controls" aria-label="切换回忆">
-                  <button type="button" disabled={selectedIndex === 0} onClick={() => selectIndex(selectedIndex - 1)} aria-label="更新的回忆"><ChevronLeft size={18} /></button>
-                  <span>{String(selectedIndex + 1).padStart(2, '0')} / {String(items.length).padStart(2, '0')}</span>
-                  <button type="button" disabled={selectedIndex === items.length - 1} onClick={() => selectIndex(selectedIndex + 1)} aria-label="更早的回忆"><ChevronRight size={18} /></button>
+                <div className="memory-orbit-controls" role="group" aria-label="切换回忆">
+                  <button type="button" disabled={currentIndex === 0} onClick={() => navigateToIndex(currentIndex - 1)} aria-label="前往上一段更新的回忆"><ChevronLeft size={18} /></button>
+                  <span>滚轮前后 · 任意位置停留</span>
+                  <button type="button" disabled={currentIndex === items.length - 1} onClick={() => navigateToIndex(currentIndex + 1)} aria-label="前往下一段更早的回忆"><ChevronRight size={18} /></button>
                 </div>
 
-                <div className="memory-orbit-stage" aria-live="polite">
-                  {items.map((item, index) => {
-                    let offset = index - selectedIndex
-                    if (items.length > 2) {
-                      const half = Math.floor(items.length / 2)
-                      if (offset > half) offset -= items.length
-                      if (offset < -half) offset += items.length
-                    }
-                    const distance = Math.abs(offset)
-                    const visuallyHidden = distance > 3
-                    const direction = offset === 0 ? 0 : offset < 0 ? -1 : 1
-                    const response = item.ai_summary || item.source_context || ''
-                    const itemMood = moodMeta[item.mood || 'neutral'] || moodMeta.neutral
-                    return (
-                      <article key={item.id} aria-hidden={visuallyHidden ? true : undefined} className={`memory-orbit-node ${offset === 0 ? 'is-active' : ''} ${offset < 0 ? 'is-newer' : 'is-older'}`} style={{
-                        '--memory-offset': offset,
-                        '--memory-x': offset === 0 ? '-9vw' : `${direction * Math.min(56, 40 + Math.max(0, distance - 1) * 8)}vw`,
-                        '--memory-lane': `${offset === 0 ? 0 : ((index % 5) - 2) * 22}px`,
-                        '--memory-depth': distance,
-                        '--memory-z': `${distance * -210}px`,
-                        '--memory-turn': `${offset === 0 ? 0 : offset < 0 ? 54 : -54}deg`,
-                        '--memory-tilt': `${offset === 0 ? -1.4 : offset < 0 ? -2.4 : 2.4}deg`,
-                        '--memory-blur': `${distance * 0.65}px`,
-                        '--memory-scale': Math.max(0.5, 1 - distance * 0.14),
-                        '--memory-opacity': visuallyHidden ? 0 : distance === 0 ? 1 : Math.max(0.14, 0.58 - distance * 0.12),
-                        '--memory-accent': itemMood.color,
-                        zIndex: offset === 0 ? 52 : 40 - distance,
-                        pointerEvents: visuallyHidden ? 'none' : 'auto'
-                      } as React.CSSProperties}>
-                        <button className="memory-planet" type="button" tabIndex={visuallyHidden ? -1 : 0} aria-hidden={visuallyHidden ? true : undefined} onClick={() => setSelectedId(item.id)} aria-label={`查看 ${memoryTitle(item)}`}>
-                          <span className="memory-planet-aura" />
-                          <span className="memory-planet-media">{item.image_uri ? <img src={item.image_uri} alt={item.story || item.title || '回忆照片'} /> : <Heart size={34} strokeWidth={1.2} />}</span>
-                          <span className="memory-planet-date">{shortDate(item.event_at)}</span>
+                <div className="memory-corridor-stage" role="group" aria-label="回忆长廊">
+                  <div className="memory-corridor-lightline" aria-hidden="true" />
+                  <div ref={worldRef} className="memory-corridor-world" style={{ '--camera-z': `${cameraZ}px` } as React.CSSProperties}>
+                    {visibleGalleryEntries.map(({ item, index, worldZ, side, lane, yaw, roll, distant, depth }) => {
+                      if (distant) return <article
+                        key={item.id}
+                        data-world-z={worldZ}
+                        className={`memory-corridor-node is-${side} is-distant`}
+                        aria-hidden="true"
+                        style={{
+                          '--corridor-depth': `${worldZ}px`,
+                          '--corridor-lane': `${lane}px`,
+                          '--corridor-yaw': `${yaw}deg`,
+                          '--corridor-roll': `${roll}deg`,
+                          zIndex: 1
+                        } as React.CSSProperties}
+                      ><i /></article>
+                      const imageFailed = failedGalleryImages.has(item.id)
+                      const hiddenFromAssistiveTech = depth < 250 || depth > 3_300
+                      return <article
+                        key={item.id}
+                        data-world-z={worldZ}
+                        aria-hidden={hiddenFromAssistiveTech ? true : undefined}
+                        className={`memory-corridor-node is-${side} ${index === currentIndex ? 'is-nearest' : ''}`}
+                        style={{
+                          '--corridor-depth': `${worldZ}px`,
+                          '--corridor-lane': `${lane}px`,
+                          '--corridor-yaw': `${yaw}deg`,
+                          '--corridor-roll': `${roll}deg`,
+                          '--corridor-opacity': clamp(1 - Math.max(0, depth - 1_000) / 5_000, 0.15, 1),
+                          zIndex: Math.max(1, 60 - Math.floor(depth / 120))
+                        } as React.CSSProperties}
+                      >
+                        <button
+                          className={`memory-corridor-card ${item.image_uri && !imageFailed ? 'has-photo' : ''}`}
+                          type="button"
+                          data-memory-id={item.id}
+                          style={{
+                            '--photo-float-duration': `${(6.4 + ((index * 7) % 23) / 10).toFixed(1)}s`,
+                            '--photo-float-delay': `${-((index * 13) % 65) / 10}s`,
+                            '--sparkle-duration': `${(3.6 + ((index * 19) % 14) / 10).toFixed(1)}s`,
+                            '--sparkle-phase': `${-((index * 17) % 31) / 10}s`
+                          } as React.CSSProperties}
+                          tabIndex={hiddenFromAssistiveTech ? -1 : 0}
+                          aria-hidden={hiddenFromAssistiveTech ? true : undefined}
+                          aria-label={`查看 ${memoryTitle(item)}，${dateLabel(item.event_at)}`}
+                        >
+                          <span className="memory-corridor-photo">
+                            {item.image_uri && !imageFailed
+                              ? <img src={item.image_uri} alt="" onError={() => setFailedGalleryImages(current => new Set(current).add(item.id))} />
+                              : <span className="memory-corridor-photo-fallback"><Heart size={30} strokeWidth={1.2} /></span>}
+                            <span className="memory-corridor-caption">
+                              <time>{dateLabel(item.event_at)}</time>
+                              <strong>{memoryTitle(item)}</strong>
+                            </span>
+                          </span>
+                          {item.image_uri && !imageFailed && <span className="memory-corridor-sparkles" aria-hidden="true">
+                            {Array.from({ length: 8 }, (_, sparkleIndex) => <i key={sparkleIndex} />)}
+                          </span>}
                         </button>
-
-                        <div className="memory-orbit-copy" aria-hidden={offset === 0 ? undefined : true}>
-                          <div className="memory-orbit-meta"><i />{dateLabel(item.event_at)} · {itemMood.label}</div>
-                          <h2>{memoryTitle(item)}</h2>
-                          {item.story && <p className="memory-orbit-story">“{item.story}”</p>}
-                          <div className="memory-orbit-response"><MessageCircle size={16} /><div><span>MindPet 当时对你说</span><p>{response || '这段旧回忆没有留下当时的回应。以后再次聊起它时，我会重新认识这个瞬间。'}</p></div></div>
-                          {(item.source_type === 'manual' || item.source_type === 'shared') && <button
-                            className={`memory-orbit-delete ${confirmDeleteId === item.id ? 'is-confirming' : ''}`}
-                            type="button"
-                            tabIndex={offset === 0 ? 0 : -1}
-                            aria-hidden={offset === 0 ? undefined : true}
-                            aria-live="polite"
-                            aria-label={confirmDeleteId === item.id ? `再次点击，确认移除 ${memoryTitle(item)}` : `移除 ${memoryTitle(item)}`}
-                            onPointerDown={event => event.stopPropagation()}
-                            onBlur={() => setConfirmDeleteId(current => current === item.id ? null : current)}
-                            onClick={() => {
-                              if (confirmDeleteId === item.id) void removeMemory(item)
-                              else setConfirmDeleteId(item.id)
-                            }}
-                          ><Trash2 size={14} />{confirmDeleteId === item.id ? '再次点击，确认移除' : '移除这段回忆'}</button>}
-                        </div>
                       </article>
-                    )
-                  })}
+                    })}
+                  </div>
                 </div>
 
-                <div className="memory-time-axis" aria-label="回忆时间轴">
-                  <div className="memory-time-direction"><span>现在</span><i /><span>更早</span></div>
-                  <div className="memory-time-track">{items.map((item, index) => <button key={item.id} type="button" className={index === selectedIndex ? 'active' : ''} onClick={() => selectIndex(index)} aria-label={dateLabel(item.event_at)}><i /><span>{shortDate(item.event_at)}</span></button>)}</div>
+                <div className="memory-time-axis" role="group" aria-label="回忆时间轴">
+                  <div className="memory-time-direction"><span>最新</span><i /><span>更早</span></div>
+                  <div className="memory-time-track">
+                    <span className="memory-time-rail" aria-hidden="true" />
+                    <span className="memory-time-progress" aria-hidden="true" style={{ width: `${timelineSpan > 0 ? clamp((cameraZ - timelineMinimum) / timelineSpan, 0, 1) * 100 : 50}%` }} />
+                    <span ref={timelineMarkerRef} className="memory-time-cursor" aria-hidden="true" style={{ left: `${timelineSpan > 0 ? clamp((cameraZ - timelineMinimum) / timelineSpan, 0, 1) * 100 : 50}%` }} />
+                    {timelineNodes.map(node => {
+                      const position = timelineSpan > 0 ? clamp((node.focusZ - timelineMinimum) / timelineSpan, 0, 1) * 100 : 50
+                      const showDateLabel = node.index === 0 || node.index === items.length - 1 || node.index % Math.max(1, Math.ceil(items.length / 4)) === 0
+                      return <button
+                        key={node.item.id}
+                        type="button"
+                        className={`memory-time-node ${node.index === currentIndex ? 'active' : ''} ${showDateLabel ? 'has-label' : ''}`}
+                        style={{ left: `${position}%` }}
+                        onClick={() => navigateToIndex(node.index)}
+                        aria-label={`前往 ${dateLabel(node.item.event_at)} 的回忆：${memoryTitle(node.item)}`}
+                        title={`${dateLabel(node.item.event_at)} · ${memoryTitle(node.item)}`}
+                      ><i />{showDateLabel && <span>{shortDate(node.item.event_at)}</span>}</button>
+                    })}
+                    <input
+                      ref={timelineRangeRef}
+                      key={`${items[0]?.id || 'empty'}-${items[items.length - 1]?.id || 'empty'}-${items.length}`}
+                      type="range"
+                      min={timelineMinimum}
+                      max={timelineMaximum}
+                      step="any"
+                      defaultValue={clamp(cameraZ, timelineMinimum, timelineMaximum)}
+                      onChange={onTimelineChange}
+                      aria-label="沿回忆时间轴连续浏览"
+                      aria-valuetext={layoutNodes[currentIndex] ? `${dateLabel(layoutNodes[currentIndex].item.event_at)}附近` : '回忆星河'}
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -737,13 +1816,17 @@ export function MemoryGalleryPage(): React.JSX.Element {
             ) : (
               <div className="memory-remembrance-shell">
                 <div className="memory-remembrance-scroll">
-                  {portrait.workingMemory && <section className="memory-remembrance-now"><div><Sparkles size={15} /><span>此刻的理解</span></div><p>{cleanWorkingMemory(portrait.workingMemory)}</p></section>}
+                  {portrait.reflectionBackfill.status === 'pending' && <p className="memory-reflection-status" role="status">MindPet 正在把这些记忆整理成自己的想法…</p>}
+                  {(portrait.reflectionBackfill.status === 'unavailable' || portrait.reflectionBackfill.status === 'failed') && <p className="memory-reflection-status is-error" role="status">{portrait.reflectionBackfill.message || '部分想法暂时没有整理成功。配置模型后可以刷新重试。'}</p>}
 
                   {rememberedItems.length > 0 ? (
                     <div className="memory-remembrance-timeline">
                       {rememberedItems.map((item, index) => {
                         const open = expandedMemoryId === item.id
                         const understanding = text(item.understanding || item.content)
+                        const reflection = item.reflection
+                        const thought = reflection?.stale ? '' : text(reflection?.thought)
+                        const sourceOpen = openSourceMemoryId === item.id
                         const userMessage = rememberedEvidence(item)
                         const evidenceContext = rememberedEvidenceContext(item)
                         const assistantReply = rememberedReply(item)
@@ -753,18 +1836,39 @@ export function MemoryGalleryPage(): React.JSX.Element {
                           <i className="memory-remembrance-point" aria-hidden="true" />
                           <button className="memory-remembrance-summary" type="button" aria-expanded={open} onClick={() => setExpandedMemoryId(open ? null : item.id)}>
                             <span className="memory-remembrance-index">{String(index + 1).padStart(2, '0')}</span>
-                            <span className="memory-remembrance-heading"><strong>{rememberedTitle(item)}</strong><small>{rememberedSourceLabel(item)} · {rememberedDate(item)}</small></span>
+                            <span className="memory-remembrance-heading">
+                              <strong>{rememberedTitle(item)}</strong>
+                              <span className="memory-remembrance-teaser">{thought || (item.reflectionStatus === 'failed' || item.reflectionStatus === 'unavailable' ? '这段想法暂时没有整理好。' : '我正在重新想起这段记忆…')}</span>
+                              <small>{rememberedSourceLabel(item)} · {rememberedDate(item)}</small>
+                            </span>
                             <ChevronDown size={17} />
                           </button>
                           {open && <div className="memory-remembrance-detail">
-                            {sourceImage && <button className="memory-remembrance-image" type="button" onClick={() => { if (sourceGalleryId) { setSelectedId(sourceGalleryId); setView('gallery') } }}><img src={sourceImage} alt="这段记忆的照片" /><span>去看看那张照片</span></button>}
                             <div className="memory-remembrance-copy">
-                              <div className="memory-remembrance-understanding"><Quote size={16} /><p>{understanding || rememberedTitle(item)}</p></div>
-                              {userMessage && <blockquote><span>你当时说</span><p>{userMessage}</p></blockquote>}
-                              {!userMessage && evidenceContext && <div className="memory-remembrance-context"><BookOpen size={15} /><div><span>形成这份理解时的背景</span><p>{evidenceContext}</p></div></div>}
-                              {assistantReply && <div className="memory-remembrance-reply"><MessageCircle size={15} /><div><span>我当时回应</span><p>{assistantReply}</p></div></div>}
-                              <div className="memory-remembrance-source"><BookOpen size={14} /><span>{rememberedSourceLabel(item)}，会随着新的相处继续修正</span></div>
-                              <button className="memory-remembrance-correct" type="button" onClick={() => setPortraitDraft(`请更正你对我的这条理解：“${rememberedTitle(item)}”。\n实际情况是：`)}><RefreshCw size={13} />这条理解需要更正</button>
+                              <div className="memory-remembrance-thought">
+                                <span><Quote size={15} />这段记忆让我想到</span>
+                                <p>{thought || (item.reflectionStatus === 'failed' || item.reflectionStatus === 'unavailable' ? '这段想法暂时没有整理好，请稍后重试。' : '我正在重新整理这段想法，完成后它会保存在这里。')}</p>
+                              </div>
+                              <button className="memory-remembrance-source-toggle" type="button" aria-expanded={sourceOpen} onClick={() => setOpenSourceMemoryId(sourceOpen ? null : item.id)}>
+                                <BookOpen size={14} />{sourceOpen ? '收起原文' : '查看原文'}<ChevronDown size={14} />
+                              </button>
+                              {sourceOpen && <div className="memory-remembrance-evidence">
+                                {sourceImage && sourceGalleryId && <button className="memory-remembrance-image" type="button" onClick={() => {
+                                  const galleryIndex = items.findIndex(galleryItem => galleryItem.id === sourceGalleryId)
+                                  if (galleryIndex >= 0) {
+                                    changeView('gallery')
+                                    navigateToIndex(galleryIndex)
+                                    requestAnimationFrame(() => sceneRef.current?.focus())
+                                  }
+                                }}><img src={sourceImage} alt="这段记忆关联的照片" /><span>去回忆星河中查看</span></button>}
+                                {userMessage
+                                  ? <blockquote><span>你当时说</span><p>{userMessage}</p></blockquote>
+                                  : <div className="memory-remembrance-context"><BookOpen size={15} /><div><span>没有找到可核对的原始对话</span>{evidenceContext && <p>{evidenceContext}</p>}</div></div>}
+                                {assistantReply && <div className="memory-remembrance-reply"><MessageCircle size={15} /><div><span>我当时回应</span><p>{assistantReply}</p></div></div>}
+                                {sourceImage && !sourceGalleryId && <div className="memory-remembrance-image is-unlinked"><img src={sourceImage} alt="这段记忆关联的照片" /></div>}
+                              </div>}
+                              <div className="memory-remembrance-source"><BookOpen size={14} /><span>{rememberedSourceLabel(item)} · {rememberedDate(item)}</span></div>
+                              <button className="memory-remembrance-correct" type="button" onClick={() => setPortraitDraft(correctionPrompt(understanding || text(item.title), text(reflection?.thought)))}><RefreshCw size={13} />这条理解需要更正</button>
                             </div>
                           </div>}
                         </article>
@@ -784,6 +1888,35 @@ export function MemoryGalleryPage(): React.JSX.Element {
             )}
           </div>
         )}
+
+        {detailItem && <div ref={detailLayerRef} className={`memory-detail-layer is-${detailPhase}`}>
+          <button className="memory-detail-backdrop" type="button" tabIndex={-1} aria-hidden="true" onClick={closeMemoryDetail} />
+          <section ref={detailDialogRef} className="memory-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-detail-title" tabIndex={-1}>
+            <button ref={detailCloseRef} className="memory-share-close" type="button" onClick={closeMemoryDetail} aria-label="关闭回忆详情"><X size={17} /></button>
+            <div ref={detailPhotoRef} className="memory-detail-photo">
+              {detailItem.image_uri && !failedGalleryImages.has(detailItem.id)
+                ? <img src={detailItem.image_uri} alt={detailItem.story || detailItem.title || '回忆照片'} onError={() => setFailedGalleryImages(current => new Set(current).add(detailItem.id))} />
+                : <div className="memory-corridor-photo-fallback"><Heart size={34} strokeWidth={1.2} /></div>}
+            </div>
+            <div className="memory-detail-copy">
+              <div className="memory-detail-meta"><time>{dateLabel(detailItem.event_at)}</time><span><i style={{ background: (moodMeta[detailItem.mood || 'neutral'] || moodMeta.neutral).color }} />{(moodMeta[detailItem.mood || 'neutral'] || moodMeta.neutral).label}</span></div>
+              <h2 id="memory-detail-title">{memoryTitle(detailItem)}</h2>
+              {detailItem.story && <p className="memory-detail-story">{detailItem.story}</p>}
+              <div className="memory-detail-response"><MessageCircle size={16} /><div><span>MindPet 当时对你说</span><p>{detailItem.ai_summary || detailItem.source_context || '这段旧回忆没有留下当时的回应。以后再次聊起它时，我会重新认识这个瞬间。'}</p></div></div>
+              {(detailItem.source_type === 'manual' || detailItem.source_type === 'shared') && <button
+                className={`memory-orbit-delete ${confirmDeleteId === detailItem.id ? 'is-confirming' : ''}`}
+                type="button"
+                aria-live="polite"
+                onBlur={() => setConfirmDeleteId(current => current === detailItem.id ? null : current)}
+                onClick={() => {
+                  if (confirmDeleteId === detailItem.id) void removeMemory(detailItem)
+                  else setConfirmDeleteId(detailItem.id)
+                }}
+              ><Trash2 size={14} />{confirmDeleteId === detailItem.id ? '再次点击，确认移除' : '移除这段回忆'}</button>}
+            </div>
+          </section>
+          {detailFlight?.itemId === detailItem.id && detailPhase !== 'ready' && <div ref={detailFlyRef} className="memory-detail-fly" aria-hidden="true"><img src={detailFlight.imageUri} alt="" draggable={false} /></div>}
+        </div>}
 
         {composerOpen && <div className="memory-share-layer">
           <button className="memory-share-backdrop" type="button" tabIndex={-1} aria-hidden="true" disabled={saving} onClick={closeComposer} />

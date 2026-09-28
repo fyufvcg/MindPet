@@ -54,8 +54,11 @@ CREATE TABLE IF NOT EXISTS llm_growth (
   insight TEXT NOT NULL,
   context TEXT NOT NULL DEFAULT '',
   embedding BLOB,
+  title TEXT NOT NULL DEFAULT '',
+  source_type TEXT NOT NULL DEFAULT '',
+  source_id TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, category, insight)
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

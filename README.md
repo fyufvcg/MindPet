@@ -263,11 +263,11 @@ app:
 
 Windows 开发机在仓库根目录运行唯一启动脚本：
 
-```text
-XiaoqingDesktop.vbs
+```bat
+XiaoqingDesktop.bat
 ```
 
-双击脚本后会在后台构建 SQLite 后端并启动 Electron，全程不会显示或保留命令行窗口。应用界面与本地后端都就绪后，启动脚本会正常结束，这不代表应用异常退出。启动进度记录在 `%LOCALAPPDATA%\MindPet\logs\dev-launcher.log`；若环境检查、构建或启动失败，会弹出包含失败步骤和日志位置的提示。Electron 随后自动启动 Java 后端。源码调试需要 JDK 21、Maven、Node.js 20 和 npm。安装版已内置运行环境，用户直接打开应用即可。
+双击脚本后会在同一个命令行窗口中构建 SQLite 后端并启动 Electron。Maven、npm 和 Electron 的输出会直接显示在窗口中；开发进程结束后窗口会暂停，按任意键关闭。Electron 随后自动启动 Java 后端。源码调试需要 JDK 21、Maven、Node.js 20 和 npm。安装版已内置运行环境，用户直接打开应用即可。
 
 </details>
 
@@ -301,7 +301,7 @@ MINDPET/
 │   └── pom.xml
 ├── scripts/
 │   └── check.bat              # 可选：检查 SQLite 和本地存储 API
-├── XiaoqingDesktop.vbs        # 唯一源码启动脚本：后台构建后端并启动 Electron
+├── XiaoqingDesktop.bat        # 唯一源码启动脚本：显示构建和运行日志并启动 Electron
 └── README.md
 ```
 

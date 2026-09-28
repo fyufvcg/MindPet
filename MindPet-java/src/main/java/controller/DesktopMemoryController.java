@@ -31,6 +31,7 @@ public class DesktopMemoryController {
     private final ConversationMemoryService convMemory;
     private final MemoryCuratorService memoryCurator;
     private final PortraitMemoryService portraitMemoryService;
+    private final MemoryReflectionService memoryReflectionService;
     private final AiService aiService;
     private final SessionService sessionService;
     private final JdbcTemplate jdbc;
@@ -45,6 +46,7 @@ public class DesktopMemoryController {
             ConversationMemoryService convMemory,
             MemoryCuratorService memoryCurator,
             PortraitMemoryService portraitMemoryService,
+            MemoryReflectionService memoryReflectionService,
             AiService aiService,
             SessionService sessionService,
             JdbcTemplate jdbc,
@@ -54,6 +56,7 @@ public class DesktopMemoryController {
         this.convMemory = convMemory;
         this.memoryCurator = memoryCurator;
         this.portraitMemoryService = portraitMemoryService;
+        this.memoryReflectionService = memoryReflectionService;
         this.aiService = aiService;
         this.sessionService = sessionService;
         this.jdbc = jdbc;
@@ -194,9 +197,13 @@ public class DesktopMemoryController {
         try {
             Map<String, Object> result = new LinkedHashMap<>();
             List<Map<String, Object>> memories = portraitMemoryService.listStableMemories(USER_ID, limit);
+            Map<String, Object> reflectionBackfill = memoryReflectionService
+                .scheduleMissingReflections(USER_ID);
+            memoryReflectionService.attachSavedReflections(USER_ID, memories);
             result.put("status", "ok");
             result.put("memories", memories);
             result.put("count", memories.size());
+            result.put("reflectionBackfill", reflectionBackfill);
             result.put("generatedAt", Instant.now().toString());
             result.put("workingMemory", memoryCurator.getWorkingMemoryPrompt(USER_ID));
             result.put("profile", jdbc.queryForList(
@@ -206,7 +213,8 @@ public class DesktopMemoryController {
                 "SELECT id,insight,context,created_at FROM user_insight WHERE user_id=? ORDER BY created_at DESC LIMIT 50",
                 USER_ID));
             result.put("growth", jdbc.queryForList(
-                "SELECT id,category,insight,context,created_at FROM llm_growth WHERE user_id=? ORDER BY created_at DESC LIMIT 30",
+                "SELECT id,category,insight,context,title,source_type,source_id,created_at,updated_at "
+                    + "FROM llm_growth WHERE user_id=? ORDER BY created_at DESC LIMIT 120",
                 USER_ID));
             return result;
         } catch (Exception e) {

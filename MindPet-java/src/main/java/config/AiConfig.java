@@ -46,6 +46,19 @@ public class AiConfig {
         return executor;
     }
 
+    @Bean(name = "memoryReflectionExecutor")
+    public Executor memoryReflectionExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("memory-reflection-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(15);
+        executor.initialize();
+        return executor;
+    }
+
     @Bean(name = "knowledgeGraphExecutor")
     public Executor knowledgeGraphExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

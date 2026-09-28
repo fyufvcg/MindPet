@@ -26,7 +26,7 @@ Write-Host 'MindPet local SQLite verification'
 Write-Host "Database: $database"
 
 if (-not $database) {
-    throw 'SQLite database not found. Start the desktop app with XiaoqingDesktop.vbs first.'
+    throw 'SQLite database not found. Start the desktop app with XiaoqingDesktop.bat first.'
 }
 Write-Host '  PASS  SQLite database file exists'
 

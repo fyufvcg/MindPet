@@ -18,6 +18,21 @@ colors:
   memory-share-gold: "#94611e"
   memory-share-gold-hover: "#805215"
   memory-share-gold-border: "#94611e"
+  memory-cosmos-ink: "#18304a"
+  memory-cosmos-muted: "#536c84"
+  memory-cosmos-faint: "#e6f0f8"
+  memory-cosmos-line: "#b7cadb"
+  memory-cosmos-blue: "#719bb8"
+  memory-cosmos-violet: "#a89bc2"
+  memory-cosmos-gold: "#ba8d58"
+  memory-cosmos-gold-soft: "rgba(186, 141, 88, 0.14)"
+  memory-cosmos-green: "#6f9f92"
+  memory-cosmos-shadow: "rgba(39, 74, 108, 0.16)"
+  memory-cosmos-shadow-strong: "rgba(30, 61, 94, 0.26)"
+  memory-cosmos-scene-start: "#eaf4fb"
+  memory-cosmos-scene-mid: "#dceaf5"
+  memory-cosmos-scene-depth: "#e6edf8"
+  memory-cosmos-scene-end: "#f3f7fb"
   success: "#10b981"
   danger: "#ef4444"
   warning: "#f97316"
@@ -150,6 +165,15 @@ The palette is a cool neutral foundation with a clear blue interaction voice. Da
 - **Cool Paper** (`#f8fafc`): Light content surface.
 - **White Surface** (`#ffffff`): Light cards, inputs, and active titlebar tabs.
 - **Muted Slate** (`#566277`): Secondary labels, metadata, and inactive controls with readable contrast on the light workspace surfaces.
+
+### Memory Cosmos
+- **Cosmos Ink** (`#18304a`), **Cosmos Blue** (`#719bb8`), and **Cosmos Violet** (`#a89bc2`) create the cool spatial layers in light mode.
+- The light star field blends `#eaf4fb`, `#dceaf5`, `#e6edf8`, and `#f3f7fb`; the blue middle and lower layers should remain distinct from the white panels.
+- Use the readable Cosmos Muted (`#536c84`) for metadata and the Cosmos Line (`#b7cadb`) for ordinary structural dividers. Interactive rails and controls use a stronger control border.
+- **Memory Gold** (`#ba8d58`) is the accent for star dust, active memory navigation, timeline progress, and memory-specific focus. Sharing text keeps the darker readable gold (`#94611e`). Global system navigation and primary actions continue to use interface blue.
+- Keep the central corridor brighter than the surrounding star field. Fade the central light band at its ends so it connects gradually into the star field. Photo edges, timeline rails, and reading panels need visible boundaries against the scene.
+- Cosmos surfaces use `rgba(255, 255, 255, 0.9)` for floating controls and an opaque white surface for expanded reading cards and dialogs. Use restrained shadows for lift; do not rely on blur alone to separate panels.
+- Dark mode retains its current navy background and gold memory accents.
 
 ### Named Rules
 **The Signal, Not Decoration Rule.** Blue, green, orange, and red accents should communicate interaction or status; do not add them merely to make a surface busier.
