@@ -1,0 +1,23 @@
+{
+  "status": "COMPLETED",
+  "run_id": "pilot30_20260928_101045",
+  "dataset": "D:\\MindPet-dev\\MindPet-Eval\\datasets\\e2e_memory\\pilot_30.jsonl",
+  "dataset_sha256": "e9ab603193caf9ffd0b1e9bacb9b7c8ea8073438269036dbd71f79d178e82ec1",
+  "git_commit": "e50ed8800a1bb123f17621035dd41289c9dd28d7",
+  "database": "mindpet_e2e_eval",
+  "user_id": "e2e_memory_eval_user",
+  "request_policy": "serial, exactly once, fail-fast, no retry",
+  "started_at": "2026-09-28T02:10:52.749406+00:00",
+  "attempted": 30,
+  "completed": 30,
+  "successful": 30,
+  "failed": 0,
+  "reset_deleted": {
+    "kg_evidence": 0,
+    "kg_relation": 0,
+    "kg_entity": 0,
+    "kg_turn_ingest": 0,
+    "long_term_memory": 0
+  },
+  "finished_at": "2026-09-28T02:11:51.446115+00:00"
+}

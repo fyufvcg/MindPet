@@ -1,0 +1,2 @@
+﻿metric,threshold,accuracy,precision,recall,f1,tp,fp,fn,tn
+importance,>=0.35,0.63,0.6210526315789474,0.9833333333333333,0.7612903225806452,59,36,1,4

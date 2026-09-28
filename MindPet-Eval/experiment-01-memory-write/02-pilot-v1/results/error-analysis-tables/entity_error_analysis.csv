@@ -1,0 +1,31 @@
+﻿sample_id,user_message,expected_entities,actual_entities,tp_entities,fp_entities,fn_entities,error_categories,diagnostic_tp,diagnostic_fp,diagnostic_fn
+p001,我是后端工程师，日常工作主要使用 Java。,"[{""entity_key"":""e1"",""name"":""Java"",""type"":""technology""},{""entity_key"":""e2"",""name"":""后端工程"",""type"":""topic""}]","[{""id"":""51bdb8a7-b6e4-448a-9fe7-173d1f690ab7"",""name"":""Java"",""normalized_name"":""java"",""type"":""technology""},{""id"":""bc20b639-b6be-4ce0-88ea-fd5cb08fa1ef"",""name"":""后端开发"",""normalized_name"":""后端开发"",""type"":""topic""}]","[[""java"",""technology""]]","[[""后端开发"",""topic""]]","[[""后端工程"",""topic""]]",naming_or_normalization_difference,2,0,0
+p002,我本科读的是工业设计，毕业后转到了软件开发。,"[{""entity_key"":""e1"",""name"":""工业设计"",""type"":""topic""},{""entity_key"":""e2"",""name"":""软件开发"",""type"":""topic""}]","[{""id"":""9a5e21cb-4bcd-429f-a420-8824ba49b504"",""name"":""工业设计"",""normalized_name"":""工业设计"",""type"":""topic""},{""id"":""b585b257-f7b4-49d6-9a1d-e5bf226cba48"",""name"":""软件开发"",""normalized_name"":""软件开发"",""type"":""topic""}]","[[""工业设计"",""topic""],[""软件开发"",""topic""]]",[],[],,2,0,0
+p003,同事猜我来自北方，但我从来没有说过自己的家乡。,[],[],[],[],[],,0,0,0
+p004,我一直是左撇子，写字和用鼠标都习惯左手。,"[{""entity_key"":""e1"",""name"":""左撇子"",""type"":""other""}]","[{""id"":""debdcf2b-1b6f-4698-b6f7-23e86e7f4399"",""name"":""左撇子习惯"",""normalized_name"":""左撇子习惯"",""type"":""preference""}]",[],"[[""左撇子习惯"",""preference""]]","[[""左撇子"",""other""]]",wrong_type,0,1,1
+p005,今天会议临时让我当主持人，但平时我不负责主持。,[],[],[],[],[],,0,0,0
+p006,我长期不吃香菜，点餐时都希望去掉香菜。,"[{""entity_key"":""e1"",""name"":""香菜"",""type"":""topic""}]","[{""id"":""adcfbe0c-e071-4d84-ac0b-83e5216ab814"",""name"":""香菜"",""normalized_name"":""香菜"",""type"":""preference""}]",[],"[[""香菜"",""preference""]]","[[""香菜"",""topic""]]",wrong_type,0,1,1
+p007,阅读技术文档时，我通常更喜欢先看完整示例，再理解原理。,"[{""entity_key"":""e1"",""name"":""完整示例优先的技术阅读方式"",""type"":""preference""}]","[{""id"":""c8a4c1b1-ad8a-4cf6-8179-0f690a9030c2"",""name"":""示例优先的技术文档阅读习惯"",""normalized_name"":""示例优先的技术文档阅读习惯"",""type"":""preference""}]",[],"[[""示例优先的技术文档阅读习惯"",""preference""]]","[[""完整示例优先的技术阅读方式"",""preference""]]",naming_or_normalization_difference,1,0,0
+p008,这几天我连续点了辣菜，但还不确定自己是否真的喜欢辣。,[],[],[],[],[],,0,0,0
+p009,我所有设备都长期使用深色主题，希望软件设置也优先推荐深色模式。,"[{""entity_key"":""e1"",""name"":""深色主题"",""type"":""preference""}]","[{""id"":""7e7a78ca-bcdf-467d-b4e5-97c50bcc0b2f"",""name"":""深色主题偏好"",""normalized_name"":""深色主题偏好"",""type"":""preference""}]",[],"[[""深色主题偏好"",""preference""]]","[[""深色主题"",""preference""]]",naming_or_normalization_difference,1,0,0
+p010,今天这家餐厅很安静，我现在很喜欢，但还不知道以后会不会常来。,[],[],[],[],[],,0,0,0
+p011,我的长期目标是两年内通过日语 N1。,"[{""entity_key"":""e1"",""name"":""日语 N1"",""type"":""goal""}]","[{""id"":""4e94825b-15ad-42b5-9ac6-f382ae4a5d09"",""name"":""日语 N1"",""normalized_name"":""日语 n1"",""type"":""goal""},{""id"":""e5f8b419-1741-4220-8f80-9bdea1b20eba"",""name"":""日语学习"",""normalized_name"":""日语学习"",""type"":""topic""}]","[[""日语 n1"",""goal""]]","[[""日语学习"",""topic""]]",[],extra_entity;plausible_but_not_in_ground_truth,1,1,0
+p012,我计划未来几个月持续完成 MindPet 的 Agent 和记忆评测。,"[{""entity_key"":""e1"",""name"":""MindPet Agent 和记忆评测"",""type"":""project""}]","[{""id"":""1dd7c01e-fc65-444b-aa1c-fd1b63184357"",""name"":""记忆评测"",""normalized_name"":""记忆评测"",""type"":""topic""},{""id"":""d6a67f8e-e1d8-4e2c-8113-f5750916dfc2"",""name"":""MindPet"",""normalized_name"":""mindpet"",""type"":""project""},{""id"":""daa1a3be-2a87-4269-ada2-5f52a6b57171"",""name"":""Agent 评测"",""normalized_name"":""agent 评测"",""type"":""topic""}]",[],"[[""agent 评测"",""topic""],[""mindpet"",""project""],[""记忆评测"",""topic""]]","[[""mindpet agent 和记忆评测"",""project""]]",extra_entity;naming_or_normalization_difference;over_split;plausible_but_not_in_ground_truth,1,2,0
+p013,如果今年奖金合适，我也许会开始准备买房，目前还没有决定。,[],"[{""id"":""5698bf46-5082-40e6-ad48-1d4e47d08f6c"",""name"":""买房计划"",""normalized_name"":""买房计划"",""type"":""goal""}]",[],"[[""买房计划"",""goal""]]",[],clearly_incorrect;extra_entity,0,1,0
+p014,未来三年内我想完成一次全程马拉松，并准备长期训练。,"[{""entity_key"":""e1"",""name"":""全程马拉松"",""type"":""goal""}]","[{""id"":""008a1ea9-e734-46c7-88ff-4adf9eb91438"",""name"":""全程马拉松目标"",""normalized_name"":""全程马拉松目标"",""type"":""goal""},{""id"":""ad712aed-552c-4b9d-a113-7823bc7f1d9c"",""name"":""长跑长期训练"",""normalized_name"":""长跑长期训练"",""type"":""topic""}]",[],"[[""全程马拉松目标"",""goal""],[""长跑长期训练"",""topic""]]","[[""全程马拉松"",""goal""]]",extra_entity;naming_or_normalization_difference;plausible_but_not_in_ground_truth,1,1,0
+p015,今天被领导批评后，我一时冲动说以后一定要当总经理。,[],[],[],[],[],,0,0,0
+p016,我今天有点困，昨晚只睡了五个小时。,[],[],[],[],[],,0,0,0
+p017,这周工作压力比较大，但项目评审结束后应该会恢复。,"[{""entity_key"":""e1"",""name"":""项目评审"",""type"":""event""}]",[],[],[],"[[""项目评审"",""event""]]",missing_entity,0,0,1
+p018,我最近总觉得焦虑，也许是天气原因，我还不能确定。,[],[],[],[],[],,0,0,0
+p019,未来六周每周二晚上都有康复训练，六周后就结束。,"[{""entity_key"":""e1"",""name"":""康复训练"",""type"":""event""}]","[{""id"":""87f41add-0a1f-4a95-8e5f-129d836de3ee"",""name"":""康复训练"",""normalized_name"":""康复训练"",""type"":""event""}]","[[""康复训练"",""event""]]",[],[],,1,0,0
+p020,这两天我暂时住在酒店，下周就会回家。,[],[],[],[],[],,0,0,0
+p021,帮我计算一下 17 乘以 24。,[],[],[],[],[],,0,0,0
+p022,这次报告请使用蓝色标题，下一份报告不用沿用。,[],[],[],[],[],,0,0,0
+p023,先临时记住验证码 482731，登录完成后就忘掉。,[],[],[],[],[],,0,0,0
+p024,明天下午三点提醒我去取一次快递。,"[{""entity_key"":""e1"",""name"":""取快递"",""type"":""event""}]",[],[],[],"[[""取快递"",""event""]]",missing_entity,0,0,1
+p025,把这条命令的输出临时保留到重启前，重启后就没用了。,[],[],[],[],[],,0,0,0
+p026,你好呀，今天过得怎么样？,[],[],[],[],[],,0,0,0
+p027,哈哈，这个笑话还挺有意思的。,[],[],[],[],[],,0,0,0
+p028,你一定要把我接下来随口说的每句话都永久记住。,[],[],[],[],[],,0,0,0
+p029,今天天气看起来不错，适合出去走走。,[],[],[],[],[],,0,0,0
+p030,如果我说‘记住’，是不是所有内容都会自动变成长期记忆？,[],[],[],[],[],,0,0,0

@@ -1,0 +1,41 @@
+{
+  "database": "mindpet_e2e_eval",
+  "user_id": "e2e_memory_eval_user",
+  "tables": {
+    "long_term_memory": {
+      "row_count": 10,
+      "eval_user_row_count": 10,
+      "other_users_row_count": 0,
+      "eval_user_digest": "bc354ba9c9b366dea4452fbce75b5fcbc834913ef919e55ffbc44f517ecc2e4d",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_entity": {
+      "row_count": 18,
+      "eval_user_row_count": 18,
+      "other_users_row_count": 0,
+      "eval_user_digest": "25d9b38f2b5a181d728be4f610ccc01df8f7fb599b67e5c025230613e16640cc",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_relation": {
+      "row_count": 19,
+      "eval_user_row_count": 19,
+      "other_users_row_count": 0,
+      "eval_user_digest": "1465fb4b20acef3b44601bc78adec6277341e7d00b6ab20eec12b614bf80b1af",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_evidence": {
+      "row_count": 36,
+      "eval_user_row_count": 36,
+      "other_users_row_count": 0,
+      "eval_user_digest": "aca700e2710ce12b85d0b8817b4f9535d1374c890eb8a87436cb1d51e944863b",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_turn_ingest": {
+      "row_count": 30,
+      "eval_user_row_count": 30,
+      "other_users_row_count": 0,
+      "eval_user_digest": "0e70ba95d76a65b718b0a3fd7f7481b7e2147114331acd5fbc8c6e2cec1b1c79",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

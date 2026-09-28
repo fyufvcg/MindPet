@@ -1,0 +1,104 @@
+{
+  "formal_requests": 30,
+  "success": 30,
+  "failed": 0,
+  "pipeline_status": {
+    "FULL_SUCCESS": 10,
+    "NO_PERSIST": 20
+  },
+  "should_remember": {
+    "accuracy": 0.9333333333333333,
+    "precision": 0.8181818181818182,
+    "recall": 1.0,
+    "f1": 0.9,
+    "tp": 9,
+    "fp": 2,
+    "fn": 0,
+    "tn": 19
+  },
+  "importance": {
+    "n": 30,
+    "mae": 0.2566666666666667,
+    "rmse": 0.29944392908634276,
+    "spearman": 0.6835119460548027
+  },
+  "ltm_persistence": {
+    "accuracy": 0.9666666666666667,
+    "precision": 0.9,
+    "recall": 1.0,
+    "f1": 0.9473684210526316,
+    "tp": 9,
+    "fp": 1,
+    "fn": 0,
+    "tn": 20
+  },
+  "entity": {
+    "precision": 0.29411764705882354,
+    "recall": 0.35714285714285715,
+    "f1": 0.3225806451612903,
+    "tp": 5,
+    "fp": 12,
+    "fn": 9
+  },
+  "relation": {
+    "precision": 0.21052631578947367,
+    "recall": 0.3333333333333333,
+    "f1": 0.2580645161290323,
+    "tp": 4,
+    "fp": 15,
+    "fn": 8
+  },
+  "evidence_coverage": {
+    "covered": 10,
+    "expected_kg_positive": 12,
+    "rate": 0.8333333333333334
+  },
+  "turn_ingest": {
+    "success": 30,
+    "total": 30
+  },
+  "diagnostics": {
+    "parse_failure": 0,
+    "memory_object_missing": 18,
+    "importance_fallback": 18,
+    "confidence_fallback": 18,
+    "importance_clamp": 0,
+    "confidence_clamp": 0,
+    "ltm_failure": 0,
+    "kg_failure": 0,
+    "duplicate": 0,
+    "prune": 0
+  },
+  "special_cases": {
+    "p017": {
+      "status": "NO_PERSIST",
+      "shouldRemember": false,
+      "importance": 0.5,
+      "ltmPersisted": false,
+      "entityRows": 0,
+      "relationRows": 0,
+      "evidenceRows": 0,
+      "turnIngestRecorded": true
+    },
+    "p019": {
+      "status": "FULL_SUCCESS",
+      "shouldRemember": true,
+      "importance": 0.5,
+      "ltmPersisted": true,
+      "entityRows": 1,
+      "relationRows": 1,
+      "evidenceRows": 2,
+      "turnIngestRecorded": true
+    },
+    "p024": {
+      "status": "NO_PERSIST",
+      "shouldRemember": false,
+      "importance": 0.5,
+      "ltmPersisted": false,
+      "entityRows": 0,
+      "relationRows": 0,
+      "evidenceRows": 0,
+      "turnIngestRecorded": true
+    }
+  }
+}

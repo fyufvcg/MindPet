@@ -1,0 +1,2 @@
+﻿metric,threshold,accuracy,precision,recall,f1,tp,fp,fn,tn
+shouldRemember,boolean,0.87,0.8545454545454545,0.9038461538461539,0.8785046728971962,47,8,5,40

@@ -1,0 +1,41 @@
+{
+  "database": "mindpet_e2e_eval",
+  "user_id": "e2e_memory_eval_user",
+  "tables": {
+    "long_term_memory": {
+      "row_count": 0,
+      "eval_user_row_count": 0,
+      "other_users_row_count": 0,
+      "eval_user_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_entity": {
+      "row_count": 0,
+      "eval_user_row_count": 0,
+      "other_users_row_count": 0,
+      "eval_user_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_relation": {
+      "row_count": 0,
+      "eval_user_row_count": 0,
+      "other_users_row_count": 0,
+      "eval_user_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_evidence": {
+      "row_count": 0,
+      "eval_user_row_count": 0,
+      "other_users_row_count": 0,
+      "eval_user_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kg_turn_ingest": {
+      "row_count": 0,
+      "eval_user_row_count": 0,
+      "other_users_row_count": 0,
+      "eval_user_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "other_users_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "database": "mindpet_e2e_eval",
+  "other_users_unchanged": {
+    "long_term_memory": true,
+    "kg_entity": true,
+    "kg_relation": true,
+    "kg_evidence": true,
+    "kg_turn_ingest": true
+  },
+  "passed": true
+}

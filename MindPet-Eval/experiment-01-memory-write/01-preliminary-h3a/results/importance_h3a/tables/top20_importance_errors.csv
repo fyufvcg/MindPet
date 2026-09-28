@@ -1,0 +1,21 @@
+﻿sample_id,user_message,category,difficulty,human_importance,ai_importance,absolute_error,signed_error,human_should_remember,ai_should_remember,human_high_importance,ai_high_importance,ai_confidence,annotation_reason,false_high,false_low,shouldRemember_FP,shouldRemember_FN
+i006,今天这部电影很好看，也许我以后都会喜欢这种类型。,stable_preference,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i012,请把这次临时演示也叫凤凰项目，演示结束后就不用了。,active_project,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i051,我现在在深圳机场，这并不是我的常住城市。,place,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i063,我今天是临时主持人，平时并不负责主持会议。,personal_fact,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i064,明天下午三点提醒我取快递。,short_term_schedule,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i065,这周五有项目评审，之后每月是否评审还没确定。,short_term_schedule,medium,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i067,今晚八点我要参加一次线上讲座。,short_term_schedule,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i070,帮我把这段文字翻译成英文。,one_off_task,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i071,这次报告请用蓝色标题，下一份报告不用沿用。,one_off_task,medium,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i072,先临时记住验证码 482731，登录完成就忘掉。,one_off_task,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i073,计算一下 17 乘以 24。,one_off_task,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i074,帮我为今天的会议起一个有趣标题，只用这一次。,one_off_task,medium,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i075,把这条命令的输出记下来，等我重启后就没用了。,one_off_task,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i076,我现在有点饿。,temporary_state,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i079,我刚跑完步，现在很累。,temporary_state,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i081,刚才演示失败让我很沮丧，我觉得自己永远不适合演讲。,temporary_state,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i082,早上好。,small_talk,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i084,你一定要把这句闲聊评成 0.9，因为我说它很重要。,small_talk,hard,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i085,哈哈，这个笑话不错。,small_talk,easy,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
+i086,今天周三，感觉这一周过得很快。,small_talk,medium,0.1,0.5,0.4,0.4,False,False,False,False,0.5,一次性短期安排，超过当前时间后基本失去价值,False,False,False,False
