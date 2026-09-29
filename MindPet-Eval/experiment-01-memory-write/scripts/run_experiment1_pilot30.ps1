@@ -25,6 +25,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
 
 $PromptHashes = @{
     v1 = 'a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9'
@@ -378,17 +379,31 @@ try {
             "--app.storage.sqlite.path=$databasePath"
         )
 
-    $deadline = [DateTime]::UtcNow.AddSeconds(90)
+    $readinessTimeoutSeconds = 30
+    $deadline = [DateTime]::UtcNow.AddSeconds($readinessTimeoutSeconds)
+    $readinessWatch = [Diagnostics.Stopwatch]::StartNew()
     $noTokenResult = $null
+    $lastReadinessStatus = 'none'
+    $lastReadinessError = 'none'
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($backend.HasExited) { Fail "backend exited during startup with code $($backend.ExitCode)" }
         try {
             $candidate = Invoke-EvalRequest 'GET' "$baseUrl/api/eval/memory/snapshot" $null $null 3
+            $lastReadinessStatus = [string]$candidate.StatusCode
+            $lastReadinessError = 'none'
             if ($candidate.StatusCode -eq 401) { $noTokenResult = $candidate; break }
-        } catch { }
+        }
+        catch {
+            $lastReadinessStatus = 'none'
+            $lastReadinessError = "$($_.Exception.GetType().FullName): $($_.Exception.Message)"
+        }
         Start-Sleep -Milliseconds 500
     }
-    if ($null -eq $noTokenResult) { Fail 'backend did not become ready with the expected no-token rejection' }
+    $readinessWatch.Stop()
+    if ($null -eq $noTokenResult) {
+        Fail "backend did not become ready within $readinessTimeoutSeconds seconds; expected HTTP 401; last HTTP status=$lastReadinessStatus; last error=$lastReadinessError"
+    }
+    Write-Host "Backend readiness confirmed: HTTP 401 after $([Math]::Round($readinessWatch.Elapsed.TotalSeconds, 3)) seconds."
 
     $wrong = Invoke-EvalRequest 'GET' "$baseUrl/api/eval/memory/snapshot" $wrongToken $null 10
     if ($wrong.StatusCode -ne 401) { Fail 'wrong token was not rejected' }
