@@ -142,7 +142,6 @@ CREATE TABLE IF NOT EXISTS curator_turns (
 );
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_seq ON curator_turns(user_id, sequence DESC);
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_completed ON curator_turns(user_id, completed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_curator_turns_pending ON curator_turns(user_id, consolidation_status, occurred_at);
 CREATE TABLE IF NOT EXISTS curator_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,

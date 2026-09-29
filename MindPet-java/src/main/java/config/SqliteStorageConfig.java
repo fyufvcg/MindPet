@@ -64,15 +64,15 @@ public class SqliteStorageConfig {
             connection.setAutoCommit(false);
             try {
                 Set<String> stateColumns = tableColumns(statement, "curator_state");
-                addColumnIfMissing(statement, stateColumns, "last_turn_id", "TEXT");
-                addColumnIfMissing(statement, stateColumns, "last_success_at", "TEXT");
-                addColumnIfMissing(statement, stateColumns, "last_error", "TEXT");
+                addColumnIfMissing(statement, "curator_state", stateColumns, "last_turn_id", "TEXT");
+                addColumnIfMissing(statement, "curator_state", stateColumns, "last_success_at", "TEXT");
+                addColumnIfMissing(statement, "curator_state", stateColumns, "last_error", "TEXT");
 
                 Set<String> turnColumns = tableColumns(statement, "curator_turns");
-                addColumnIfMissing(statement, turnColumns, "occurred_at", "TEXT");
-                addColumnIfMissing(statement, turnColumns, "event_timezone", "TEXT");
-                addColumnIfMissing(statement, turnColumns, "processed_at", "TEXT");
-                addColumnIfMissing(statement, turnColumns, "consolidation_status", "TEXT NOT NULL DEFAULT 'pending'");
+                addColumnIfMissing(statement, "curator_turns", turnColumns, "occurred_at", "TEXT");
+                addColumnIfMissing(statement, "curator_turns", turnColumns, "event_timezone", "TEXT");
+                addColumnIfMissing(statement, "curator_turns", turnColumns, "processed_at", "TEXT");
+                addColumnIfMissing(statement, "curator_turns", turnColumns, "consolidation_status", "TEXT NOT NULL DEFAULT 'pending'");
 
                 statement.execute("CREATE TABLE IF NOT EXISTS memory_fact ("
                     + "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, "
@@ -129,10 +129,10 @@ public class SqliteStorageConfig {
                     while (result.next()) columns.add(result.getString("name"));
                 }
 
-                addColumnIfMissing(statement, columns, "title", "TEXT NOT NULL DEFAULT ''");
-                addColumnIfMissing(statement, columns, "source_type", "TEXT NOT NULL DEFAULT ''");
-                addColumnIfMissing(statement, columns, "source_id", "TEXT NOT NULL DEFAULT ''");
-                addColumnIfMissing(statement, columns, "updated_at", "TEXT NOT NULL DEFAULT ''");
+                addColumnIfMissing(statement, "llm_growth", columns, "title", "TEXT NOT NULL DEFAULT ''");
+                addColumnIfMissing(statement, "llm_growth", columns, "source_type", "TEXT NOT NULL DEFAULT ''");
+                addColumnIfMissing(statement, "llm_growth", columns, "source_id", "TEXT NOT NULL DEFAULT ''");
+                addColumnIfMissing(statement, "llm_growth", columns, "updated_at", "TEXT NOT NULL DEFAULT ''");
                 if (hasLegacyGrowthTextUniqueIndex(connection, statement)) {
                     rebuildGrowthWithoutTextUniqueConstraint(statement);
                 }
@@ -183,9 +183,9 @@ public class SqliteStorageConfig {
         statement.execute("ALTER TABLE llm_growth_migration RENAME TO llm_growth");
     }
 
-    private void addColumnIfMissing(Statement statement, Set<String> columns,
+    private void addColumnIfMissing(Statement statement, String table, Set<String> columns,
                                     String column, String declaration) throws Exception {
         if (columns.contains(column)) return;
-        statement.execute("ALTER TABLE llm_growth ADD COLUMN " + column + " " + declaration);
+        statement.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + declaration);
     }
 }

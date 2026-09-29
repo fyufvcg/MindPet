@@ -24,6 +24,9 @@ where npm >nul 2>&1
 if errorlevel 1 goto :missing_node
 
 echo [1/3] Building the SQLite backend...
+rem Stop only an existing MindPet backend using this project's JAR.
+rem This prevents Maven clean from failing when a previous launcher is still running.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$jar=[IO.Path]::GetFullPath('%BACKEND_DIR%\target\weather-wechat-bot-1.0.0.jar'); Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^java(w)?\.exe$' -and $_.CommandLine -like ('*' + $jar + '*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 pushd "%BACKEND_DIR%"
 call mvn -DskipTests clean package
 set "BUILD_EXIT=%ERRORLEVEL%"
