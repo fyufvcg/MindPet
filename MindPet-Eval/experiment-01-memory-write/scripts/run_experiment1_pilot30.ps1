@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('v1', 'v2')]
+    [ValidateSet('v1', 'v2', 'v21')]
     [string]$Variant,
 
     [Parameter(Mandatory = $true)]
@@ -30,10 +30,12 @@ Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
 $PromptHashes = @{
     v1 = 'a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9'
     v2 = 'cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e'
+    v21 = '1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649'
 }
 $RequiredBranches = @{
     v1 = 'experiment/e1-prompt-v1'
     v2 = 'experiment/mindpet-evaluation'
+    v21 = 'experiment/e1-prompt-v2-1'
 }
 $EvaluationInfrastructureCommit = 'ea1e5547033a8efcfaa58bb1891b8a489a6acd41'
 $FixedEvalUser = 'e2e_memory_eval_user'
@@ -567,7 +569,15 @@ try {
             '--evaluation-infrastructure-commit', $EvaluationInfrastructureCommit,
             '--timeout', [string]$RunnerTimeoutSeconds
         )
-        & python @runnerArgs
+        if ($Variant -eq 'v21') {
+            $pythonScriptDirectory = $PSScriptRoot.Replace('\', '\\')
+            $runnerBootstrap = "import sys; sys.path.insert(0, r'$pythonScriptDirectory'); import run_e2e_pilot as runner; runner.PROMPT_HASHES['v21']='$($PromptHashes.v21)'; raise SystemExit(runner.main())"
+            $v21RunnerArgs = $runnerArgs[1..($runnerArgs.Count - 1)]
+            & python -c $runnerBootstrap @v21RunnerArgs
+        }
+        else {
+            & python @runnerArgs
+        }
         if ($LASTEXITCODE -ne 0) { Fail '30-sample runner failed' }
         $runDirectory = Join-Path (Join-Path $resultsRoot $Variant) $runId
         & python $evaluator --dataset $dataset --run-dir $runDirectory

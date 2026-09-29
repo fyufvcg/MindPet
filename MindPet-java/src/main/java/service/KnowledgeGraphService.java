@@ -51,6 +51,9 @@ public class KnowledgeGraphService {
         are explicitly limited to a short period such as a day, the current week, several days or weeks,
         or the duration of a temporary project. A plan or schedule with an explicit short-term end
         condition is not durable long-term memory solely because it repeats during that short period.
+        A bounded duration is not by itself sufficient to reject long-term memory. A sustained project
+        or goal lasting several months or longer may be durable when it will repeatedly affect future
+        conversations, ongoing work, or task planning, even if it has an expected end date.
 
         TASK B - KNOWLEDGE GRAPH EXTRACTION
         Independently inspect the user's utterance for explicit entities and relations. Knowledge graph
