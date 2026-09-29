@@ -142,7 +142,7 @@ function Invoke-EvalRequest(
     try {
         $request.Headers.Accept.ParseAdd('application/json')
         if ($Token) { $request.Headers.Add('X-MindPet-Eval-Token', $Token) }
-        if ($null -ne $JsonBody) {
+        if ($Method -ne 'GET' -and $null -ne $JsonBody) {
             $request.Content = [Net.Http.StringContent]::new(
                 $JsonBody, [Text.Encoding]::UTF8, 'application/json'
             )
