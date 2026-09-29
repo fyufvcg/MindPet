@@ -25,6 +25,16 @@ PROMPT_HASHES = {
 REQUIRED_PROVIDER = "deepseek"
 REQUIRED_MODEL = "deepseek-flash"
 REQUIRED_ENDPOINT_IDENTIFIER = "deepseek@api.deepseek.com"
+REQUIRED_CONTROLS = {
+    "temperature": 0.8,
+    "llm_connect_timeout": "30s",
+    "llm_read_timeout": "120s",
+    "spring_ai_retry.max_attempts": 2,
+    "spring_ai_retry.backoff_initial": "1000",
+    "spring_ai_retry.backoff_max": "5000",
+    "runner_http_timeout_seconds": 240.0,
+    "request_policy": "serial, exactly once, fail-fast, no retry",
+}
 PLACEHOLDER = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 SPECIAL_IDS = ("p017", "p019", "p024")
 
@@ -102,6 +112,9 @@ def validate_controls(v1: dict[str, Any], v2: dict[str, Any], dataset: Path) -> 
             issues.append(f"{variant}: model must be {REQUIRED_MODEL}")
         if manifest.get("endpoint_config_identifier") != REQUIRED_ENDPOINT_IDENTIFIER:
             issues.append(f"{variant}: endpoint identifier must be {REQUIRED_ENDPOINT_IDENTIFIER}")
+        for field, expected in REQUIRED_CONTROLS.items():
+            if nested(manifest, field) != expected:
+                issues.append(f"{variant}: {field} does not match the fixed experiment control")
         if len(run["records"]) != 30 or len(run["mappings"]) != 30:
             issues.append(f"{variant}: expected exactly 30 records and mappings")
         if run["sample_ids"] != [row.get("sample_id") for row in run["mappings"]]:

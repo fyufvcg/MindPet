@@ -41,6 +41,11 @@ PROMPT_HASHES = {
 REQUIRED_PROVIDER = "deepseek"
 REQUIRED_MODEL = "deepseek-flash"
 REQUIRED_ENDPOINT_IDENTIFIER = "deepseek@api.deepseek.com"
+REQUIRED_TEMPERATURE = 0.8
+REQUIRED_CONNECT_TIMEOUT = "30s"
+REQUIRED_READ_TIMEOUT = "120s"
+REQUIRED_RETRY = (2, "1000", "5000")
+REQUIRED_RUNNER_TIMEOUT_SECONDS = 240.0
 PLACEHOLDER_MODEL = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 
 EXPECTED_CATEGORIES = {
@@ -198,10 +203,20 @@ def main() -> int:
         raise RunFailure("expected-model-id must be explicit and cannot be a placeholder")
     if args.expected_model_id != REQUIRED_MODEL:
         raise RunFailure(f"expected-model-id must be {REQUIRED_MODEL}")
-    if args.temperature != 0.8:
-        raise RunFailure("temperature must be exactly 0.8")
-    if args.spring_ai_retry_max_attempts < 1:
-        raise RunFailure("spring-ai-retry-max-attempts must be at least 1")
+    if args.temperature != REQUIRED_TEMPERATURE:
+        raise RunFailure(f"temperature must be exactly {REQUIRED_TEMPERATURE}")
+    if (args.llm_connect_timeout, args.llm_read_timeout) != (
+        REQUIRED_CONNECT_TIMEOUT, REQUIRED_READ_TIMEOUT
+    ):
+        raise RunFailure("LLM timeout policy does not match the fixed experiment control")
+    if (
+        args.spring_ai_retry_max_attempts,
+        args.spring_ai_retry_backoff_initial,
+        args.spring_ai_retry_backoff_max,
+    ) != REQUIRED_RETRY:
+        raise RunFailure("retry policy does not match the fixed experiment control")
+    if args.timeout != REQUIRED_RUNNER_TIMEOUT_SECONDS:
+        raise RunFailure("runner timeout does not match the fixed experiment control")
     database_path = configured_evaluation_path()
     rows = read_dataset(args.dataset)
     occurred_base = datetime.fromisoformat(args.occurred_at_base)

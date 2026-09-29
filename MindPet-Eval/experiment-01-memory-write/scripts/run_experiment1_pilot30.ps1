@@ -44,6 +44,12 @@ $RequiredEndpointIdentifier = 'deepseek@api.deepseek.com'
 $DeepSeekBaseUrl = 'https://api.deepseek.com/v1'
 $DeepSeekChatUrl = 'https://api.deepseek.com/v1/chat/completions'
 $NormalChatConfigPath = Join-Path $env:APPDATA 'mindpet\system_llm_config.json'
+$RequiredRunnerTimeoutSeconds = 240
+$RequiredLlmConnectTimeout = '30s'
+$RequiredLlmReadTimeout = '120s'
+$RequiredRetryMaxAttempts = 2
+$RequiredRetryBackoffInitial = '1000'
+$RequiredRetryBackoffMax = '5000'
 
 function Fail([string]$Message) {
     throw "Experiment 1 guard failed: $Message"
@@ -189,8 +195,19 @@ if (-not (Test-Path -LiteralPath $configCanonical -PathType Leaf)) { Fail 'confi
 if ($ModelId -ne $RequiredModel) {
     Fail "-ModelId must be exactly $RequiredModel"
 }
-if ($SpringAiRetryMaxAttempts -lt 1) { Fail 'SpringAiRetryMaxAttempts must be at least 1' }
 if ($Temperature -ne 0.8) { Fail 'Temperature must be exactly 0.8' }
+if ($RunnerTimeoutSeconds -ne $RequiredRunnerTimeoutSeconds) {
+    Fail "RunnerTimeoutSeconds must be exactly $RequiredRunnerTimeoutSeconds"
+}
+if ($LlmConnectTimeout -ne $RequiredLlmConnectTimeout -or
+    $LlmReadTimeout -ne $RequiredLlmReadTimeout) {
+    Fail "LLM timeouts must be exactly connect=$RequiredLlmConnectTimeout and read=$RequiredLlmReadTimeout"
+}
+if ($SpringAiRetryMaxAttempts -ne $RequiredRetryMaxAttempts -or
+    $SpringAiRetryBackoffInitial -ne $RequiredRetryBackoffInitial -or
+    $SpringAiRetryBackoffMax -ne $RequiredRetryBackoffMax) {
+    Fail "retry policy must be exactly $RequiredRetryMaxAttempts/$RequiredRetryBackoffInitial/$RequiredRetryBackoffMax"
+}
 
 if (-not (Test-Path -LiteralPath $NormalChatConfigPath -PathType Leaf)) {
     Fail 'normal-chat LLM configuration file does not exist'

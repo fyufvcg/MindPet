@@ -20,7 +20,7 @@ The old PostgreSQL Pilot and a new SQLite V2 run do not isolate the Prompt: both
 | V1 | `experiment/e1-prompt-v1` | `a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9` |
 | V2 | `experiment/mindpet-evaluation` | `cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e` |
 
-The launcher fails closed unless the current branch, clean working tree, Prompt hash, fixed DeepSeek provider/model/endpoint, inference controls, and new SQLite path satisfy the variant contract. It never changes branches automatically. Both variants are fixed to provider `deepseek`, model `deepseek-flash`, endpoint identifier `deepseek@api.deepseek.com`, and temperature `0.8`; Ark endpoints and `ep-...` models are rejected.
+The launcher fails closed unless the current branch, clean working tree, Prompt hash, fixed DeepSeek provider/model/endpoint, inference controls, and new SQLite path satisfy the variant contract. It never changes branches automatically. Both variants are fixed to provider `deepseek`, model `deepseek-flash`, endpoint identifier `deepseek@api.deepseek.com`, temperature `0.8`, connect/read timeouts `30s`/`120s`, runner timeout `240s`, and Spring AI retry settings `2` attempts with `1000`/`5000` backoff; Ark endpoints and `ep-...` models are rejected.
 
 The launcher verifies the non-secret provider, model, and base URL metadata in the active Electron configuration at `%APPDATA%\mindpet\system_llm_config.json`. Electron keeps the normal-chat credential in its encrypted secret store, which this standalone launcher does not decrypt. Before an Execute run, supply the same DeepSeek credential only through the current process environment:
 
