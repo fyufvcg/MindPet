@@ -38,6 +38,7 @@ PROMPT_HASHES = {
     "v1": "a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9",
     "v2": "cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e",
 }
+PLACEHOLDER_MODEL = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 
 EXPECTED_CATEGORIES = {
     "stable_fact", "long_term_preference", "long_term_goal",
@@ -163,6 +164,14 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--expected-prompt-variant", required=True, choices=sorted(PROMPT_HASHES))
     parser.add_argument("--endpoint-config-id", required=True)
+    parser.add_argument("--expected-model-id", required=True)
+    parser.add_argument("--temperature", required=True, type=float)
+    parser.add_argument("--llm-connect-timeout", required=True)
+    parser.add_argument("--llm-read-timeout", required=True)
+    parser.add_argument("--spring-ai-retry-max-attempts", required=True, type=int)
+    parser.add_argument("--spring-ai-retry-backoff-initial", required=True)
+    parser.add_argument("--spring-ai-retry-backoff-max", required=True)
+    parser.add_argument("--evaluation-infrastructure-commit", required=True)
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--occurred-at-base", default="2026-10-01T00:00:00+00:00")
     args = parser.parse_args()
@@ -176,6 +185,10 @@ def main() -> int:
         raise RunFailure("APP_EVAL_E2E_MEMORY_ENABLED must be true")
     if not args.endpoint_config_id.strip():
         raise RunFailure("endpoint-config-id must be nonblank")
+    if not args.expected_model_id.strip() or PLACEHOLDER_MODEL.search(args.expected_model_id):
+        raise RunFailure("expected-model-id must be explicit and cannot be a placeholder")
+    if args.spring_ai_retry_max_attempts < 1:
+        raise RunFailure("spring-ai-retry-max-attempts must be at least 1")
     database_path = configured_evaluation_path()
     rows = read_dataset(args.dataset)
     occurred_base = datetime.fromisoformat(args.occurred_at_base)
@@ -201,10 +214,21 @@ def main() -> int:
         "prompt_sha256": None,
         "expected_prompt_variant": args.expected_prompt_variant,
         "model": None,
+        "expected_model": args.expected_model_id,
         "endpoint_config_identifier": args.endpoint_config_id,
+        "temperature": args.temperature,
+        "llm_connect_timeout": args.llm_connect_timeout,
+        "llm_read_timeout": args.llm_read_timeout,
+        "spring_ai_retry": {
+            "max_attempts": args.spring_ai_retry_max_attempts,
+            "backoff_initial": args.spring_ai_retry_backoff_initial,
+            "backoff_max": args.spring_ai_retry_backoff_max,
+        },
+        "runner_http_timeout_seconds": args.timeout,
         "sqlite_canonical_absolute_path": str(database_path),
         "sqlite_schema_sha256": sha256_file(SQLITE_SCHEMA),
         "fixed_eval_user": EVAL_USER,
+        "evaluation_infrastructure_commit": args.evaluation_infrastructure_commit,
         "runner_commit": git_commit(),
         "runner_sha256": sha256_file(Path(__file__)),
         "evaluation_enabled": True,
@@ -212,6 +236,8 @@ def main() -> int:
         "started_at": datetime.now(timezone.utc).isoformat(),
         "attempted": 0,
         "completed": 0,
+        "sample_count": len(rows),
+        "sample_ids": [row["sample_id"] for row in rows],
     }
     write_json(manifest_path, manifest)
 
@@ -232,6 +258,13 @@ def main() -> int:
         )
     manifest["prompt_sha256"] = api_snapshot["promptSha256"]
     manifest["model"] = api_snapshot.get("model", "")
+    if manifest["model"] != args.expected_model_id:
+        manifest["status"] = "FAILED"
+        manifest["failure_type"] = "MODEL_MISMATCH"
+        manifest["failure_message"] = "snapshot model does not match expected-model-id"
+        manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
+        write_json(manifest_path, manifest)
+        raise RunFailure("snapshot model does not match expected-model-id")
     manifest["sqlite_canonical_absolute_path"] = api_snapshot["databasePath"]
 
     write_json(raw_dir / "snapshot_before.json", before)
