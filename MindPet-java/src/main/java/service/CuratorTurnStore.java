@@ -36,21 +36,33 @@ public class CuratorTurnStore {
 
     @Transactional
     public long append(String userId, String sessionId, String source, String userMessage, String assistantReply) {
-        return append(userId, sessionId, source, userMessage, assistantReply, Instant.now(), ZoneId.systemDefault());
+        return append(userId, UUID.randomUUID().toString(), sessionId, source,
+            userMessage, assistantReply, Instant.now(), ZoneId.systemDefault());
     }
 
     @Transactional
     public long append(String userId, String sessionId, String source, String userMessage,
                        String assistantReply, Instant occurredAt, ZoneId zone) {
+        return append(userId, UUID.randomUUID().toString(), sessionId, source,
+            userMessage, assistantReply, occurredAt, zone);
+    }
+
+    @Transactional
+    public long append(String userId, String turnId, String sessionId, String source,
+                       String userMessage, String assistantReply, Instant occurredAt, ZoneId zone) {
         try {
-            String turnId = UUID.randomUUID().toString();
+            if (userId == null || userId.isBlank() || turnId == null || turnId.isBlank()) return 0;
             String occurred = (occurredAt == null ? Instant.now() : occurredAt).toString();
             String timezone = (zone == null ? ZoneId.systemDefault() : zone).getId();
             jdbc.update("INSERT OR IGNORE INTO curator_turns(user_id,turn_id,session_id,source,user_message,assistant_reply,completed_at,occurred_at,event_timezone) VALUES(?,?,?,?,?,?,?,?,?)",
                 userId, turnId, sessionId, source, userMessage, assistantReply, Instant.now().toString(), occurred, timezone);
-            Long sequence = jdbc.queryForObject("SELECT sequence FROM curator_turns WHERE turn_id=?", Long.class, turnId);
-            jdbc.update("DELETE FROM curator_turns WHERE sequence IN (SELECT sequence FROM curator_turns WHERE user_id=? ORDER BY sequence DESC LIMIT -1 OFFSET ?)",
-                userId, MAX_STORED_TURNS);
+            List<Long> sequences = jdbc.query("SELECT sequence FROM curator_turns WHERE user_id=? AND turn_id=?",
+                (rs, row) -> rs.getLong(1), userId, turnId);
+            jdbc.update("DELETE FROM curator_turns WHERE user_id=? AND consolidation_status='success' "
+                    + "AND sequence NOT IN (SELECT sequence FROM curator_turns WHERE user_id=? "
+                    + "AND consolidation_status='success' ORDER BY sequence DESC LIMIT ?)",
+                userId, userId, MAX_STORED_TURNS);
+            Long sequence = sequences.isEmpty() ? null : sequences.get(0);
             return sequence == null ? 0 : sequence;
         } catch (Exception e) { logger.log("WARN", "记忆馆长回合写入失败: " + e.getMessage()); return 0; }
     }
@@ -76,8 +88,8 @@ public class CuratorTurnStore {
     }
 
     public void saveCheckpoint(String userId, long sequence, String turnId) {
-        jdbc.update("INSERT INTO curator_state(user_id,checkpoint,last_turn_id,last_success_at,last_error) VALUES(?,?,?,CURRENT_TIMESTAMP,'') "
-                + "ON CONFLICT(user_id) DO UPDATE SET checkpoint=excluded.checkpoint,last_turn_id=excluded.last_turn_id,last_success_at=excluded.last_success_at,last_error='',updated_at=CURRENT_TIMESTAMP",
+        jdbc.update("INSERT INTO curator_state(user_id,checkpoint,last_turn_id,last_success_at,last_error,retry_count,retry_after) VALUES(?,?,?,CURRENT_TIMESTAMP,'',0,NULL) "
+                + "ON CONFLICT(user_id) DO UPDATE SET checkpoint=MAX(curator_state.checkpoint,excluded.checkpoint),last_turn_id=excluded.last_turn_id,last_success_at=excluded.last_success_at,last_error='',retry_count=0,retry_after=NULL,updated_at=CURRENT_TIMESTAMP",
             userId, sequence, turnId);
     }
 
@@ -105,17 +117,36 @@ public class CuratorTurnStore {
     }
 
     public void recordError(String userId, String error) {
-        jdbc.update("INSERT INTO curator_state(user_id,last_error,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) "
-                + "ON CONFLICT(user_id) DO UPDATE SET last_error=excluded.last_error,updated_at=CURRENT_TIMESTAMP",
-            userId, error == null ? "" : error);
+        List<Long> attempts = jdbc.query("SELECT retry_count FROM curator_state WHERE user_id=?",
+            (rs, row) -> rs.getLong(1), userId);
+        long currentAttempts = attempts.isEmpty() ? 0 : attempts.get(0);
+        long retrySeconds = Math.min(3600L, 30L << Math.min(currentAttempts, 7L));
+        String retryAfter = Instant.now().plusSeconds(retrySeconds).toString();
+        jdbc.update("INSERT INTO curator_state(user_id,last_error,retry_count,retry_after,updated_at) VALUES(?,?,1,?,CURRENT_TIMESTAMP) "
+                + "ON CONFLICT(user_id) DO UPDATE SET last_error=excluded.last_error,retry_count=curator_state.retry_count+1,retry_after=excluded.retry_after,updated_at=CURRENT_TIMESTAMP",
+            userId, error == null ? "" : error, retryAfter);
     }
 
-    public void markProcessed(List<CompletedTurn> turns, String status) {
+    public boolean retryAllowed(String userId) {
+        List<Boolean> rows = jdbc.query("SELECT retry_after IS NULL OR julianday(retry_after)<=julianday(?) FROM curator_state WHERE user_id=?",
+            (rs, row) -> rs.getBoolean(1), Instant.now().toString(), userId);
+        return rows.isEmpty() || rows.get(0);
+    }
+
+    public List<String> idlePendingUsers(Instant completedBefore, int limit) {
+        return jdbc.query("SELECT t.user_id FROM curator_turns t LEFT JOIN curator_state s ON s.user_id=t.user_id "
+                + "WHERE t.consolidation_status<>'success' AND julianday(t.completed_at)<=julianday(?) "
+                + "AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) "
+                + "GROUP BY t.user_id ORDER BY MIN(t.completed_at) LIMIT ?",
+            (rs, row) -> rs.getString(1), completedBefore.toString(), Instant.now().toString(), limit);
+    }
+
+    public void markProcessed(String userId, List<CompletedTurn> turns, String status) {
         if (turns == null || turns.isEmpty()) return;
         String safeStatus = status == null || status.isBlank() ? "pending" : status;
         for (CompletedTurn turn : turns) {
-            jdbc.update("UPDATE curator_turns SET consolidation_status=?,processed_at=CURRENT_TIMESTAMP WHERE turn_id=?",
-                safeStatus, turn.turnId());
+            jdbc.update("UPDATE curator_turns SET consolidation_status=?,processed_at=CURRENT_TIMESTAMP WHERE user_id=? AND turn_id=?",
+                safeStatus, userId, turn.turnId());
         }
     }
 

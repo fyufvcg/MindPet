@@ -26,6 +26,10 @@ application.yml
 application.yaml
 secrets.*
 credentials.*
+/docs/experiments/standalone-memory-curator/llm-experiment.local.json
+/docs/experiments/standalone-memory-curator/data/
+/docs/experiments/standalone-memory-curator/results/
+/docs/experiments/standalone-memory-curator/sample-fixtures.jsonl
 *.pem
 *.key
 *.p12
@@ -73,6 +77,7 @@ desktop_notifications.json
 llm-dynamic-config.json
 skills-config.json
 weather.log/
+!/.mvn/
 
 # === 本地数据存储 (skills + mcp 配置等) ===
 data/

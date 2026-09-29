@@ -59,7 +59,7 @@ public final class TemporalNormalizer {
     private static String extractMarker(String text) {
         String[] markers = {"大前天", "前天", "昨天", "今天", "明天", "后天", "大后天",
             "下周一", "下周二", "下周三", "下周四", "下周五", "下周六", "下周日",
-            "下周天", "过几天", "最近", "以后"};
+            "下周天", "过几天", "最近", "以后", "现在", "目前", "当前"};
         for (String marker : markers) if (text.contains(marker)) return marker;
         java.util.regex.Matcher iso = java.util.regex.Pattern
             .compile("(?<!\\d)(?:\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}月\\d{1,2}日)(?!\\d)")
@@ -89,7 +89,8 @@ public final class TemporalNormalizer {
         if (value.contains("大前天")) return -3;
         if (value.contains("前天")) return -2;
         if (value.contains("昨天") || value.contains("昨日")) return -1;
-        if (value.contains("今天") || value.contains("今日")) return 0;
+        if (value.contains("今天") || value.contains("今日") || value.contains("现在")
+                || value.contains("目前") || value.contains("当前")) return 0;
         if (value.contains("大后天")) return 3;
         if (value.contains("后天") || value.contains("後天")) return 2;
         if (value.contains("明天") || value.contains("明日")) return 1;

@@ -123,13 +123,15 @@ CREATE TABLE IF NOT EXISTS curator_state (
   last_turn_id TEXT,
   last_success_at TEXT,
   last_error TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  retry_after TEXT,
   working_memory_json TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS curator_turns (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
-  turn_id TEXT NOT NULL UNIQUE,
+  turn_id TEXT NOT NULL,
   session_id TEXT,
   source TEXT,
   user_message TEXT,
@@ -138,7 +140,8 @@ CREATE TABLE IF NOT EXISTS curator_turns (
   occurred_at TEXT,
   event_timezone TEXT,
   processed_at TEXT,
-  consolidation_status TEXT NOT NULL DEFAULT 'pending'
+  consolidation_status TEXT NOT NULL DEFAULT 'pending',
+  UNIQUE(user_id, turn_id)
 );
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_seq ON curator_turns(user_id, sequence DESC);
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_completed ON curator_turns(user_id, completed_at DESC);

@@ -14,6 +14,7 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import javax.sql.DataSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -22,6 +23,11 @@ import java.util.Set;
 
 @Configuration
 public class SqliteStorageConfig {
+
+    @Bean
+    public Clock memoryCuratorClock() {
+        return Clock.systemDefaultZone();
+    }
 
     @Bean
     @Primary
@@ -67,12 +73,15 @@ public class SqliteStorageConfig {
                 addColumnIfMissing(statement, "curator_state", stateColumns, "last_turn_id", "TEXT");
                 addColumnIfMissing(statement, "curator_state", stateColumns, "last_success_at", "TEXT");
                 addColumnIfMissing(statement, "curator_state", stateColumns, "last_error", "TEXT");
+                addColumnIfMissing(statement, "curator_state", stateColumns, "retry_count", "INTEGER NOT NULL DEFAULT 0");
+                addColumnIfMissing(statement, "curator_state", stateColumns, "retry_after", "TEXT");
 
                 Set<String> turnColumns = tableColumns(statement, "curator_turns");
                 addColumnIfMissing(statement, "curator_turns", turnColumns, "occurred_at", "TEXT");
                 addColumnIfMissing(statement, "curator_turns", turnColumns, "event_timezone", "TEXT");
                 addColumnIfMissing(statement, "curator_turns", turnColumns, "processed_at", "TEXT");
                 addColumnIfMissing(statement, "curator_turns", turnColumns, "consolidation_status", "TEXT NOT NULL DEFAULT 'pending'");
+                migrateGlobalCuratorTurnIdConstraint(connection, statement);
 
                 statement.execute("CREATE TABLE IF NOT EXISTS memory_fact ("
                     + "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, "
@@ -91,6 +100,25 @@ public class SqliteStorageConfig {
                     + "source_fact_id INTEGER, confidence REAL NOT NULL DEFAULT 0.5, valid_from TEXT, "
                     + "valid_to TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
                     + "PRIMARY KEY(user_id, slot_key))");
+                String rankedFacts = "SELECT id,user_id,COALESCE(source_turn_id,'') AS source_turn_key,predicate,value_text,"
+                    + "COALESCE(normalized_start,'') AS normalized_start_key,ROW_NUMBER() OVER ("
+                    + "PARTITION BY user_id,COALESCE(source_turn_id,''),predicate,value_text,COALESCE(normalized_start,'') "
+                    + "ORDER BY CASE WHEN COALESCE(raw_text,'')<>'' THEN 0 ELSE 1 END,"
+                    + "COALESCE(updated_at,created_at) DESC,id DESC) AS duplicate_rank FROM memory_fact";
+                statement.execute("WITH ranked AS (" + rankedFacts + "), duplicate_map AS ("
+                    + "SELECT duplicate.id AS duplicate_id,keeper.id AS keeper_id FROM ranked duplicate "
+                    + "JOIN ranked keeper ON keeper.user_id=duplicate.user_id "
+                    + "AND keeper.source_turn_key=duplicate.source_turn_key AND keeper.predicate=duplicate.predicate "
+                    + "AND keeper.value_text=duplicate.value_text AND keeper.normalized_start_key=duplicate.normalized_start_key "
+                    + "AND keeper.duplicate_rank=1 WHERE duplicate.duplicate_rank>1) "
+                    + "UPDATE memory_fact SET supersedes_id=(SELECT CASE WHEN memory_fact.id=duplicate_map.keeper_id "
+                    + "THEN NULL ELSE duplicate_map.keeper_id END FROM duplicate_map "
+                    + "WHERE duplicate_map.duplicate_id=memory_fact.supersedes_id) "
+                    + "WHERE supersedes_id IN (SELECT duplicate_id FROM duplicate_map)");
+                statement.execute("DELETE FROM memory_fact WHERE id IN (SELECT id FROM (" + rankedFacts
+                    + ") WHERE duplicate_rank>1)");
+                statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_fact_idempotency "
+                    + "ON memory_fact(user_id,IFNULL(source_turn_id,''),predicate,value_text,IFNULL(normalized_start,''))");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_memory_fact_user_predicate_status "
                     + "ON memory_fact(user_id, predicate, status, normalized_start)");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_memory_fact_user_source "
@@ -103,6 +131,7 @@ public class SqliteStorageConfig {
                     + "SELECT user_id,prop_key,prop_value,0.75,updated_at FROM user_profile "
                     + "WHERE category='state' AND prop_key IN "
                     + "('current_location','home_location','occupation_current','relationship_status_current','current_project')");
+                statement.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)");
                 connection.commit();
             } catch (Exception migrationError) {
                 connection.rollback();
@@ -117,6 +146,45 @@ public class SqliteStorageConfig {
             while (result.next()) columns.add(result.getString("name"));
         }
         return columns;
+    }
+
+    private void migrateGlobalCuratorTurnIdConstraint(Connection connection, Statement statement) throws Exception {
+        if (!hasUniqueIndexColumns(connection, "curator_turns", Set.of("turn_id"))) return;
+
+        statement.execute("ALTER TABLE curator_turns RENAME TO curator_turns_global_id_migration");
+        statement.execute("CREATE TABLE curator_turns ("
+            + "sequence INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, turn_id TEXT NOT NULL, "
+            + "session_id TEXT, source TEXT, user_message TEXT, assistant_reply TEXT, completed_at TEXT NOT NULL, "
+            + "occurred_at TEXT, event_timezone TEXT, processed_at TEXT, "
+            + "consolidation_status TEXT NOT NULL DEFAULT 'pending', UNIQUE(user_id, turn_id))");
+        statement.execute("INSERT INTO curator_turns(sequence,user_id,turn_id,session_id,source,user_message,"
+            + "assistant_reply,completed_at,occurred_at,event_timezone,processed_at,consolidation_status) "
+            + "SELECT sequence,user_id,turn_id,session_id,source,user_message,assistant_reply,completed_at,"
+            + "occurred_at,event_timezone,processed_at,consolidation_status FROM curator_turns_global_id_migration");
+        statement.execute("DROP TABLE curator_turns_global_id_migration");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_curator_turns_user_seq "
+            + "ON curator_turns(user_id, sequence DESC)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_curator_turns_user_completed "
+            + "ON curator_turns(user_id, completed_at DESC)");
+    }
+
+    private boolean hasUniqueIndexColumns(Connection connection, String table,
+                                          Set<String> expectedColumns) throws Exception {
+        try (Statement indexesStatement = connection.createStatement();
+             ResultSet indexes = indexesStatement.executeQuery("PRAGMA index_list(" + table + ")")) {
+            while (indexes.next()) {
+                if (indexes.getInt("unique") != 1) continue;
+                String indexName = indexes.getString("name");
+                try (Statement indexStatement = connection.createStatement();
+                     ResultSet indexColumns = indexStatement.executeQuery(
+                         "PRAGMA index_info('" + indexName.replace("'", "''") + "')")) {
+                    Set<String> columns = new HashSet<>();
+                    while (indexColumns.next()) columns.add(indexColumns.getString("name"));
+                    if (columns.equals(expectedColumns)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void migrateGrowthReflectionColumns(DataSource dataSource) throws Exception {
