@@ -305,8 +305,14 @@ $jar = Get-ChildItem -LiteralPath (Join-Path $javaRoot 'target') -Filter '*.jar'
 if ($null -eq $jar) { Fail 'backend jar was not found; run without -SkipBuild' }
 
 New-Item -ItemType Directory -Path $evalRoot | Out-Null
-$tokenBytes = [byte[]]::new(32)
-[Security.Cryptography.RandomNumberGenerator]::Fill($tokenBytes)
+$tokenBytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $rng.GetBytes($tokenBytes)
+}
+finally {
+    $rng.Dispose()
+}
 $token = [Convert]::ToBase64String($tokenBytes)
 $wrongToken = [Guid]::NewGuid().ToString('N')
 $port = Get-FreeLoopbackPort
