@@ -46,6 +46,10 @@ REQUIRED_CONNECT_TIMEOUT = "30s"
 REQUIRED_READ_TIMEOUT = "120s"
 REQUIRED_RETRY = (2, "1000", "5000")
 REQUIRED_RUNNER_TIMEOUT_SECONDS = 240.0
+REQUIRED_EMBEDDING_PROVIDER = "ollama"
+REQUIRED_EMBEDDING_MODEL = "bge-m3"
+REQUIRED_EMBEDDING_DIMENSION = 1024
+REQUIRED_EMBEDDING_ENDPOINT_IDENTIFIER = "ollama@127.0.0.1:11434"
 PLACEHOLDER_MODEL = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 
 EXPECTED_CATEGORIES = {
@@ -175,6 +179,10 @@ def main() -> int:
     parser.add_argument("--endpoint-config-id", required=True)
     parser.add_argument("--credential-source", required=True)
     parser.add_argument("--expected-model-id", required=True)
+    parser.add_argument("--embedding-provider", required=True)
+    parser.add_argument("--embedding-model", required=True)
+    parser.add_argument("--embedding-dimension", required=True, type=int)
+    parser.add_argument("--embedding-endpoint-identifier", required=True)
     parser.add_argument("--temperature", required=True, type=float)
     parser.add_argument("--llm-connect-timeout", required=True)
     parser.add_argument("--llm-read-timeout", required=True)
@@ -203,6 +211,17 @@ def main() -> int:
         raise RunFailure("expected-model-id must be explicit and cannot be a placeholder")
     if args.expected_model_id != REQUIRED_MODEL:
         raise RunFailure(f"expected-model-id must be {REQUIRED_MODEL}")
+    if args.embedding_provider != REQUIRED_EMBEDDING_PROVIDER:
+        raise RunFailure(f"embedding-provider must be {REQUIRED_EMBEDDING_PROVIDER}")
+    if args.embedding_model != REQUIRED_EMBEDDING_MODEL:
+        raise RunFailure(f"embedding-model must be {REQUIRED_EMBEDDING_MODEL}")
+    if args.embedding_dimension != REQUIRED_EMBEDDING_DIMENSION:
+        raise RunFailure(f"embedding-dimension must be {REQUIRED_EMBEDDING_DIMENSION}")
+    if args.embedding_endpoint_identifier != REQUIRED_EMBEDDING_ENDPOINT_IDENTIFIER:
+        raise RunFailure(
+            "embedding-endpoint-identifier must be "
+            f"{REQUIRED_EMBEDDING_ENDPOINT_IDENTIFIER}"
+        )
     if args.temperature != REQUIRED_TEMPERATURE:
         raise RunFailure(f"temperature must be exactly {REQUIRED_TEMPERATURE}")
     if (args.llm_connect_timeout, args.llm_read_timeout) != (
@@ -246,6 +265,10 @@ def main() -> int:
         "expected_model": args.expected_model_id,
         "credential_source": args.credential_source,
         "endpoint_config_identifier": args.endpoint_config_id,
+        "embedding_provider": args.embedding_provider,
+        "embedding_model": args.embedding_model,
+        "embedding_dimension": args.embedding_dimension,
+        "embedding_endpoint_identifier": args.embedding_endpoint_identifier,
         "temperature": args.temperature,
         "llm_connect_timeout": args.llm_connect_timeout,
         "llm_read_timeout": args.llm_read_timeout,

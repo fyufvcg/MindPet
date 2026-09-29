@@ -25,6 +25,12 @@ PROMPT_HASHES = {
 REQUIRED_PROVIDER = "deepseek"
 REQUIRED_MODEL = "deepseek-flash"
 REQUIRED_ENDPOINT_IDENTIFIER = "deepseek@api.deepseek.com"
+REQUIRED_EMBEDDING_CONTROLS = {
+    "embedding_provider": "ollama",
+    "embedding_model": "bge-m3",
+    "embedding_dimension": 1024,
+    "embedding_endpoint_identifier": "ollama@127.0.0.1:11434",
+}
 REQUIRED_CONTROLS = {
     "temperature": 0.8,
     "llm_connect_timeout": "30s",
@@ -112,6 +118,9 @@ def validate_controls(v1: dict[str, Any], v2: dict[str, Any], dataset: Path) -> 
             issues.append(f"{variant}: model must be {REQUIRED_MODEL}")
         if manifest.get("endpoint_config_identifier") != REQUIRED_ENDPOINT_IDENTIFIER:
             issues.append(f"{variant}: endpoint identifier must be {REQUIRED_ENDPOINT_IDENTIFIER}")
+        for field, expected in REQUIRED_EMBEDDING_CONTROLS.items():
+            if manifest.get(field) != expected:
+                issues.append(f"{variant}: {field} does not match the fixed embedding control")
         for field, expected in REQUIRED_CONTROLS.items():
             if nested(manifest, field) != expected:
                 issues.append(f"{variant}: {field} does not match the fixed experiment control")
@@ -126,7 +135,8 @@ def validate_controls(v1: dict[str, Any], v2: dict[str, Any], dataset: Path) -> 
 
     equal_fields = (
         "dataset_sha256", "sqlite_schema_sha256", "provider", "model",
-        "endpoint_config_identifier", "credential_source",
+        "endpoint_config_identifier", "credential_source", "embedding_provider",
+        "embedding_model", "embedding_dimension", "embedding_endpoint_identifier",
         "temperature", "llm_connect_timeout", "llm_read_timeout",
         "spring_ai_retry.max_attempts", "spring_ai_retry.backoff_initial",
         "spring_ai_retry.backoff_max", "runner_http_timeout_seconds", "fixed_eval_user",

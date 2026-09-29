@@ -51,6 +51,13 @@ $RequiredLlmReadTimeout = '120s'
 $RequiredRetryMaxAttempts = 2
 $RequiredRetryBackoffInitial = '1000'
 $RequiredRetryBackoffMax = '5000'
+$RequiredEmbeddingProvider = 'ollama'
+$RequiredEmbeddingModel = 'bge-m3'
+$RequiredEmbeddingDimension = 1024
+$RequiredEmbeddingEndpoint = 'http://127.0.0.1:11434/api/embed'
+$RequiredEmbeddingTagsEndpoint = 'http://127.0.0.1:11434/api/tags'
+$RequiredEmbeddingEndpointIdentifier = 'ollama@127.0.0.1:11434'
+$RequiredEmbeddingKeepAlive = '30m'
 
 function Fail([string]$Message) {
     throw "Experiment 1 guard failed: $Message"
@@ -176,6 +183,58 @@ function Assert-EmptySnapshot($Snapshot, [string]$ExpectedDatabasePath, [string]
     }
 }
 
+function Invoke-OllamaEmbeddingPreflight {
+    try {
+        $tagsResult = Invoke-EvalRequest 'GET' $RequiredEmbeddingTagsEndpoint $null $null 5
+    }
+    catch {
+        Fail "OLLAMA_UNREACHABLE: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+    }
+    if ($tagsResult.StatusCode -ne 200) {
+        Fail "OLLAMA_UNREACHABLE: /api/tags returned HTTP $($tagsResult.StatusCode)"
+    }
+
+    $modelNames = @($tagsResult.Body.models | ForEach-Object {
+        if ($_.name) { [string]$_.name } elseif ($_.model) { [string]$_.model }
+    })
+    $modelFound = @($modelNames | Where-Object {
+        $_ -eq $RequiredEmbeddingModel -or $_ -like "$RequiredEmbeddingModel`:*"
+    }).Count -gt 0
+    if (-not $modelFound) {
+        Fail "BGE_M3_MISSING: model $RequiredEmbeddingModel is not present in Ollama"
+    }
+
+    $embedBody = [ordered]@{
+        model = $RequiredEmbeddingModel
+        input = 'MindPet Experiment 1 embedding preflight'
+        truncate = $true
+        keep_alive = $RequiredEmbeddingKeepAlive
+    } | ConvertTo-Json -Compress
+    try {
+        $embedResult = Invoke-EvalRequest 'POST' $RequiredEmbeddingEndpoint $null $embedBody 30
+    }
+    catch {
+        Fail "EMBEDDING_REQUEST_FAILED: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+    }
+    if ($embedResult.StatusCode -ne 200) {
+        Fail "EMBEDDING_REQUEST_FAILED: /api/embed returned HTTP $($embedResult.StatusCode)"
+    }
+    $embeddings = @($embedResult.Body.embeddings)
+    if ($embeddings.Count -eq 0 -or $null -eq $embeddings[0]) {
+        Fail 'EMBEDDING_REQUEST_FAILED: /api/embed response has no embedding'
+    }
+    $dimension = @($embeddings[0]).Count
+    if ($dimension -ne $RequiredEmbeddingDimension) {
+        Fail "EMBEDDING_DIMENSION_MISMATCH: expected $RequiredEmbeddingDimension, actual $dimension"
+    }
+    return [pscustomobject]@{
+        Provider = $RequiredEmbeddingProvider
+        Model = $RequiredEmbeddingModel
+        Dimension = $dimension
+        EndpointIdentifier = $RequiredEmbeddingEndpointIdentifier
+    }
+}
+
 function Write-SafeJson([string]$Path, $Value) {
     $Value | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding utf8
 }
@@ -251,6 +310,9 @@ if ($DeepSeekChatUrl -notmatch '^https://api\.deepseek\.com/' -or
     Fail 'DeepSeek model must use the required DeepSeek endpoint'
 }
 
+$embeddingPreflight = Invoke-OllamaEmbeddingPreflight
+Write-Host "Embedding preflight passed: provider=$($embeddingPreflight.Provider) model=$($embeddingPreflight.Model) dimension=$($embeddingPreflight.Dimension) endpoint=$($embeddingPreflight.EndpointIdentifier)"
+
 $credential = [Environment]::GetEnvironmentVariable('MINDPET_LLM_API_KEY', 'Process')
 $credentialSource = 'environment:MINDPET_LLM_API_KEY'
 if ([string]::IsNullOrWhiteSpace($credential)) {
@@ -306,6 +368,13 @@ $jar = Get-ChildItem -LiteralPath (Join-Path $javaRoot 'target') -Filter '*.jar'
 if ($null -eq $jar) { Fail 'backend jar was not found; run without -SkipBuild' }
 
 New-Item -ItemType Directory -Path $evalRoot | Out-Null
+$embeddingRuntimeConfigPath = Join-Path $evalRoot 'embedding-config.json'
+Write-SafeJson $embeddingRuntimeConfigPath ([ordered]@{
+    mode = 'OLLAMA'
+    doubaoApiKey = ''
+    doubaoEndpoint = ''
+    doubaoModel = ''
+})
 $tokenBytes = New-Object byte[] 32
 $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
 try {
@@ -331,7 +400,9 @@ $environmentNames = @(
     'SPRING_AI_OPENAI_BASE_URL', 'SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH',
     'SPRING_AI_OPENAI_CONNECT_TIMEOUT', 'SPRING_AI_OPENAI_READ_TIMEOUT',
     'SPRING_AI_RETRY_MAX_ATTEMPTS', 'SPRING_AI_RETRY_BACKOFF_INITIAL_INTERVAL',
-    'SPRING_AI_RETRY_BACKOFF_MAX_INTERVAL'
+    'SPRING_AI_RETRY_BACKOFF_MAX_INTERVAL',
+    'APP_EMBEDDING_OLLAMA_ENDPOINT', 'APP_EMBEDDING_OLLAMA_MODEL',
+    'APP_EMBEDDING_OLLAMA_KEEP_ALIVE'
 )
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) {
@@ -362,6 +433,9 @@ try {
         SPRING_AI_RETRY_MAX_ATTEMPTS = [string]$SpringAiRetryMaxAttempts
         SPRING_AI_RETRY_BACKOFF_INITIAL_INTERVAL = $SpringAiRetryBackoffInitial
         SPRING_AI_RETRY_BACKOFF_MAX_INTERVAL = $SpringAiRetryBackoffMax
+        APP_EMBEDDING_OLLAMA_ENDPOINT = $RequiredEmbeddingEndpoint
+        APP_EMBEDDING_OLLAMA_MODEL = $RequiredEmbeddingModel
+        APP_EMBEDDING_OLLAMA_KEEP_ALIVE = $RequiredEmbeddingKeepAlive
     }
     foreach ($item in $processEnvironment.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable($item.Key, $item.Value, 'Process')
@@ -405,6 +479,14 @@ try {
     }
     Write-Host "Backend readiness confirmed: HTTP 401 after $([Math]::Round($readinessWatch.Elapsed.TotalSeconds, 3)) seconds."
 
+    $embeddingProviderLog = @(Get-Content -LiteralPath $stdoutPath | Where-Object {
+        $_ -match 'Embedding provider.*Ollama/bge-m3.*mode=OLLAMA.*reason=OK_OLLAMA'
+    })
+    if ($embeddingProviderLog.Count -eq 0) {
+        Fail 'EMBEDDING_BACKEND_PROVIDER_MISMATCH: expected Ollama/bge-m3 mode=OLLAMA reason=OK_OLLAMA'
+    }
+    Write-Host 'Backend embedding provider confirmed: Ollama/bge-m3 (mode=OLLAMA).'
+
     $wrong = Invoke-EvalRequest 'GET' "$baseUrl/api/eval/memory/snapshot" $wrongToken $null 10
     if ($wrong.StatusCode -ne 401) { Fail 'wrong token was not rejected' }
     $correct = Invoke-EvalRequest 'GET' "$baseUrl/api/eval/memory/snapshot" $token $null 10
@@ -430,6 +512,10 @@ try {
         endpoint_identifier = $endpointIdentifier
         endpoint_config_identifier = $endpointIdentifier
         credential_source = $credentialSource
+        embedding_provider = $embeddingPreflight.Provider
+        embedding_model = $embeddingPreflight.Model
+        embedding_dimension = $embeddingPreflight.Dimension
+        embedding_endpoint_identifier = $embeddingPreflight.EndpointIdentifier
         temperature = $Temperature
         llm_connect_timeout = $LlmConnectTimeout
         llm_read_timeout = $LlmReadTimeout
@@ -468,6 +554,10 @@ try {
             '--endpoint-config-id', $endpointIdentifier,
             '--credential-source', $credentialSource,
             '--expected-model-id', $ModelId,
+            '--embedding-provider', $embeddingPreflight.Provider,
+            '--embedding-model', $embeddingPreflight.Model,
+            '--embedding-dimension', [string]$embeddingPreflight.Dimension,
+            '--embedding-endpoint-identifier', $embeddingPreflight.EndpointIdentifier,
             '--temperature', $temperatureText,
             '--llm-connect-timeout', $LlmConnectTimeout,
             '--llm-read-timeout', $LlmReadTimeout,
