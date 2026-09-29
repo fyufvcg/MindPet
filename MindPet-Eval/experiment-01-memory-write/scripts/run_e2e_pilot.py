@@ -38,6 +38,9 @@ PROMPT_HASHES = {
     "v1": "a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9",
     "v2": "cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e",
 }
+REQUIRED_PROVIDER = "deepseek"
+REQUIRED_MODEL = "deepseek-flash"
+REQUIRED_ENDPOINT_IDENTIFIER = "deepseek@api.deepseek.com"
 PLACEHOLDER_MODEL = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 
 EXPECTED_CATEGORIES = {
@@ -163,7 +166,9 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8082")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--expected-prompt-variant", required=True, choices=sorted(PROMPT_HASHES))
+    parser.add_argument("--provider", required=True)
     parser.add_argument("--endpoint-config-id", required=True)
+    parser.add_argument("--credential-source", required=True)
     parser.add_argument("--expected-model-id", required=True)
     parser.add_argument("--temperature", required=True, type=float)
     parser.add_argument("--llm-connect-timeout", required=True)
@@ -183,10 +188,18 @@ def main() -> int:
         raise RunFailure("APP_EVAL_E2E_MEMORY_TOKEN is required")
     if os.environ.get("APP_EVAL_E2E_MEMORY_ENABLED", "").lower() != "true":
         raise RunFailure("APP_EVAL_E2E_MEMORY_ENABLED must be true")
-    if not args.endpoint_config_id.strip():
-        raise RunFailure("endpoint-config-id must be nonblank")
+    if args.provider != REQUIRED_PROVIDER:
+        raise RunFailure(f"provider must be {REQUIRED_PROVIDER}")
+    if args.endpoint_config_id != REQUIRED_ENDPOINT_IDENTIFIER:
+        raise RunFailure(f"endpoint-config-id must be {REQUIRED_ENDPOINT_IDENTIFIER}")
+    if not args.credential_source.strip():
+        raise RunFailure("credential-source must be nonblank")
     if not args.expected_model_id.strip() or PLACEHOLDER_MODEL.search(args.expected_model_id):
         raise RunFailure("expected-model-id must be explicit and cannot be a placeholder")
+    if args.expected_model_id != REQUIRED_MODEL:
+        raise RunFailure(f"expected-model-id must be {REQUIRED_MODEL}")
+    if args.temperature != 0.8:
+        raise RunFailure("temperature must be exactly 0.8")
     if args.spring_ai_retry_max_attempts < 1:
         raise RunFailure("spring-ai-retry-max-attempts must be at least 1")
     database_path = configured_evaluation_path()
@@ -213,8 +226,10 @@ def main() -> int:
         "git_commit": git_commit(),
         "prompt_sha256": None,
         "expected_prompt_variant": args.expected_prompt_variant,
+        "provider": args.provider,
         "model": None,
         "expected_model": args.expected_model_id,
+        "credential_source": args.credential_source,
         "endpoint_config_identifier": args.endpoint_config_id,
         "temperature": args.temperature,
         "llm_connect_timeout": args.llm_connect_timeout,

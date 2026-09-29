@@ -37,6 +37,13 @@ $RequiredBranches = @{
 $EvaluationInfrastructureCommit = 'ea1e5547033a8efcfaa58bb1891b8a489a6acd41'
 $FixedEvalUser = 'e2e_memory_eval_user'
 $TableNames = @('long_term_memory', 'kg_entity', 'kg_relation', 'kg_evidence', 'kg_turn_ingest')
+$RequiredProvider = 'deepseek'
+$RequiredModel = 'deepseek-flash'
+$RequiredEndpointHost = 'api.deepseek.com'
+$RequiredEndpointIdentifier = 'deepseek@api.deepseek.com'
+$DeepSeekBaseUrl = 'https://api.deepseek.com/v1'
+$DeepSeekChatUrl = 'https://api.deepseek.com/v1/chat/completions'
+$NormalChatConfigPath = Join-Path $env:APPDATA 'mindpet\system_llm_config.json'
 
 function Fail([string]$Message) {
     throw "Experiment 1 guard failed: $Message"
@@ -179,10 +186,29 @@ $sqliteSchema = Join-Path $javaRoot 'src\main\resources\db\sqlite-schema.sql'
 $configCanonical = Get-CanonicalPath $ConfigPath
 
 if (-not (Test-Path -LiteralPath $configCanonical -PathType Leaf)) { Fail 'configuration file does not exist' }
-if (-not $ModelId.Trim() -or $ModelId -match '(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)') {
-    Fail '-ModelId must be explicit and cannot be a placeholder'
+if ($ModelId -ne $RequiredModel) {
+    Fail "-ModelId must be exactly $RequiredModel"
 }
 if ($SpringAiRetryMaxAttempts -lt 1) { Fail 'SpringAiRetryMaxAttempts must be at least 1' }
+if ($Temperature -ne 0.8) { Fail 'Temperature must be exactly 0.8' }
+
+if (-not (Test-Path -LiteralPath $NormalChatConfigPath -PathType Leaf)) {
+    Fail 'normal-chat LLM configuration file does not exist'
+}
+try {
+    $normalChatConfig = Get-Content -LiteralPath $NormalChatConfigPath -Raw | ConvertFrom-Json
+    $normalChatEndpoint = [Uri][string]$normalChatConfig.baseUrl
+}
+catch { Fail 'normal-chat LLM configuration is invalid' }
+if ([string]$normalChatConfig.provider -ne $RequiredProvider) {
+    Fail "normal-chat provider must be $RequiredProvider"
+}
+if ([string]$normalChatConfig.model -ne $RequiredModel) {
+    Fail "normal-chat model must be $RequiredModel"
+}
+if ($normalChatEndpoint.Host -ne $RequiredEndpointHost) {
+    Fail "normal-chat endpoint host must be $RequiredEndpointHost"
+}
 
 $branch = (& git -C $repositoryRoot rev-parse --abbrev-ref HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -ne $RequiredBranches[$Variant]) {
@@ -197,18 +223,25 @@ if ($promptHash -ne $PromptHashes[$Variant]) {
     Fail "prompt hash mismatch for $Variant"
 }
 
-$llmUrl = Get-YamlScalar $configCanonical 'llm.api.url'
-$springBaseUrl = Get-YamlScalar $configCanonical 'spring.ai.openai.base-url'
-if (-not $llmUrl -or -not $springBaseUrl) { Fail 'both llm.api.url and spring.ai.openai.base-url are required' }
-try {
-    $llmUri = [Uri]$llmUrl
-    $springUri = [Uri]$springBaseUrl
-} catch { Fail 'configured LLM endpoint is not a valid URI' }
-if ($llmUri.Host -ne $springUri.Host) { Fail 'LLM readiness URL and Spring AI endpoint host differ' }
-$provider = if ($springUri.Host -match 'volces\.com$') { 'volcengine-ark' }
-    elseif ($springUri.Host -match 'deepseek\.com$') { 'deepseek' }
-    else { 'openai-compatible' }
-$endpointIdentifier = "$provider@$($springUri.Host)"
+$provider = $RequiredProvider
+$endpointIdentifier = $RequiredEndpointIdentifier
+if ($ModelId -match '^ep-' -or $DeepSeekBaseUrl -match 'volces\.com') {
+    Fail 'Ark model/endpoint must not be mixed with the DeepSeek experiment configuration'
+}
+if ($DeepSeekChatUrl -notmatch '^https://api\.deepseek\.com/' -or
+    $DeepSeekBaseUrl -notmatch '^https://api\.deepseek\.com/') {
+    Fail 'DeepSeek model must use the required DeepSeek endpoint'
+}
+
+$credential = [Environment]::GetEnvironmentVariable('MINDPET_LLM_API_KEY', 'Process')
+$credentialSource = 'environment:MINDPET_LLM_API_KEY'
+if ([string]::IsNullOrWhiteSpace($credential)) {
+    if ($Mode -eq 'Execute') {
+        Fail 'MINDPET_LLM_API_KEY must be set for Execute mode'
+    }
+    $credential = 'preflight-no-ai-' + [Guid]::NewGuid().ToString('N')
+    $credentialSource = 'preflight-no-ai-sentinel'
+}
 
 $runId = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss') + '-' +
     ([Guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -237,7 +270,8 @@ Write-Host "Experiment 1 $Variant $Mode"
 Write-Host "Branch: $branch"
 Write-Host "Prompt SHA-256: $promptHash"
 Write-Host "Model: $ModelId"
-Write-Host "Provider/endpoint: $endpointIdentifier"
+Write-Host "Provider: $provider"
+Write-Host "Endpoint identifier: $endpointIdentifier"
 Write-Host "Temperature: $temperatureText"
 Write-Host "LLM timeout: connect=$LlmConnectTimeout read=$LlmReadTimeout"
 Write-Host "Retry: Spring AI max-attempts=$SpringAiRetryMaxAttempts, backoff=$SpringAiRetryBackoffInitial..$SpringAiRetryBackoffMax; runner=no retry"
@@ -268,7 +302,9 @@ $environmentNames = @(
     'APP_EVAL_E2E_MEMORY_SQLITE_PATH', 'APP_EVAL_E2E_MEMORY_ALLOWED_ROOT',
     'APP_STORAGE_SQLITE_PATH', 'LLM_MODEL', 'MINDPET_LLM_MODEL',
     'SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL', 'SPRING_AI_OPENAI_CHAT_OPTIONS_TEMPERATURE',
-    'LLM_API_URL', 'SPRING_AI_OPENAI_BASE_URL',
+    'LLM_API_KEY', 'MINDPET_LLM_API_KEY', 'SPRING_AI_OPENAI_API_KEY',
+    'LLM_API_URL', 'MINDPET_LLM_CHAT_URL', 'MINDPET_LLM_BASE_URL',
+    'SPRING_AI_OPENAI_BASE_URL', 'SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH',
     'SPRING_AI_OPENAI_CONNECT_TIMEOUT', 'SPRING_AI_OPENAI_READ_TIMEOUT',
     'SPRING_AI_RETRY_MAX_ATTEMPTS', 'SPRING_AI_RETRY_BACKOFF_INITIAL_INTERVAL',
     'SPRING_AI_RETRY_BACKOFF_MAX_INTERVAL'
@@ -289,8 +325,14 @@ try {
         MINDPET_LLM_MODEL = $ModelId
         SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL = $ModelId
         SPRING_AI_OPENAI_CHAT_OPTIONS_TEMPERATURE = $temperatureText
-        LLM_API_URL = $llmUrl
-        SPRING_AI_OPENAI_BASE_URL = $springBaseUrl
+        LLM_API_KEY = $credential
+        MINDPET_LLM_API_KEY = $credential
+        SPRING_AI_OPENAI_API_KEY = $credential
+        LLM_API_URL = $DeepSeekChatUrl
+        MINDPET_LLM_CHAT_URL = $DeepSeekChatUrl
+        MINDPET_LLM_BASE_URL = $DeepSeekBaseUrl
+        SPRING_AI_OPENAI_BASE_URL = $DeepSeekBaseUrl
+        SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH = '/chat/completions'
         SPRING_AI_OPENAI_CONNECT_TIMEOUT = $LlmConnectTimeout
         SPRING_AI_OPENAI_READ_TIMEOUT = $LlmReadTimeout
         SPRING_AI_RETRY_MAX_ATTEMPTS = [string]$SpringAiRetryMaxAttempts
@@ -345,8 +387,11 @@ try {
         branch = $branch
         git_commit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
         prompt_sha256 = $promptHash
+        provider = $provider
         model = $ModelId
+        endpoint_identifier = $endpointIdentifier
         endpoint_config_identifier = $endpointIdentifier
+        credential_source = $credentialSource
         temperature = $Temperature
         llm_connect_timeout = $LlmConnectTimeout
         llm_read_timeout = $LlmReadTimeout
@@ -381,7 +426,9 @@ try {
             '--base-url', $baseUrl,
             '--run-id', $runId,
             '--expected-prompt-variant', $Variant,
+            '--provider', $provider,
             '--endpoint-config-id', $endpointIdentifier,
+            '--credential-source', $credentialSource,
             '--expected-model-id', $ModelId,
             '--temperature', $temperatureText,
             '--llm-connect-timeout', $LlmConnectTimeout,
@@ -412,4 +459,5 @@ finally {
     }
     $token = $null
     $wrongToken = $null
+    $credential = $null
 }

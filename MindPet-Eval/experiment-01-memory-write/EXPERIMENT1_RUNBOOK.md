@@ -20,9 +20,15 @@ The old PostgreSQL Pilot and a new SQLite V2 run do not isolate the Prompt: both
 | V1 | `experiment/e1-prompt-v1` | `a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9` |
 | V2 | `experiment/mindpet-evaluation` | `cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e` |
 
-The launcher fails closed unless the current branch, clean working tree, Prompt hash, explicit model, endpoint configuration, and new SQLite path satisfy the variant contract. It never changes branches automatically.
+The launcher fails closed unless the current branch, clean working tree, Prompt hash, fixed DeepSeek provider/model/endpoint, inference controls, and new SQLite path satisfy the variant contract. It never changes branches automatically. Both variants are fixed to provider `deepseek`, model `deepseek-flash`, endpoint identifier `deepseek@api.deepseek.com`, and temperature `0.8`; Ark endpoints and `ep-...` models are rejected.
 
-The local configuration currently contains `<your-model-id>`. Obtain the exact model identifier used for both variants and pass it as `-ModelId`. Do not guess it. The launcher sets both `llm.model` and `spring.ai.openai.chat.options.model` for the backend child process.
+The launcher verifies the non-secret provider, model, and base URL metadata in the active Electron configuration at `%APPDATA%\mindpet\system_llm_config.json`. Electron keeps the normal-chat credential in its encrypted secret store, which this standalone launcher does not decrypt. Before an Execute run, supply the same DeepSeek credential only through the current process environment:
+
+```powershell
+$env:MINDPET_LLM_API_KEY = '<set securely for this shell>'
+```
+
+Do not echo this value or place it in Git, a manifest, or a result directory. The launcher maps it internally to the Java properties used by `llm.api.key` and Spring AI, but records only the credential source name. Preflight does not require a real credential because it never calls ingest or an LLM.
 
 ## 4. V1 no-AI preflight
 
@@ -33,14 +39,14 @@ git status --porcelain
 & .\MindPet-Eval\experiment-01-memory-write\scripts\run_experiment1_pilot30.ps1 `
   -Variant v1 `
   -Mode Preflight `
-  -ModelId '<exact-model-id>'
+  -ModelId 'deepseek-flash'
 ```
 
 Preflight never calls `/api/eval/memory/ingest`. It checks token rejection, fixed user, Prompt hash, model, canonical database path, empty tables, reset, and post-reset emptiness, then stops the backend.
 
 ## 5. V1 formal 30-sample run
 
-Run this only after the V1 preflight succeeds and the model identifier has been frozen:
+Run this only after the V1 preflight succeeds and `MINDPET_LLM_API_KEY` is set in the current process:
 
 ```powershell
 Set-Location D:\MindPet-exp
@@ -48,7 +54,7 @@ git switch experiment/e1-prompt-v1
 & .\MindPet-Eval\experiment-01-memory-write\scripts\run_experiment1_pilot30.ps1 `
   -Variant v1 `
   -Mode Execute `
-  -ModelId '<exact-model-id>'
+  -ModelId 'deepseek-flash'
 ```
 
 The launcher runs the frozen 30 samples serially, with runner-level fail-fast/no-retry behavior, then runs snapshot verification, evaluation, and error analysis. It never starts V2 automatically.
@@ -62,7 +68,7 @@ git status --porcelain
 & .\MindPet-Eval\experiment-01-memory-write\scripts\run_experiment1_pilot30.ps1 `
   -Variant v2 `
   -Mode Preflight `
-  -ModelId '<exact-model-id>'
+  -ModelId 'deepseek-flash'
 ```
 
 ## 7. V2 formal 30-sample run
@@ -75,7 +81,7 @@ git switch experiment/mindpet-evaluation
 & .\MindPet-Eval\experiment-01-memory-write\scripts\run_experiment1_pilot30.ps1 `
   -Variant v2 `
   -Mode Execute `
-  -ModelId '<exact-model-id>'
+  -ModelId 'deepseek-flash'
 ```
 
 ## 8. Results
@@ -99,7 +105,7 @@ python .\MindPet-Eval\experiment-01-memory-write\scripts\compare_e1_prompt_v1_v2
   --output-dir '<new-absolute-comparison-directory>'
 ```
 
-The comparator first validates controls. It marks the comparison `INVALID` and forbids an improvement conclusion if dataset/schema hashes, model, endpoint identifier, temperature, timeouts, retry policy, fixed user, runner hash, Evaluation infrastructure version, sample count, or sample IDs differ. Prompt hashes must be the frozen V1/V2 hashes. The two SQLite paths must be different.
+The comparator first validates controls. It marks the comparison `INVALID` and forbids an improvement conclusion if dataset/schema hashes, provider, model, endpoint identifier, credential source, temperature, timeouts, retry policy, fixed user, runner hash, Evaluation infrastructure version, sample count, or sample IDs differ. Prompt hashes must be the frozen V1/V2 hashes. The two SQLite paths must be different.
 
 Outputs are `comparison_summary.json`, `comparison_metrics.csv`, `comparison_cases.csv`, `comparison_special_cases.csv`, and `comparison_report.md`. Strict metrics are formal; normalized Entity/Relation metrics are diagnostic only. The report includes p017, p019, p024 and every improved/same/degraded sample.
 

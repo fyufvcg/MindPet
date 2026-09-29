@@ -22,6 +22,9 @@ PROMPT_HASHES = {
     "v1": "a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9",
     "v2": "cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e",
 }
+REQUIRED_PROVIDER = "deepseek"
+REQUIRED_MODEL = "deepseek-flash"
+REQUIRED_ENDPOINT_IDENTIFIER = "deepseek@api.deepseek.com"
 PLACEHOLDER = re.compile(r"(?i)(<[^>]*>|your[-_ ]?model|placeholder|change[-_ ]?me)")
 SPECIAL_IDS = ("p017", "p019", "p024")
 
@@ -93,6 +96,12 @@ def validate_controls(v1: dict[str, Any], v2: dict[str, Any], dataset: Path) -> 
         model = str(manifest.get("model") or "")
         if not model or PLACEHOLDER.search(model):
             issues.append(f"{variant}: model is missing or placeholder")
+        if manifest.get("provider") != REQUIRED_PROVIDER:
+            issues.append(f"{variant}: provider must be {REQUIRED_PROVIDER}")
+        if model != REQUIRED_MODEL:
+            issues.append(f"{variant}: model must be {REQUIRED_MODEL}")
+        if manifest.get("endpoint_config_identifier") != REQUIRED_ENDPOINT_IDENTIFIER:
+            issues.append(f"{variant}: endpoint identifier must be {REQUIRED_ENDPOINT_IDENTIFIER}")
         if len(run["records"]) != 30 or len(run["mappings"]) != 30:
             issues.append(f"{variant}: expected exactly 30 records and mappings")
         if run["sample_ids"] != [row.get("sample_id") for row in run["mappings"]]:
@@ -103,7 +112,8 @@ def validate_controls(v1: dict[str, Any], v2: dict[str, Any], dataset: Path) -> 
             issues.append(f"{variant}: SQLite path is not absolute")
 
     equal_fields = (
-        "dataset_sha256", "sqlite_schema_sha256", "model", "endpoint_config_identifier",
+        "dataset_sha256", "sqlite_schema_sha256", "provider", "model",
+        "endpoint_config_identifier", "credential_source",
         "temperature", "llm_connect_timeout", "llm_read_timeout",
         "spring_ai_retry.max_attempts", "spring_ai_retry.backoff_initial",
         "spring_ai_retry.backoff_max", "runner_http_timeout_seconds", "fixed_eval_user",
