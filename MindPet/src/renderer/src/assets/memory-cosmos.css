@@ -1035,3 +1035,6 @@
   outline: 2px solid color-mix(in srgb, var(--cosmos-focus) 22%, transparent);
   outline-offset: 1px;
 }
+.memory-curator-status { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; padding:9px 12px; border:1px solid color-mix(in srgb,var(--cosmos-gold) 38%,var(--cosmos-line)); border-radius:10px; color:var(--cosmos-ink); background:color-mix(in srgb,var(--cosmos-gold-soft) 70%,transparent); font-size:12px; }
+.memory-curator-status button { display:inline-flex; align-items:center; gap:5px; border:0; background:transparent; color:var(--color-action-primary); font:inherit; font-weight:700; cursor:pointer; }
+.memory-curator-status button:disabled { opacity:.55; cursor:wait; }

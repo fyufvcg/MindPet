@@ -1361,7 +1361,8 @@ public class AiService {
                                  String userMessage, String assistantReply,
                                  EmotionService.EmotionResult emotion,
                                  java.time.Instant occurredAt) {
-        memoryCurator.onCompletedTurn(userId, sessionId, userMessage, assistantReply);
+        memoryCurator.onCompletedTurn(userId, sessionId, userMessage, assistantReply,
+            occurredAt, java.time.ZoneId.systemDefault());
         knowledgeGraph.onCompletedTurn(userId, sessionId, userMessage, assistantReply,
             emotion == null ? "neutral" : emotion.emotion(), occurredAt);
     }

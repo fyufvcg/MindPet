@@ -7,6 +7,8 @@ import service.SqliteMemoryService;
 import service.AiService;
 import service.ConversationMemoryService;
 import service.MemoryCuratorService;
+import service.MemoryReflectionService;
+import service.ProfileProjectionService;
 import service.PortraitMemoryService;
 import service.SessionService;
 import service.UserProfileService;
@@ -32,6 +34,7 @@ public class DesktopMemoryController {
     private final MemoryCuratorService memoryCurator;
     private final PortraitMemoryService portraitMemoryService;
     private final MemoryReflectionService memoryReflectionService;
+    private final ProfileProjectionService profileProjectionService;
     private final AiService aiService;
     private final SessionService sessionService;
     private final JdbcTemplate jdbc;
@@ -47,6 +50,7 @@ public class DesktopMemoryController {
             MemoryCuratorService memoryCurator,
             PortraitMemoryService portraitMemoryService,
             MemoryReflectionService memoryReflectionService,
+            ProfileProjectionService profileProjectionService,
             AiService aiService,
             SessionService sessionService,
             JdbcTemplate jdbc,
@@ -57,6 +61,7 @@ public class DesktopMemoryController {
         this.memoryCurator = memoryCurator;
         this.portraitMemoryService = portraitMemoryService;
         this.memoryReflectionService = memoryReflectionService;
+        this.profileProjectionService = profileProjectionService;
         this.aiService = aiService;
         this.sessionService = sessionService;
         this.jdbc = jdbc;
@@ -206,6 +211,7 @@ public class DesktopMemoryController {
             result.put("reflectionBackfill", reflectionBackfill);
             result.put("generatedAt", Instant.now().toString());
             result.put("workingMemory", memoryCurator.getWorkingMemoryPrompt(USER_ID));
+            result.put("currentProfile", profileProjectionService.list(USER_ID));
             result.put("profile", jdbc.queryForList(
                 "SELECT category,prop_key,prop_value,updated_at FROM user_profile WHERE user_id=? ORDER BY category,updated_at DESC",
                 USER_ID));
@@ -221,6 +227,35 @@ public class DesktopMemoryController {
             return Map.of("status", "error", "message", String.valueOf(e.getMessage()),
                 "memories", List.of(), "count", 0, "workingMemory", "",
                 "profile", List.of(), "insights", List.of(), "growth", List.of());
+        }
+    }
+
+    @GetMapping("/facts")
+    public Map<String, Object> listMemoryFacts(
+            @RequestParam(defaultValue = "") String predicate,
+            @RequestParam(defaultValue = "active") String status) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT id,predicate,value_text,scope,assertion,confidence,valid_from,valid_to,observed_at,event_timezone,raw_time_expression,normalized_start,normalized_end,time_precision,time_status,source_turn_id,raw_text,status,supersedes_id,created_at,updated_at FROM memory_fact WHERE user_id=?");
+            List<Object> args = new ArrayList<>(List.of(USER_ID));
+            if (!predicate.isBlank()) { sql.append(" AND predicate=?"); args.add(predicate); }
+            if (!status.isBlank()) { sql.append(" AND status=?"); args.add(status); }
+            sql.append(" ORDER BY COALESCE(normalized_start,observed_at,created_at) DESC");
+            return Map.of("status", "ok", "items", jdbc.queryForList(sql.toString(), args.toArray()));
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()), "items", List.of());
+        }
+    }
+
+    @GetMapping("/profile/history")
+    public Map<String, Object> profileHistory(@RequestParam(defaultValue = "") String slot) {
+        try {
+            String sql = "SELECT id,predicate,value_text,confidence,valid_from,valid_to,observed_at,status,supersedes_id,source_turn_id,raw_text,created_at,updated_at FROM memory_fact WHERE user_id=? AND predicate IN ('current_location','home_location','occupation_current','relationship_status_current','current_project')";
+            List<Object> args = new ArrayList<>(List.of(USER_ID));
+            if (!slot.isBlank()) { sql += " AND predicate=?"; args.add(slot); }
+            sql += " ORDER BY predicate,COALESCE(observed_at,created_at) DESC";
+            return Map.of("status", "ok", "items", jdbc.queryForList(sql, args.toArray()));
+        } catch (Exception e) {
+            return Map.of("status", "error", "message", String.valueOf(e.getMessage()), "items", List.of());
         }
     }
 

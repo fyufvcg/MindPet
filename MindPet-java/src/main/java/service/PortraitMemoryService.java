@@ -69,6 +69,25 @@ public class PortraitMemoryService {
 
     private List<Candidate> loadProfiles(String userId, List<EvidenceTurn> turns) {
         try {
+            List<Map<String, Object>> current = jdbc.queryForList(
+                "SELECT slot_key,value,updated_at,confidence FROM user_profile_current "
+                    + "WHERE user_id=? AND TRIM(value)<>'' ORDER BY updated_at DESC LIMIT ?",
+                userId, MAX_SOURCE_ROWS);
+            if (!current.isEmpty()) {
+                return current.stream().map(row -> {
+                    String key = empty(String.valueOf(row.getOrDefault("slot_key", "")));
+                    String value = empty(String.valueOf(row.getOrDefault("value", "")));
+                    String rememberedAt = empty(String.valueOf(row.getOrDefault("updated_at", "")));
+                    EvidenceTurn evidence = findEvidence(turns, "", rememberedAt, List.of(value, key + " " + value));
+                    String occurredAt = evidence == null ? rememberedAt : evidence.completedAt();
+                    double confidence = row.get("confidence") instanceof Number n ? n.doubleValue() : 0.9;
+                    Map<String, Object> item = baseItem(
+                        "profile:current:" + key, "profile", "state", "当前状态", key,
+                        value, occurredAt, rememberedAt, "", confidence, 1.0,
+                        "memory_curator", evidence, "");
+                    return new Candidate(item, value, 30, epoch(occurredAt, rememberedAt));
+                }).toList();
+            }
             return jdbc.query(
                 "SELECT category,prop_key,prop_value,updated_at FROM user_profile "
                     + "WHERE user_id=? AND TRIM(prop_value)<>'' ORDER BY updated_at DESC LIMIT ?",

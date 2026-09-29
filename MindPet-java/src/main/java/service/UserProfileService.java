@@ -10,9 +10,11 @@ import java.util.stream.Collectors;
 public class UserProfileService {
 
     private final JdbcTemplate jdbc;
+    private final ProfileProjectionService projectionService;
 
-    public UserProfileService(JdbcTemplate jdbc) {
+    public UserProfileService(JdbcTemplate jdbc, ProfileProjectionService projectionService) {
         this.jdbc = jdbc;
+        this.projectionService = projectionService;
     }
 
     public void save(String userId, String category, String key, String value) {
@@ -26,6 +28,8 @@ public class UserProfileService {
 
     /** Full profile as formatted text for system prompt */
     public String getProfileContext(String userId) {
+        String projected = projectionService.context(userId);
+        if (projected != null && !projected.isBlank()) return projected;
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT category, prop_key, prop_value FROM user_profile WHERE user_id=? ORDER BY category",
             userId
@@ -52,6 +56,16 @@ public class UserProfileService {
             for (String line : entry.getValue()) sb.append("  ").append(line).append("\n");
         }
         return sb.toString().trim();
+    }
+
+    /** Compatibility writer for manual profile editing. New curator writes use fact projection. */
+    public void saveCurrent(String userId, String slotKey, String value, long sourceFactId,
+                            double confidence, String validFrom, String validTo) {
+        jdbc.update("INSERT INTO user_profile_current(user_id,slot_key,value,source_fact_id,confidence,valid_from,valid_to,updated_at) "
+                + "VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,slot_key) DO UPDATE SET "
+                + "value=excluded.value,source_fact_id=excluded.source_fact_id,confidence=excluded.confidence,"
+                + "valid_from=excluded.valid_from,valid_to=excluded.valid_to,updated_at=CURRENT_TIMESTAMP",
+            userId, slotKey, value, sourceFactId <= 0 ? null : sourceFactId, confidence, validFrom, validTo);
     }
 
     /** Get relevant memories for LLM context (used by AssistantBot) */

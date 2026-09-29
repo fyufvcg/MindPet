@@ -3472,6 +3472,42 @@ app.whenReady().then(async () => {
     } catch { return { status: 'error', workingMemory: '', profile: [], insights: [], growth: [], memories: [] } }
   })
 
+  ipcMain.handle('api:get-memory-curator-status', async () => {
+    try {
+      const res = await fetch(BACKEND + '/curator/status')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', curator: {}, message: '记忆馆长状态暂时无法读取' } }
+  })
+
+  ipcMain.handle('api:retry-memory-curator', async () => {
+    try {
+      const res = await fetch(BACKEND + '/curator/retry', { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', scheduled: false, message: '记忆馆长重试失败' } }
+  })
+
+  ipcMain.handle('api:get-memory-facts', async (_, predicate?: string, status?: string) => {
+    try {
+      const params = new URLSearchParams()
+      if (predicate) params.set('predicate', predicate)
+      if (status) params.set('status', status)
+      const res = await fetch(`${BACKEND}/facts?${params.toString()}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', items: [], message: '事实记录暂时无法读取' } }
+  })
+
+  ipcMain.handle('api:get-memory-profile-history', async (_, slot?: string) => {
+    try {
+      const params = slot ? `?slot=${encodeURIComponent(slot)}` : ''
+      const res = await fetch(`${BACKEND}/profile/history${params}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch { return { status: 'error', items: [], message: '画像历史暂时无法读取' } }
+  })
+
   ipcMain.handle('api:teach-memory-about-user', async (_, data: { content?: string; sessionId?: string }) => {
     const content = String(data?.content || '').trim()
     if (!content) return { status: 'error', message: '先告诉 MindPet 一件关于你的事' }

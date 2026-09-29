@@ -908,6 +908,8 @@ export function MemoryGalleryPage(): React.JSX.Element {
   const [portraitDraft, setPortraitDraft] = React.useState('')
   const [portraitReply, setPortraitReply] = React.useState('')
   const [portraitSaving, setPortraitSaving] = React.useState(false)
+  const [curatorStatus, setCuratorStatus] = React.useState<any>(null)
+  const [curatorRetrying, setCuratorRetrying] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [composerOpen, setComposerOpen] = React.useState(false)
@@ -955,9 +957,10 @@ export function MemoryGalleryPage(): React.JSX.Element {
       setError('')
     }
     try {
-      const [galleryResult, portraitResult] = await Promise.all([
+      const [galleryResult, portraitResult, curatorResult] = await Promise.all([
         window.api.getMemoryGallery(),
-        window.api.getMemoryPortrait()
+        window.api.getMemoryPortrait(),
+        window.api.getMemoryCuratorStatus()
       ])
       if (galleryResult?.status !== 'ok') throw new Error(galleryResult?.message || '记忆星河暂时无法打开')
       const nextItems = Array.isArray(galleryResult.items) ? galleryResult.items : []
@@ -1012,12 +1015,25 @@ export function MemoryGalleryPage(): React.JSX.Element {
       } else {
         if (!silent) setError(portraitResult?.message || 'MindPet 暂时无法整理长期记忆')
       }
+      if (curatorResult?.status === 'ok') setCuratorStatus(curatorResult.curator || null)
     } catch (loadError) {
       if (!silent) setError(loadError instanceof Error ? loadError.message : '记忆星河暂时无法打开')
     } finally {
       if (!silent) setLoading(false)
     }
   }, [])
+
+  const retryCurator = async (): Promise<void> => {
+    if (curatorRetrying) return
+    setCuratorRetrying(true)
+    try {
+      const result = await window.api.retryMemoryCurator()
+      if (result?.status !== 'ok') setError(result?.message || '记忆馆长重试失败')
+      await loadAll(undefined, true)
+    } finally {
+      setCuratorRetrying(false)
+    }
+  }
 
   React.useEffect(() => { void loadAll() }, [loadAll])
 
@@ -1816,6 +1832,12 @@ export function MemoryGalleryPage(): React.JSX.Element {
             ) : (
               <div className="memory-remembrance-shell">
                 <div className="memory-remembrance-scroll">
+                  {curatorStatus?.due && <p className="memory-curator-status" role="status">
+                    <span>记忆馆长待整理 {curatorStatus.pending_turns || 0} 个回合</span>
+                    <button type="button" onClick={() => void retryCurator()} disabled={curatorRetrying}>
+                      <RefreshCw size={13} />{curatorRetrying ? '整理中' : '立即整理'}
+                    </button>
+                  </p>}
                   {portrait.reflectionBackfill.status === 'pending' && <p className="memory-reflection-status" role="status">MindPet 正在把这些记忆整理成自己的想法…</p>}
                   {(portrait.reflectionBackfill.status === 'unavailable' || portrait.reflectionBackfill.status === 'failed') && <p className="memory-reflection-status is-error" role="status">{portrait.reflectionBackfill.message || '部分想法暂时没有整理成功。配置模型后可以刷新重试。'}</p>}
 

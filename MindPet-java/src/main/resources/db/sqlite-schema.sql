@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS local_cache (
 CREATE TABLE IF NOT EXISTS curator_state (
   user_id TEXT PRIMARY KEY,
   checkpoint INTEGER NOT NULL DEFAULT 0,
+  last_turn_id TEXT,
+  last_success_at TEXT,
+  last_error TEXT,
   working_memory_json TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -131,16 +134,68 @@ CREATE TABLE IF NOT EXISTS curator_turns (
   source TEXT,
   user_message TEXT,
   assistant_reply TEXT,
-  completed_at TEXT NOT NULL
+  completed_at TEXT NOT NULL,
+  occurred_at TEXT,
+  event_timezone TEXT,
+  processed_at TEXT,
+  consolidation_status TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_seq ON curator_turns(user_id, sequence DESC);
 CREATE INDEX IF NOT EXISTS idx_curator_turns_user_completed ON curator_turns(user_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_curator_turns_pending ON curator_turns(user_id, consolidation_status, occurred_at);
 CREATE TABLE IF NOT EXISTS curator_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   payload_json TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memory_fact (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  value_text TEXT NOT NULL DEFAULT '',
+  value_json TEXT NOT NULL DEFAULT '',
+  scope TEXT NOT NULL DEFAULT 'episodic',
+  assertion TEXT NOT NULL DEFAULT 'observed',
+  confidence REAL NOT NULL DEFAULT 0.5,
+  valid_from TEXT,
+  valid_to TEXT,
+  observed_at TEXT,
+  event_timezone TEXT,
+  raw_time_expression TEXT NOT NULL DEFAULT '',
+  normalized_start TEXT,
+  normalized_end TEXT,
+  time_precision TEXT NOT NULL DEFAULT 'unknown',
+  time_status TEXT NOT NULL DEFAULT 'unresolved',
+  source_turn_id TEXT,
+  raw_text TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  supersedes_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, source_turn_id, predicate, value_text, normalized_start),
+  FOREIGN KEY(supersedes_id) REFERENCES memory_fact(id)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_fact_user_predicate_status
+  ON memory_fact(user_id, predicate, status, normalized_start);
+CREATE INDEX IF NOT EXISTS idx_memory_fact_user_source
+  ON memory_fact(user_id, source_turn_id);
+
+CREATE TABLE IF NOT EXISTS user_profile_current (
+  user_id TEXT NOT NULL,
+  slot_key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  source_fact_id INTEGER,
+  confidence REAL NOT NULL DEFAULT 0.5,
+  valid_from TEXT,
+  valid_to TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, slot_key),
+  FOREIGN KEY(source_fact_id) REFERENCES memory_fact(id)
+);
+CREATE INDEX IF NOT EXISTS idx_profile_current_user_updated
+  ON user_profile_current(user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS memory_gallery (
   id TEXT PRIMARY KEY,

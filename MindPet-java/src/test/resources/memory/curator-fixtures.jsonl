@@ -1,0 +1,4 @@
+{"sample_id":"location-001","occurred_at":"2026-09-20T02:00:00Z","timezone":"Asia/Shanghai","user":"我家在宜兴。","expected_profile":{"home_location":"宜兴"},"expected_facts":[{"predicate":"home_location","value":"宜兴"}]}
+{"sample_id":"location-002","occurred_at":"2026-09-22T02:00:00Z","timezone":"Asia/Shanghai","user":"我去南京了。","expected_profile":{"current_location":"南京"},"expected_facts":[{"predicate":"current_location","value":"南京"}]}
+{"sample_id":"date-001","occurred_at":"2026-09-22T02:00:00Z","timezone":"Asia/Shanghai","user":"后天考试。","expected_time":{"raw":"后天","normalized_start":"2026-09-24","status":"resolved"}}
+{"sample_id":"date-002","occurred_at":"2026-09-22T02:00:00Z","timezone":"Asia/Shanghai","user":"过几天可能去上海。","expected_time":{"raw":"过几天","status":"ambiguous"}}

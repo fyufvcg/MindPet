@@ -294,6 +294,14 @@ const api = {
     ipcRenderer.invoke('api:delete-memory-gallery-item', id),
   getMemoryPortrait: (): Promise<any> =>
     ipcRenderer.invoke('api:get-memory-portrait'),
+  getMemoryCuratorStatus: (): Promise<any> =>
+    ipcRenderer.invoke('api:get-memory-curator-status'),
+  retryMemoryCurator: (): Promise<any> =>
+    ipcRenderer.invoke('api:retry-memory-curator'),
+  getMemoryFacts: (predicate?: string, status?: string): Promise<any> =>
+    ipcRenderer.invoke('api:get-memory-facts', predicate, status),
+  getMemoryProfileHistory: (slot?: string): Promise<any> =>
+    ipcRenderer.invoke('api:get-memory-profile-history', slot),
   teachMemoryAboutUser: (data: { content: string; sessionId?: string }): Promise<any> =>
     ipcRenderer.invoke('api:teach-memory-about-user', data),
   purifyMemoryPipeline: (): Promise<{ success: boolean; count: number; insertCount?: number }> =>

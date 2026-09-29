@@ -210,6 +210,10 @@ declare global {
       summarizeMemoryGalleryItem: (id: string) => Promise<any>
       deleteMemoryGalleryItem: (id: string) => Promise<any>
       getMemoryPortrait: () => Promise<any>
+      getMemoryCuratorStatus: () => Promise<any>
+      retryMemoryCurator: () => Promise<any>
+      getMemoryFacts: (predicate?: string, status?: string) => Promise<any>
+      getMemoryProfileHistory: (slot?: string) => Promise<any>
       teachMemoryAboutUser: (data: { content: string; sessionId?: string }) => Promise<any>
       purifyMemoryPipeline: () => Promise<{ success: boolean; count: number; insertCount?: number }>
       strengthenExperiences: (ids: string[]) => Promise<boolean>
