@@ -1,0 +1,2135 @@
+{
+  "dataset_version": "exp1-formal-2000-v2",
+  "schema_version": "exp1-formal-gold-v2",
+  "status": "FORMAL_CANDIDATE_V2_READY_FOR_HUMAN_QC",
+  "sample_count": 2000,
+  "dataset_sha256": "1c80e75e3dbf1e22f8cbeba0e05556b33d8a641b024613244435a1fc12f24ff5",
+  "workbook_sha256": "2b13d4b2533b7eeb2720c1ad6101113d57e84cf44c08bb9aeb23e686de32751a",
+  "generation_repair_seed": 20260930,
+  "source_v1_sha256": "057e24284c241eaa43cec7f515c98621a09c2526dd62cc0bddea4ce9638c5df7",
+  "source_v1_workbook_sha256": "ee7afe3649509977388be1958498cec7f1622abd9995e9f0a51d2ed559e3ed2f",
+  "source_v1_asserted_original_jsonl_sha256": "976d4aa05f17a6a14e4bda3ad9169cbdb4dcfe9599303a35b36269b7332c983d",
+  "prompt_sha256": "1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649",
+  "frozen_prompt_head": "142f8d054b7f4369b434bd27bd7d7852c5b609b4",
+  "category_counts": {
+    "stable_fact": 350,
+    "long_term_preference": 300,
+    "long_term_goal": 300,
+    "temporary_state": 350,
+    "one_off_information": 350,
+    "small_talk": 350
+  },
+  "difficulty_counts": {
+    "easy": 600,
+    "medium": 800,
+    "hard": 600
+  },
+  "should_remember_counts": {
+    "true": 586,
+    "false": 1414
+  },
+  "kg_evidence_count": 1111,
+  "sensitive_count": 320,
+  "temporal_count": 1128,
+  "memory_type_counts": {
+    "fact": 350,
+    "preference": 300,
+    "goal": 300,
+    "temporary_state": 350,
+    "one_off": 350,
+    "none": 350
+  },
+  "time_status_counts": {
+    "none": 710,
+    "mixed": 524,
+    "current": 500,
+    "future": 206,
+    "past": 60
+  },
+  "review_priority_counts": {
+    "Low": 283,
+    "Medium": 521,
+    "High": 1196
+  },
+  "known_issue_scanners": {
+    "medical_incompatible_slot": 0,
+    "positive_preference_with_dislikes": 0,
+    "negative_preference_with_prefers": 0,
+    "cross_domain_preference_change": 0,
+    "template_slot_incompatibility": 0,
+    "known_long_term_goal_grammar_pattern": 0,
+    "pure_memory_command_trap_with_kg_evidence": 0
+  },
+  "memory_command_trap_count": 52,
+  "memory_command_trap_kg_empty_count": 52,
+  "qc_selection_seed": 20261001,
+  "qc_sample_count": 200,
+  "qc_samples": [
+    {
+      "sample_id": "f0009",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0019",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0020",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0029",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0030",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0049",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0059",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0060",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0070",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0089",
+      "category": "stable_fact",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "long_term_stability",
+        "membership"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0112",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0135",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0147",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0159",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0160",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0161",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0171",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0183",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0184",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0185",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0196",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0197",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0209",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0232",
+      "category": "stable_fact",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "replacement"
+      ],
+      "selection_reason": "correction,temporal"
+    },
+    {
+      "sample_id": "f0267",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0281",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0283",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0295",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0311",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0323",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0324",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0325",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0338",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0339",
+      "category": "stable_fact",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0358",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0367",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0368",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0385",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0404",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0412",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0422",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0439",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0440",
+      "category": "long_term_preference",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "uncertainty",
+        "recent_experience"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0449",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0459",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0460",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0483",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0484",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0485",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0497",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0508",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0532",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0533",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0543",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0555",
+      "category": "long_term_preference",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "correction",
+        "preference_change"
+      ],
+      "selection_reason": "correction,preference_change,temporal"
+    },
+    {
+      "sample_id": "f0584",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0598",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0599",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0612",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0613",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0614",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0626",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0627",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0642",
+      "category": "long_term_preference",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm",
+        "negation"
+      ],
+      "selection_reason": "kg_without_ltm,negation,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0657",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0660",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0671",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0683",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0692",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0708",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0711",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0723",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0726",
+      "category": "long_term_goal",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "multi_month",
+        "explicit_goal"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f0762",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0764",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0776",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0787",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0788",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0799",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0800",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0822",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0834",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0847",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0858",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0859",
+      "category": "long_term_goal",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0862",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0863",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0865",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0891",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0907",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0910",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0921",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0924",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0925",
+      "category": "long_term_goal",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "correction",
+        "cancelled_goal",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "correction,kg_without_ltm,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0954",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "health",
+        "short_duration"
+      ],
+      "selection_reason": "health,sensitive,temporal"
+    },
+    {
+      "sample_id": "f0956",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0966",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0974",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "health",
+        "short_duration"
+      ],
+      "selection_reason": "health,sensitive,temporal"
+    },
+    {
+      "sample_id": "f0979",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "location",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0988",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "location",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f0999",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "location",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1015",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1034",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "health",
+        "short_duration"
+      ],
+      "selection_reason": "health,sensitive,temporal"
+    },
+    {
+      "sample_id": "f1040",
+      "category": "temporary_state",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "short_duration",
+        "location",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1063",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1074",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1087",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1098",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1109",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1123",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1134",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1145",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1146",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1159",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1169",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1180",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1183",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1193",
+      "category": "temporary_state",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "health",
+        "uncertainty",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "health,kg_without_ltm,sensitive,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1202",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1217",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1231",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1261",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1263",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1275",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1276",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1277",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1292",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1293",
+      "category": "temporary_state",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "third_party_claim",
+        "negation",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,negation,third_party_claim,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1310",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1319",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1349",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1350",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1358",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1359",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1360",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1369",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1378",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1379",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1399",
+      "category": "one_off_information",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "one_off_event",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1423",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1437",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1463",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1464",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1476",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1489",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1490",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1501",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1514",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1515",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1516",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1527",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1529",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1541",
+      "category": "one_off_information",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1556",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1587",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1588",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1603",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1619",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1620",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1621",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1634",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1635",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1636",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1650",
+      "category": "one_off_information",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "explicit_expiry",
+        "kg_without_ltm"
+      ],
+      "selection_reason": "kg_without_ltm,temporal,hard,kg_without_ltm_boundary"
+    },
+    {
+      "sample_id": "f1651",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "small_talk"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1659",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1670",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1683",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "small_talk"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1693",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "small_talk"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1709",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1718",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1723",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "small_talk"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1728",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1738",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1750",
+      "category": "small_talk",
+      "difficulty": "easy",
+      "scenario_tags": [
+        "session_only"
+      ],
+      "selection_reason": "temporal"
+    },
+    {
+      "sample_id": "f1768",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1779",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1794",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1819",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1844",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1845",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1846",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1857",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1858",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1859",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1870",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1871",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1872",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1884",
+      "category": "small_talk",
+      "difficulty": "medium",
+      "scenario_tags": [
+        "third_party_claim",
+        "assistant_inference_trap"
+      ],
+      "selection_reason": "assistant_inference_trap,third_party_claim"
+    },
+    {
+      "sample_id": "f1896",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1899",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1913",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1914",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1921",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "assistant_inference_trap",
+        "negation"
+      ],
+      "selection_reason": "assistant_inference_trap,negation,hard"
+    },
+    {
+      "sample_id": "f1924",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "assistant_inference_trap",
+        "negation"
+      ],
+      "selection_reason": "assistant_inference_trap,negation,hard"
+    },
+    {
+      "sample_id": "f1940",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "assistant_inference_trap",
+        "negation"
+      ],
+      "selection_reason": "assistant_inference_trap,negation,hard"
+    },
+    {
+      "sample_id": "f1948",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1967",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    },
+    {
+      "sample_id": "f1974",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "assistant_inference_trap",
+        "negation"
+      ],
+      "selection_reason": "assistant_inference_trap,negation,hard"
+    },
+    {
+      "sample_id": "f1984",
+      "category": "small_talk",
+      "difficulty": "hard",
+      "scenario_tags": [
+        "fictional_role",
+        "negation"
+      ],
+      "selection_reason": "fictional_role,negation,hard"
+    }
+  ],
+  "pilot_overlap_count": 0,
+  "workbook_validation": {
+    "status": "PASS",
+    "errors": [],
+    "review_row_count": 2000,
+    "qc_sample_count": 200,
+    "qc_unique_sample_count": 200,
+    "qc_linked_formula_count": 2400,
+    "qc_bad_formula_count": 0,
+    "summary_links_to_review": true,
+    "summary_total_count": 2000,
+    "summary_qc_count": 200,
+    "formula_error_count": 0
+  },
+  "notes": [
+    "Prompt was not changed.",
+    "Production Java was not changed.",
+    "No model inference was used.",
+    "Formal candidate requires human QC before final Gold freeze."
+  ],
+  "generated_at_utc": "2026-09-30T06:02:55+00:00"
+}

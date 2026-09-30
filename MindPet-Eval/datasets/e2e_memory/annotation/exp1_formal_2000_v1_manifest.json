@@ -1,0 +1,11 @@
+{
+  "dataset_version": "exp1-formal-2000-v1-reconstructed-audit-copy",
+  "sample_count": 2000,
+  "dataset_sha256": "057e24284c241eaa43cec7f515c98621a09c2526dd62cc0bddea4ce9638c5df7",
+  "source_workbook": "exp1_formal_2000_review_v1.xlsx",
+  "source_workbook_sha256": "ee7afe3649509977388be1958498cec7f1622abd9995e9f0a51d2ed559e3ed2f",
+  "source_workbook_asserted_original_jsonl_sha256": "976d4aa05f17a6a14e4bda3ad9169cbdb4dcfe9599303a35b36269b7332c983d",
+  "provenance_note": "The original v1 JSONL/manifest were not present in the target repository. This audit copy was deterministically reconstructed from the complete Review sheet; the workbook's asserted original JSONL hash is preserved separately.",
+  "prompt_sha256": "1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649",
+  "frozen_prompt_head": "142f8d054b7f4369b434bd27bd7d7852c5b609b4"
+}
