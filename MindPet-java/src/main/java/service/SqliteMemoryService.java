@@ -161,7 +161,7 @@ public class SqliteMemoryService {
             for (VectorSearchService.VectorMatch match : vectorSearch.search("long_term_memory", userId, vec, Math.max(limit * 4, limit))) {
                 List<MemoryResult> rows = jdbc.query(
                     "SELECT id,content,role,created_at,event_date,event_at,event_timezone,event_precision,importance,COALESCE(confidence,1.0) confidence,layer,emotion,last_accessed "
-                        + "FROM long_term_memory WHERE user_id=? AND id=?",
+                        + "FROM long_term_memory WHERE user_id=? AND id=? AND searchable=1",
                     (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
                         rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
                         rs.getString("event_timezone"), rs.getString("event_precision"), match.distance(),
@@ -180,7 +180,7 @@ public class SqliteMemoryService {
         try {
             return jdbc.query(
                 "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, 0.5 AS distance "
-                + "FROM long_term_memory WHERE user_id = ? "
+                + "FROM long_term_memory WHERE user_id = ? AND searchable=1 "
                 + "ORDER BY importance DESC LIMIT 100",
                 ps -> ps.setString(1, userId),
                 (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
@@ -239,11 +239,36 @@ public class SqliteMemoryService {
      */
     public int prune(String userId) {
         try {
-            List<String> ids = jdbc.query("SELECT id,importance,layer,last_accessed,created_at FROM long_term_memory WHERE user_id=? AND access_count<3",
-                (rs, row) -> retention(rs.getTimestamp("last_accessed"), rs.getTimestamp("created_at"), rs.getDouble("importance"), rs.getInt("layer")) < RETENTION_MIN
-                    ? rs.getString("id") : null, userId).stream().filter(java.util.Objects::nonNull).toList();
+            List<PruneCandidate> candidates = jdbc.query(
+                "SELECT id,content,importance,layer,last_accessed,created_at FROM long_term_memory "
+                    + "WHERE user_id=? AND searchable=1 AND access_count<3",
+                (rs, row) -> new PruneCandidate(rs.getString("id"), rs.getString("content"),
+                    rs.getDouble("importance"), rs.getInt("layer"), rs.getTimestamp("last_accessed"),
+                    rs.getTimestamp("created_at")), userId);
             int removed = 0;
-            for (String id : ids) removed += jdbc.update("DELETE FROM long_term_memory WHERE user_id=? AND id=?", userId, id);
+            for (PruneCandidate row : candidates) {
+                if (retention(row.lastAccessed(), row.createdAt(), row.importance(), row.layer()) >= RETENTION_MIN) continue;
+                String id = row.id();
+                int changed = jdbc.update("UPDATE long_term_memory SET searchable=0 WHERE user_id=? AND id=? AND searchable=1",
+                    userId, id);
+                if (changed == 0) continue;
+                jdbc.update("UPDATE memory_retrieval_unit SET searchable=0,status='inactive',"
+                        + "compaction_version=compaction_version+1,updated_at=CURRENT_TIMESTAMP "
+                        + "WHERE user_id=? AND unit_type='raw_memory' AND id IN ("
+                        + "SELECT unit_id FROM memory_retrieval_source WHERE source_type='long_term_memory' AND source_id=?) "
+                        + "AND NOT EXISTS (SELECT 1 FROM memory_retrieval_source remaining "
+                        + "JOIN long_term_memory active ON CAST(active.id AS TEXT)=remaining.source_id "
+                        + "WHERE remaining.unit_id=memory_retrieval_unit.id "
+                        + "AND remaining.source_type='long_term_memory' AND active.user_id=? AND active.searchable=1)",
+                    userId, id, userId);
+                int tokens = MemoryCorpusCompactionService.tokenCount(row.content());
+                try {
+                    jdbc.update("INSERT INTO memory_compaction_log(user_id,batch_sequence,action,unit_id,source_id,"
+                            + "tokens_before,tokens_after,reason) VALUES(?,0,'RETIRE',?,?,?,0,'retention_prune')",
+                        userId, id, id, tokens);
+                } catch (Exception ignored) { }
+                removed++;
+            }
             return removed;
         } catch (Exception e) {
             logger.log("WARN", "SQLite memory prune failed: " + e.getMessage());
@@ -299,6 +324,9 @@ public class SqliteMemoryService {
         double strength = layer == 2 ? 5.0 : 1.0;
         return importance * Math.exp(-hours / (strength * 24 + 1));
     }
+
+    private record PruneCandidate(String id, String content, double importance, int layer,
+                                  Timestamp lastAccessed, Timestamp createdAt) {}
 
     public record MemoryResult(
         String id, String content, String role,

@@ -51,6 +51,7 @@ public class MemoryReflectionService {
     private final JdbcTemplate jdbc;
     private final PortraitMemoryService portraitMemoryService;
     private final UserInsightService insightService;
+    private final MemoryCorpusCompactionService memoryCorpusCompactionService;
     private final DynamicChatClientFactory chatClientFactory;
     private final ObjectMapper mapper;
     private final Executor executor;
@@ -62,6 +63,7 @@ public class MemoryReflectionService {
     public MemoryReflectionService(JdbcTemplate jdbc,
                                    PortraitMemoryService portraitMemoryService,
                                    UserInsightService insightService,
+                                   MemoryCorpusCompactionService memoryCorpusCompactionService,
                                    DynamicChatClientFactory chatClientFactory,
                                    ObjectMapper mapper,
                                    @Qualifier("memoryReflectionExecutor") Executor executor,
@@ -69,6 +71,7 @@ public class MemoryReflectionService {
         this.jdbc = jdbc;
         this.portraitMemoryService = portraitMemoryService;
         this.insightService = insightService;
+        this.memoryCorpusCompactionService = memoryCorpusCompactionService;
         this.chatClientFactory = chatClientFactory;
         this.mapper = mapper;
         this.executor = executor;
@@ -266,6 +269,8 @@ public class MemoryReflectionService {
             if (!insightService.saveMemoryReflection(
                     userId, source.type(), source.id(), title, thought, provenance)) {
                 logger.log("WARN", "无法保存记忆回响: " + source.type() + ":" + source.id());
+            } else if (memoryCorpusCompactionService != null) {
+                memoryCorpusCompactionService.syncGrowthRecord(userId, source.type(), source.id(), 0);
             }
         }
     }

@@ -42,8 +42,8 @@ class CuratorTurnStoreTest {
         CuratorTurnStore store = new CuratorTurnStore(jdbc, new ObjectMapper(), new Logger());
         store.append("u", "s", "desktop", "hello", "reply");
         var turns = store.recentPending("u", 10);
-        store.markProcessed(turns, "success");
-        store.markProcessed(turns, "success");
+        store.markProcessed("u", turns, "success");
+        store.markProcessed("u", turns, "success");
 
         assertThat(store.pendingCount("u")).isZero();
         assertThat(store.count("u")).isEqualTo(1);

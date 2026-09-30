@@ -13,6 +13,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,9 @@ import java.util.function.Consumer;
 
 @Service
 public class AiService {
+
+    @Value("${memory.curator.default-timezone:Asia/Shanghai}")
+    private String curatorDefaultTimezone;
 
     // Temporary latency experiment: set true to restore emotion analysis in the routing preCall.
     private static final boolean ROUTING_EMOTION_ANALYSIS_ENABLED = true;
@@ -131,8 +135,8 @@ public class AiService {
     private final DynamicLlmConfig dynamicConfig;
     private final DynamicChatClientFactory chatClientFactory;
     private final SqliteMemoryService memoryStore;
+    private final MemoryCorpusCompactionService memoryCorpus;
     private final UserProfileService profileService;
-    private final UserInsightService insightService;
     private final ConversationMemoryService convMemory;
     private final SessionService sessionService;
     private final MemoryCuratorService memoryCurator;
@@ -147,8 +151,8 @@ public class AiService {
             DynamicLlmConfig dynamicConfig,
             DynamicChatClientFactory chatClientFactory,
             SqliteMemoryService memoryStore,
+            MemoryCorpusCompactionService memoryCorpus,
             UserProfileService profileService,
-            UserInsightService insightService,
             ConversationMemoryService convMemory,
             SessionService sessionService,
             MemoryCuratorService memoryCurator,
@@ -161,8 +165,8 @@ public class AiService {
         this.dynamicConfig = dynamicConfig;
         this.chatClientFactory = chatClientFactory;
         this.memoryStore = memoryStore;
+        this.memoryCorpus = memoryCorpus;
         this.profileService = profileService;
-        this.insightService = insightService;
         this.convMemory = convMemory;
         this.sessionService = sessionService;
         this.memoryCurator = memoryCurator;
@@ -558,7 +562,9 @@ public class AiService {
 
     private void persistStreamedConversation(String userId, String userMessage, String reply,
                                              EmotionService.EmotionResult emotion,
-                                             boolean includeEmotionInSessionMessage) {
+                                             boolean includeEmotionInSessionMessage,
+                                             java.time.Instant occurredAt,
+                                             String turnId, String agentMessageId) {
 
         String emotionTag = emotion.toTag();
         Map<String, Object> userMsgMap = new LinkedHashMap<>();
@@ -569,11 +575,10 @@ public class AiService {
         convMemory.append(userId, Map.of("role", "assistant", "content", reply));
 
         String sid = tool.ToolUserContext.getSessionId();
-        java.time.Instant occurredAt = java.time.Instant.now();
-        String time = java.time.LocalDateTime.ofInstant(occurredAt, java.time.ZoneId.systemDefault()).toString();
+        String time = java.time.LocalDateTime.ofInstant(occurredAt, curatorEventZone(userId)).toString();
         Map<String, Object> userMsg = includeEmotionInSessionMessage
             ? new LinkedHashMap<>(userMsgMap) : new LinkedHashMap<>();
-        userMsg.put("id", persistentMessageId("user"));
+        userMsg.put("id", turnId);
         userMsg.put("sender", "user");
         userMsg.put("text", userMessage);
         userMsg.put("time", time);
@@ -581,13 +586,13 @@ public class AiService {
         sessionService.appendMessage(userId, sid, userMsg);
 
         Map<String, Object> agentMsg = new LinkedHashMap<>();
-        agentMsg.put("id", persistentMessageId("agent"));
+        agentMsg.put("id", agentMessageId);
         agentMsg.put("sender", "agent");
         agentMsg.put("text", reply);
         agentMsg.put("time", time);
         agentMsg.put("sessionId", sid);
         sessionService.appendMessage(userId, sid, agentMsg);
-        onCompletedTurn(userId, sid, userMessage, reply, emotion, occurredAt);
+        onCompletedTurn(userId, turnId, sid, userMessage, reply, emotion, occurredAt);
     }
 
     // ==================== Text Chat ====================
@@ -604,6 +609,10 @@ public class AiService {
         if (!isConfigured()) {
             return model.ChatResult.of("请先配置 LLM API。", false);
         }
+        java.time.Instant occurredAt = java.time.Instant.now();
+        String messageIdBase = persistentMessageBase();
+        String turnId = messageIdBase + "-user";
+        String agentMessageId = messageIdBase + "-agent";
         tool.ToolUserContext.set(userId);
         try {
             // Step 1: 意图路由（技能由前端选择，不再经过 LLM 路由）
@@ -677,21 +686,20 @@ public class AiService {
             convMemory.append(userId, Map.of("role", "assistant", "content", reply));
             // 持久化消息，格式兼容前端（sender + text）
             String sid = tool.ToolUserContext.getSessionId();
-            java.time.Instant occurredAt = java.time.Instant.now();
-            String time = java.time.LocalDateTime.ofInstant(occurredAt, java.time.ZoneId.systemDefault()).toString();
+            String time = java.time.LocalDateTime.ofInstant(occurredAt, curatorEventZone(userId)).toString();
             Map<String, Object> userMsg = new LinkedHashMap<>();
-            userMsg.put("id", persistentMessageId("user"));
+            userMsg.put("id", turnId);
             userMsg.put("sender", "user"); userMsg.put("text", userMessage);
             userMsg.put("time", time); userMsg.put("sessionId", sid);
             sessionService.appendMessage(userId, sid, userMsg);
             Map<String, Object> agentMsg = new LinkedHashMap<>();
-            agentMsg.put("id", persistentMessageId("agent"));
+            agentMsg.put("id", agentMessageId);
             agentMsg.put("sender", "agent"); agentMsg.put("text", reply);
             agentMsg.put("time", time); agentMsg.put("sessionId", sid);
             sessionService.appendMessage(userId, sid, agentMsg);
 
             // 完整回合跨端、跨会话计数并触发记忆馆长
-            onCompletedTurn(userId, sid, userMessage, reply, emotion, occurredAt);
+            onCompletedTurn(userId, turnId, sid, userMessage, reply, emotion, occurredAt);
 
             boolean toolsUsed = tool.ToolUserContext.isToolsUsed();
             // 合并 preCall + 主调用的 token 数量
@@ -740,6 +748,10 @@ public class AiService {
             return model.ChatResult.of(message, false);
         }
 
+        java.time.Instant occurredAt = java.time.Instant.now();
+        String messageIdBase = persistentMessageBase();
+        String turnId = messageIdBase + "-user";
+        String agentMessageId = messageIdBase + "-agent";
         tool.ToolUserContext.set(userId);
         AtomicBoolean emitted = new AtomicBoolean();
         AtomicBoolean streamedToolsUsed = new AtomicBoolean();
@@ -792,7 +804,8 @@ public class AiService {
                 emit.accept(generatedFilesMarkdown);
             }
 
-            persistStreamedConversation(userId, userMessage, reply, emotion, false);
+            persistStreamedConversation(userId, userMessage, reply, emotion, false,
+                occurredAt, turnId, agentMessageId);
             boolean hasMainUsage = streamed.promptTokens() > 0 || streamed.completionTokens() > 0;
             int totalPrompt = hasMainUsage ? pre.promptTokens() + streamed.promptTokens() : 0;
             int totalCompletion = hasMainUsage ? pre.completionTokens() + streamed.completionTokens() : 0;
@@ -824,6 +837,10 @@ public class AiService {
         if (!isConfigured()) {
             return model.ChatResult.of("请先配置 LLM API。", false);
         }
+        java.time.Instant occurredAt = java.time.Instant.now();
+        String messageIdBase = persistentMessageBase();
+        String turnId = messageIdBase + "-user";
+        String agentMessageId = messageIdBase + "-agent";
         final org.springframework.util.MimeType mimeType = resolveImageMimeType(imageBytes, fileName);
         tool.ToolUserContext.set(userId);
         tool.ToolUserContext.setImageData(imageBytes);  // 存储图片数据，供发票OCR等工具使用
@@ -888,20 +905,19 @@ public class AiService {
             convMemory.append(userId, userMsgMap);
             convMemory.append(userId, Map.of("role", "assistant", "content", reply));
             String sid2 = tool.ToolUserContext.getSessionId();
-            java.time.Instant occurredAt = java.time.Instant.now();
-            String time2 = java.time.LocalDateTime.ofInstant(occurredAt, java.time.ZoneId.systemDefault()).toString();
+            String time2 = java.time.LocalDateTime.ofInstant(occurredAt, curatorEventZone(userId)).toString();
             Map<String, Object> um = new LinkedHashMap<>(userMsgMap);
-            um.put("id", persistentMessageId("user"));
+            um.put("id", turnId);
             um.put("sender", "user"); um.put("text", textPrompt);
             um.put("time", time2); um.put("sessionId", sid2);
             sessionService.appendMessage(userId, sid2, um);
             Map<String, Object> am = new LinkedHashMap<>();
-            am.put("id", persistentMessageId("agent"));
+            am.put("id", agentMessageId);
             am.put("sender", "agent"); am.put("text", reply);
             am.put("time", time2); am.put("sessionId", sid2);
             sessionService.appendMessage(userId, sid2, am);
 
-            onCompletedTurn(userId, sid2, textPrompt, reply, emotion, occurredAt);
+            onCompletedTurn(userId, turnId, sid2, textPrompt, reply, emotion, occurredAt);
 
             boolean toolsUsed = tool.ToolUserContext.isToolsUsed();
             int totalPrompt = pre.promptTokens() + imgPrompt;
@@ -939,6 +955,10 @@ public class AiService {
             return model.ChatResult.of(message, false);
         }
 
+        java.time.Instant occurredAt = java.time.Instant.now();
+        String messageIdBase = persistentMessageBase();
+        String turnId = messageIdBase + "-user";
+        String agentMessageId = messageIdBase + "-agent";
         final org.springframework.util.MimeType mimeType = resolveImageMimeType(imageBytes, fileName);
         tool.ToolUserContext.set(userId);
         tool.ToolUserContext.setImageData(imageBytes);
@@ -991,7 +1011,8 @@ public class AiService {
                 emit.accept(generatedFilesMarkdown);
             }
 
-            persistStreamedConversation(userId, textPrompt, reply, emotion, true);
+            persistStreamedConversation(userId, textPrompt, reply, emotion, true,
+                occurredAt, turnId, agentMessageId);
             boolean hasMainUsage = streamed.promptTokens() > 0 || streamed.completionTokens() > 0;
             int totalPrompt = hasMainUsage ? pre.promptTokens() + streamed.promptTokens() : 0;
             int totalCompletion = hasMainUsage ? pre.completionTokens() + streamed.completionTokens() : 0;
@@ -1292,46 +1313,39 @@ public class AiService {
             prompt += "\n" + trend;
         }
 
-        // User profile
-        if (userId != null) {
-            try {
-                String profile = profileService.getProfileContext(userId);
-                if (profile != null && !profile.isBlank()) {
-                    prompt += "\n\n" + profile;
-                }
-            } catch (Exception ignored) {}
-        }
-        // RAG lookups — compute embedding ONCE, reuse for all 3 lookups
+        // Curated memories and migrated raw memories share one deduplicated token budget.
         if (userId != null && query != null) {
             float[] vec = embedService.embed(query);
+            boolean hasCuratedMemoryContext = false;
+            try {
+                String curatorContext = memoryCorpus.getRetrievalContext(userId, query, vec, memoryStore);
+                if (curatorContext != null && !curatorContext.isBlank()) {
+                    prompt += "\n\n" + curatorContext + "\n请按问题需要参考这些记忆，不要刻意复述。";
+                    hasCuratedMemoryContext = true;
+                }
+            } catch (Exception e) {
+                logger.log("WARN", "读取馆长检索语料失败: " + e.getMessage());
+            }
             if (vec != null) {
-                try {
-                    String insights = insightService.getInsightContext(userId, vec);
-                    if (insights != null && !insights.isBlank()) {
-                        prompt += "\n\n" + insights + "\n请自然地体现这些认知，但不要刻意复述。";
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    String growth = insightService.getGrowthContext(userId, vec);
-                    if (growth != null && !growth.isBlank()) {
-                        prompt += "\n\n" + growth;
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    var memories = memoryStore.search(userId, query, vec, 3);
-                    if (!memories.isEmpty()) {
-                        StringBuilder sb = new StringBuilder("\n\n## 相关历史记忆\n");
-                        for (var m : memories) {
-                            sb.append("- ").append(m.toPromptLine()).append("\n");
+                if (!hasCuratedMemoryContext) {
+                    try {
+                        var memories = memoryStore.search(userId, query, vec, 3);
+                        if (!memories.isEmpty()) {
+                            StringBuilder sb = new StringBuilder("\n\n## 相关历史记忆\n");
+                            for (var m : memories) {
+                                sb.append("- ").append(m.toPromptLine()).append("\n");
+                            }
+                            sb.append("请自然地参考这些记忆，不要刻意复述原文。");
+                            prompt += sb.toString();
                         }
-                        sb.append("请自然地参考这些记忆，不要刻意复述原文。");
-                        prompt += sb.toString();
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    String graphContext = knowledgeGraph.getRagContext(userId, query, vec, 4);
-                    if (!graphContext.isBlank()) prompt += "\n\n" + graphContext;
-                } catch (Exception ignored) {}
+                    } catch (Exception ignored) {}
+                }
+                if (isRelationshipQuery(query)) {
+                    try {
+                        String graphContext = knowledgeGraph.getRagContext(userId, query, vec, 4);
+                        if (!graphContext.isBlank()) prompt += "\n\n" + graphContext;
+                    } catch (Exception ignored) {}
+                }
             }
         }
         // 前端选择的活跃技能 — 只注入名称列表，不注入 full content（前端已选定，无需 LLM 路由）
@@ -1352,25 +1366,48 @@ public class AiService {
         return prompt;
     }
 
+    private static boolean isRelationshipQuery(String query) {
+        if (query == null || query.isBlank()) return false;
+        String normalized = query.toLowerCase(java.util.Locale.ROOT);
+        for (String cue : List.of("什么关系", "关系", "和谁", "跟谁", "认识", "朋友", "家人",
+                "妈妈", "爸爸", "父母", "哥哥", "姐姐", "弟弟", "妹妹", "儿子", "女儿",
+                "同事", "同学", "伴侣", "配偶", "一起", "谁是", "谁的", "联系", "related", "relationship")) {
+            if (normalized.contains(cue)) return true;
+        }
+        return false;
+    }
+
     private String normalizeIdentity(String prompt) {
         return prompt.replace("小晴", "MindPet")
             .replaceAll("(?i)xiaoqing", "MindPet");
     }
 
-    private void onCompletedTurn(String userId, String sessionId,
+    private void onCompletedTurn(String userId, String turnId, String sessionId,
                                  String userMessage, String assistantReply,
                                  EmotionService.EmotionResult emotion,
                                  java.time.Instant occurredAt) {
-        memoryCurator.onCompletedTurn(userId, sessionId, userMessage, assistantReply,
-            occurredAt, java.time.ZoneId.systemDefault());
+        memoryCurator.onCompletedTurn(userId, turnId, sessionId, userMessage, assistantReply,
+            occurredAt, curatorEventZone(userId));
         knowledgeGraph.onCompletedTurn(userId, sessionId, userMessage, assistantReply,
             emotion == null ? "neutral" : emotion.emotion(), occurredAt);
     }
 
-    private String persistentMessageId(String sender) {
+    private String persistentMessageBase() {
         String requestId = tool.ToolUserContext.getRequestId();
-        String base = requestId == null || requestId.isBlank()
-            ? String.valueOf(System.currentTimeMillis()) : requestId;
-        return base + "-" + sender;
+        return requestId == null || requestId.isBlank()
+            ? UUID.randomUUID().toString() : requestId;
+    }
+
+    private java.time.ZoneId curatorEventZone(String userId) {
+        String userTimezone = profileService.getConfiguredTimezone(userId);
+        if (userTimezone != null && !userTimezone.isBlank()) {
+            try { return java.time.ZoneId.of(userTimezone.trim()); }
+            catch (RuntimeException ignored) { /* Fall back to the configured application zone. */ }
+        }
+        try {
+            return java.time.ZoneId.of(curatorDefaultTimezone.trim());
+        } catch (RuntimeException ignored) {
+            return java.time.ZoneId.of("Asia/Shanghai");
+        }
     }
 }

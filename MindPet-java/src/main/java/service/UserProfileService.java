@@ -26,19 +26,33 @@ public class UserProfileService {
         );
     }
 
+    /** Returns an explicitly saved user timezone, if one is present. */
+    public String getConfiguredTimezone(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        List<String> values = jdbc.query("SELECT prop_value FROM user_profile WHERE user_id=? "
+                + "AND prop_key IN ('timezone','time_zone','time zone','時區') "
+                + "ORDER BY CASE category WHEN 'preference' THEN 0 WHEN 'identity' THEN 1 ELSE 2 END,updated_at DESC LIMIT 1",
+            (rs, row) -> rs.getString(1), userId);
+        return values.isEmpty() ? null : values.get(0);
+    }
+
     /** Full profile as formatted text for system prompt */
     public String getProfileContext(String userId) {
         String projected = projectionService.context(userId);
-        if (projected != null && !projected.isBlank()) return projected;
+        Set<String> projectedSlots = new HashSet<>();
+        for (Map<String, Object> current : projectionService.list(userId)) {
+            projectedSlots.add(String.valueOf(current.getOrDefault("slot_key", "")));
+        }
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT category, prop_key, prop_value FROM user_profile WHERE user_id=? ORDER BY category",
             userId
         );
-        if (rows.isEmpty()) return null;
 
         Map<String, List<String>> grouped = new LinkedHashMap<>();
         for (var row : rows) {
             String cat = (String) row.get("category");
+            String key = String.valueOf(row.get("prop_key"));
+            if (projectedSlots.contains(key)) continue;
             String catLabel = switch (cat) {
                 case "identity"    -> "基础身份";
                 case "preference"  -> "长期偏好";
@@ -47,15 +61,20 @@ public class UserProfileService {
                 default -> cat;
             };
             grouped.computeIfAbsent(catLabel, k -> new ArrayList<>())
-                .add(row.get("prop_key") + ": " + row.get("prop_value"));
+                .add(key + ": " + row.get("prop_value"));
         }
 
-        StringBuilder sb = new StringBuilder("【用户画像】\n");
+        StringBuilder sb = new StringBuilder();
+        if (projected != null && !projected.isBlank()) sb.append(projected);
+        if (!grouped.isEmpty()) {
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append("【长期画像】\n");
+        }
         for (var entry : grouped.entrySet()) {
             sb.append("[").append(entry.getKey()).append("]\n");
             for (String line : entry.getValue()) sb.append("  ").append(line).append("\n");
         }
-        return sb.toString().trim();
+        return sb.isEmpty() ? null : sb.toString().trim();
     }
 
     /** Compatibility writer for manual profile editing. New curator writes use fact projection. */

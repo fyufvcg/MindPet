@@ -27,14 +27,25 @@ public class UserInsightService {
 
     /** Store a new insight with embedding */
     public boolean save(String userId, String insight, String context) {
+        byte[] embedding = prepareEmbedding(insight);
+        if (embedding == null) return false;
+        return savePreparedInsight(userId, insight, context, embedding);
+    }
+
+    /** Compute an embedding before opening a curator commit transaction. */
+    public byte[] prepareEmbedding(String text) {
+        float[] vector = embedService.embed(text);
+        return vector == null ? null : VectorSearchService.encode(vector);
+    }
+
+    /** Store curated content even when its optional vector provider is unavailable. */
+    public boolean savePreparedInsight(String userId, String insight, String context, byte[] embedding) {
         try {
-            float[] vec = embedService.embed(insight);
-            if (vec == null) return false;
             int inserted = jdbc.update(
                 "INSERT INTO user_insight (user_id, insight, context, embedding) " +
                 "SELECT ?,?,?,? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM user_insight WHERE user_id=? AND insight=?)",
-                userId, insight, context, VectorSearchService.encode(vec), userId, insight
+                userId, insight, context, embedding, userId, insight
             );
             return inserted > 0;
         } catch (Exception e) {
@@ -76,14 +87,20 @@ public class UserInsightService {
     // ==================== LLM Growth ====================
 
     public boolean saveGrowth(String userId, String category, String insight, String context) {
+        byte[] embedding = prepareEmbedding(insight);
+        if (embedding == null) return false;
+        return savePreparedGrowth(userId, category, insight, context, embedding);
+    }
+
+    /** Store curated growth with a vector prepared before its commit transaction. */
+    public boolean savePreparedGrowth(String userId, String category, String insight,
+                                      String context, byte[] embedding) {
         try {
-            float[] vec = embedService.embed(insight);
-            if (vec == null) return false;
             int inserted = jdbc.update(
                 "INSERT INTO llm_growth (user_id, category, insight, context, embedding) " +
                 "SELECT ?,?,?,?,? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM llm_growth WHERE user_id=? AND category=? AND insight=?)",
-                userId, category, insight, context, VectorSearchService.encode(vec), userId, category, insight
+                userId, category, insight, context, embedding, userId, category, insight
             );
             return inserted > 0;
         } catch (Exception e) {
