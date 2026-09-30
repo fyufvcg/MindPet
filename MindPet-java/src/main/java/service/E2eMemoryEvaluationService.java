@@ -3,6 +3,7 @@ package service;
 import config.EvaluationSqlitePathGuard;
 import model.E2eMemoryIngestResult;
 import model.EvaluationWriteTrace;
+import model.FormalEvaluationContract;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -91,6 +92,65 @@ public class E2eMemoryEvaluationService {
             throw failure("COMPLETION", "COMPLETION_FAILED", "Completed-turn evaluation failed", cause);
         }
 
+        return observeCompleted(sampleId, runId, sessionId, completed, ltmBefore);
+    }
+
+    public FormalEvaluationContract.ExtractionResponse extract(
+            String sampleId,
+            String runId,
+            String userMessage,
+            String assistantContext,
+            Instant occurredAt) {
+        requireSafeDatabase();
+        validateInput(sampleId, runId, userMessage, assistantContext);
+        try {
+            FormalEvaluationContract.ExtractionSnapshot snapshot =
+                knowledgeGraph.extractForEvaluation(userMessage, assistantContext, occurredAt);
+            return new FormalEvaluationContract.ExtractionResponse(
+                "SUCCESS", sampleId, runId, EVAL_USER, snapshot);
+        } catch (KnowledgeGraphService.CompletedTurnFailure failure) {
+            throw failure(failure.stage(), failure.type(), failure.getMessage(), failure);
+        }
+    }
+
+    public FormalEvaluationContract.ReplayResponse replay(
+            String sampleId,
+            String runId,
+            String userMessage,
+            String assistantContext,
+            String emotion,
+            Instant occurredAt,
+            FormalEvaluationContract.Variant variant,
+            FormalEvaluationContract.ExtractionSnapshot snapshot) {
+        requireSafeDatabase();
+        validateInput(sampleId, runId, userMessage, assistantContext);
+        if (variant == null || snapshot == null) {
+            throw failure("VALIDATION", "INVALID_REPLAY_REQUEST",
+                "variant and extraction snapshot are required", null);
+        }
+        String sessionId = sessionId(sampleId, runId);
+        List<String> ltmBefore = allLtmIds();
+        KnowledgeGraphService.CompletedTurnResult completed;
+        try {
+            completed = knowledgeGraph.replayForEvaluation(
+                EVAL_USER, sessionId, userMessage, assistantContext,
+                emotion == null || emotion.isBlank() ? "neutral" : emotion,
+                occurredAt, variant, snapshot);
+        } catch (KnowledgeGraphService.CompletedTurnFailure failure) {
+            throw failure(failure.stage(), failure.type(), failure.getMessage(), failure);
+        }
+        E2eMemoryIngestResult result = observeCompleted(
+            sampleId, runId, sessionId, completed, ltmBefore);
+        return new FormalEvaluationContract.ReplayResponse(
+            "SUCCESS", variant.name(), snapshot.snapshotSha256(), false, result);
+    }
+
+    private E2eMemoryIngestResult observeCompleted(
+            String sampleId,
+            String runId,
+            String sessionId,
+            KnowledgeGraphService.CompletedTurnResult completed,
+            List<String> ltmBefore) {
         List<String> ltmAfter = allLtmIds();
         List<String> ltmCreated = difference(ltmAfter, ltmBefore);
         List<E2eMemoryIngestResult.EntityRow> entities = entityRows(completed.turnHash());
@@ -141,6 +201,23 @@ public class E2eMemoryEvaluationService {
             ltmBefore.size(), ltmAfter.size(), pruneOccurred, pruneDeletedEstimate,
             new E2eMemoryIngestResult.RowMapping(ltmCreated, entityIds, relationIds, evidenceIds),
             entities, relations, writeTrace, errorStage, errorType, errorMessage);
+    }
+
+    private void validateInput(
+            String sampleId, String runId, String userMessage, String assistantContext) {
+        validateIds(sampleId, runId);
+        if (userMessage == null || userMessage.isBlank() || assistantContext == null) {
+            throw failure("VALIDATION", "INVALID_INPUT",
+                "userMessage must be nonblank and assistantContext textual", null);
+        }
+    }
+
+    private String sessionId(String sampleId, String runId) {
+        String sessionId = "e2e:" + runId + ":" + sampleId;
+        if (sessionId.length() > 240) {
+            throw failure("VALIDATION", "SESSION_ID_TOO_LONG", "Evaluation session id is too long", null);
+        }
+        return sessionId;
     }
 
     private EvaluationWriteTrace writeTrace(

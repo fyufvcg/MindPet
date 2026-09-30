@@ -2,6 +2,8 @@ package service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import model.EvaluationWriteTrace;
+import model.FormalEvaluationContract;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -221,6 +224,231 @@ public class KnowledgeGraphService {
         return chatClientFactory.effectiveModel();
     }
 
+    /**
+     * Evaluation-only frozen extraction. This calls the production extractor exactly once and
+     * performs no persistence. It is package-private so only the guarded evaluation service can
+     * expose it.
+     */
+    FormalEvaluationContract.ExtractionSnapshot extractForEvaluation(
+            String userMessage, String assistantMessage, Instant occurredAt) {
+        if (isBlank(userMessage)) {
+            throw new CompletedTurnFailure(
+                "VALIDATION", "INVALID_INPUT", "Completed turn input is invalid", null);
+        }
+        if (!chatClientFactory.isConfigured()) {
+            throw new CompletedTurnFailure(
+                "EXTRACTION", "MODEL_NOT_CONFIGURED", "Production extraction model is not configured", null);
+        }
+        Instant safeOccurredAt = occurredAt == null ? Instant.now() : occurredAt;
+        try {
+            Extraction extraction = extract(userMessage, assistantMessage);
+            TemporalDiagnostics temporal = temporalDiagnostics(
+                userMessage, safeOccurredAt, ZoneId.systemDefault());
+            List<FormalEvaluationContract.EntityCandidate> entities = extraction.entities().stream()
+                .map(candidate -> new FormalEvaluationContract.EntityCandidate(
+                    candidate.name(), candidate.type(), candidate.summary(), candidate.importance()))
+                .toList();
+            List<FormalEvaluationContract.RelationCandidate> relations = extraction.replayRelations().stream()
+                .map(candidate -> new FormalEvaluationContract.RelationCandidate(
+                    candidate.source(), candidate.target(), candidate.predicate(), candidate.confidence(),
+                    candidate.importance(), PREDICATES.contains(candidate.predicate()),
+                    candidate.confidence() >= 0.6))
+                .toList();
+            ParseDiagnostics parse = extraction.parseDiagnostics();
+            KgFilterDiagnostics kg = extraction.kgFilterDiagnostics();
+            FormalEvaluationContract.ExtractionSnapshot unsigned =
+                new FormalEvaluationContract.ExtractionSnapshot(
+                    "mindpet-exp1-extraction-v1", extractionPromptSha256(),
+                    effectiveModelForEvaluation(), sourceSha256(userMessage, assistantMessage, safeOccurredAt),
+                    extraction.rawWorthRemembering(), extraction.rawMemoryShouldRemember(),
+                    extraction.shouldRemember(), extraction.importance(), extraction.confidence(),
+                    extraction.evidence(), entities, relations,
+                    new EvaluationWriteTrace.ParseDiagnostics(
+                        parse.memoryObjectPresent(), parse.importanceFallbackUsed(),
+                        parse.confidenceFallbackUsed(), parse.importanceClamped(),
+                        parse.confidenceClamped(), parse.parseFailure(), parse.parseFailureReason()),
+                    new EvaluationWriteTrace.KgFilterTrace(
+                        kg.rawEntityCount(), kg.rawRelationCount(), kg.normalizedEntityCount(),
+                        kg.normalizedRelationCount(), kg.sensitivityRejectedEntityCount(),
+                        kg.predicateWhitelistRejectedCount(), kg.relationConfidenceRejectedCount(),
+                        0, 0, 0),
+                    new EvaluationWriteTrace.TemporalTrace(
+                        temporal.eventDate(), temporal.eventAt(), temporal.eventTimezone(),
+                        temporal.eventPrecision(), temporal.referenceTimestamp(),
+                        temporal.referenceTimezone()),
+                    null);
+            return withSnapshotHash(unsigned, snapshotHash(unsigned));
+        } catch (CompletedTurnFailure failure) {
+            throw failure;
+        } catch (Exception exception) {
+            throw new CompletedTurnFailure(
+                "EXTRACTION", "EXTRACTION_FAILED", "Production extraction failed", exception);
+        }
+    }
+
+    /** Deterministic evaluation-only replay. This method never builds or calls an LLM client. */
+    CompletedTurnResult replayForEvaluation(
+            String userId, String sessionId, String userMessage, String assistantMessage,
+            String emotion, Instant occurredAt, FormalEvaluationContract.Variant variant,
+            FormalEvaluationContract.ExtractionSnapshot snapshot) {
+        Instant safeOccurredAt = occurredAt == null ? Instant.now() : occurredAt;
+        validateSnapshot(userMessage, assistantMessage, safeOccurredAt, snapshot);
+        if (variant == null) {
+            throw new CompletedTurnFailure(
+                "VALIDATION", "VARIANT_REQUIRED", "Evaluation variant is required", null);
+        }
+        String safeSessionId = sessionId == null ? "" : sessionId;
+        String turnHash = sha256(userId + "\n" + safeSessionId + "\n" + userMessage + "\n" + assistantMessage);
+        if (isIngested(turnHash)) {
+            return CompletedTurnResult.duplicate(turnHash, snapshot.model());
+        }
+
+        List<EntityCandidate> entities = snapshot.entities().stream()
+            .map(candidate -> new EntityCandidate(
+                candidate.name(), candidate.type(), candidate.summary(), candidate.importance()))
+            .toList();
+        ReplayPolicy replayPolicy = evaluationReplayPolicy(snapshot, variant);
+        List<RelationCandidate> relations = replayPolicy.relations().stream()
+            .map(candidate -> new RelationCandidate(
+                candidate.source(), candidate.target(), candidate.predicate(),
+                candidate.confidence(), candidate.importance()))
+            .toList();
+        EvaluationWriteTrace.ParseDiagnostics snapshotParse = snapshot.parse();
+        ParseDiagnostics parse = new ParseDiagnostics(
+            snapshotParse.memoryObjectPresent(), snapshotParse.importanceFallbackUsed(),
+            snapshotParse.confidenceFallbackUsed(), snapshotParse.importanceClamped(),
+            snapshotParse.confidenceClamped(), snapshotParse.parseFailure(),
+            snapshotParse.parseFailureReason());
+        EvaluationWriteTrace.KgFilterTrace snapshotKg = snapshot.kgFilter();
+        KgFilterDiagnostics kg = new KgFilterDiagnostics(
+            snapshotKg.rawEntityCount(), snapshotKg.rawRelationCount(), entities.size(), relations.size(),
+            snapshotKg.sensitivityRejectedEntityCount(), replayPolicy.predicateWhitelistRejectedCount(),
+            replayPolicy.relationConfidenceRejectedCount());
+        Extraction extraction = new Extraction(
+            snapshot.rawWorthRemembering(), snapshot.rawMemoryShouldRemember(),
+            snapshot.combinedShouldRemember(), snapshot.importance(), snapshot.confidence(),
+            snapshot.evidence(), entities, relations, relations, parse, kg);
+        try {
+            persist(userId, safeSessionId, turnHash, userMessage, assistantMessage, extraction);
+        } catch (Exception exception) {
+            throw new CompletedTurnFailure(
+                "KG_PERSISTENCE", "KG_PERSISTENCE_FAILED", "Knowledge graph persistence failed", exception);
+        }
+        boolean ltmAttempted = replayPolicy.ltmDecision();
+        if (ltmAttempted) {
+            try {
+                memoryService.appendTurn(userId, safeSessionId, userMessage,
+                    snapshot.importance(), snapshot.confidence(), emotion, safeOccurredAt);
+            } catch (Exception exception) {
+                throw new CompletedTurnFailure(
+                    "LTM_PERSISTENCE", "LTM_APPEND_FAILED", "Long-term memory append failed", exception);
+            }
+        }
+        DecisionDiagnostics decision = new DecisionDiagnostics(
+            snapshot.rawWorthRemembering(), snapshot.rawMemoryShouldRemember(),
+            snapshot.combinedShouldRemember(), snapshot.importance(), snapshot.confidence(),
+            LTM_IMPORTANCE_THRESHOLD, LTM_CONFIDENCE_THRESHOLD,
+            snapshot.importance() >= LTM_IMPORTANCE_THRESHOLD,
+            snapshot.confidence() >= LTM_CONFIDENCE_THRESHOLD);
+        EvaluationWriteTrace.TemporalTrace snapshotTemporal = snapshot.temporal();
+        TemporalDiagnostics temporal = new TemporalDiagnostics(
+            snapshotTemporal.eventDate(), snapshotTemporal.eventAt(), snapshotTemporal.eventTimezone(),
+            snapshotTemporal.eventPrecision(), snapshotTemporal.referenceTimestamp(),
+            snapshotTemporal.referenceTimezone());
+        return new CompletedTurnResult(
+            turnHash, snapshot.model(), false, true, snapshot.combinedShouldRemember(),
+            snapshot.importance(), snapshot.confidence(), ltmAttempted,
+            decision, parse, kg, temporal);
+    }
+
+    ReplayPolicy evaluationReplayPolicy(
+            FormalEvaluationContract.ExtractionSnapshot snapshot,
+            FormalEvaluationContract.Variant variant) {
+        boolean ltmDecision = switch (variant) {
+            case A0_DIRECT_SAVE_ALL -> true;
+            case A1_LLM_DECISION_ONLY -> snapshot.combinedShouldRemember();
+            case B2_NO_LTM_CONFIDENCE_GATE -> snapshot.combinedShouldRemember()
+                && snapshot.importance() >= LTM_IMPORTANCE_THRESHOLD;
+            case B0_CURRENT_FULL, B1_NO_PREDICATE_WHITELIST -> snapshot.combinedShouldRemember()
+                && snapshot.importance() >= LTM_IMPORTANCE_THRESHOLD
+                && snapshot.confidence() >= LTM_CONFIDENCE_THRESHOLD;
+        };
+        List<FormalEvaluationContract.RelationCandidate> relations = new ArrayList<>();
+        int confidenceRejected = 0;
+        int whitelistRejected = 0;
+        for (FormalEvaluationContract.RelationCandidate candidate : snapshot.relations()) {
+            boolean predicateAllowed = variant == FormalEvaluationContract.Variant.B1_NO_PREDICATE_WHITELIST
+                || candidate.predicateAllowed();
+            if (!predicateAllowed) {
+                whitelistRejected++;
+                continue;
+            }
+            if (!candidate.confidenceGatePassed()) {
+                confidenceRejected++;
+                continue;
+            }
+            if (relations.size() < 10) relations.add(candidate);
+        }
+        return new ReplayPolicy(
+            ltmDecision, List.copyOf(relations), whitelistRejected, confidenceRejected);
+    }
+
+    private void validateSnapshot(
+            String userMessage, String assistantMessage, Instant occurredAt,
+            FormalEvaluationContract.ExtractionSnapshot snapshot) {
+        boolean valid = snapshot != null
+            && "mindpet-exp1-extraction-v1".equals(snapshot.schemaVersion())
+            && extractionPromptSha256().equals(snapshot.promptSha256())
+            && effectiveModelForEvaluation().equals(snapshot.model())
+            && sourceSha256(userMessage, assistantMessage, occurredAt).equals(snapshot.sourceSha256())
+            && snapshot.snapshotSha256() != null
+            && snapshot.snapshotSha256().equals(snapshotHash(snapshot));
+        if (!valid) {
+            throw new CompletedTurnFailure(
+                "VALIDATION", "SNAPSHOT_CONTRACT_INVALID",
+                "Extraction snapshot failed integrity or configuration validation", null);
+        }
+    }
+
+    private String sourceSha256(String userMessage, String assistantMessage, Instant occurredAt) {
+        return sha256(userMessage + "\n" + (assistantMessage == null ? "" : assistantMessage)
+            + "\n" + occurredAt.toString());
+    }
+
+    private String snapshotHash(FormalEvaluationContract.ExtractionSnapshot snapshot) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> values = mapper.convertValue(snapshot, Map.class);
+            values.remove("snapshotSha256");
+            return sha256(mapper.writeValueAsString(sortedValue(values)));
+        } catch (Exception exception) {
+            throw new CompletedTurnFailure(
+                "VALIDATION", "SNAPSHOT_HASH_FAILED", "Extraction snapshot could not be hashed", exception);
+        }
+    }
+
+    private Object sortedValue(Object value) {
+        if (value instanceof Map<?, ?> source) {
+            Map<String, Object> sorted = new TreeMap<>();
+            source.forEach((key, child) -> sorted.put(String.valueOf(key), sortedValue(child)));
+            return sorted;
+        }
+        if (value instanceof List<?> source) {
+            return source.stream().map(this::sortedValue).toList();
+        }
+        return value;
+    }
+
+    private FormalEvaluationContract.ExtractionSnapshot withSnapshotHash(
+            FormalEvaluationContract.ExtractionSnapshot snapshot, String hash) {
+        return new FormalEvaluationContract.ExtractionSnapshot(
+            snapshot.schemaVersion(), snapshot.promptSha256(), snapshot.model(), snapshot.sourceSha256(),
+            snapshot.rawWorthRemembering(), snapshot.rawMemoryShouldRemember(),
+            snapshot.combinedShouldRemember(), snapshot.importance(), snapshot.confidence(),
+            snapshot.evidence(), snapshot.entities(), snapshot.relations(), snapshot.parse(),
+            snapshot.kgFilter(), snapshot.temporal(), hash);
+    }
+
     private CompletedTurnResult processCompletedTurn(
             String userId, String sessionId, String turnHash,
             String userMessage, String assistantMessage, String emotion, Instant occurredAt,
@@ -413,28 +641,32 @@ public class KnowledgeGraphService {
         }
 
         List<RelationCandidate> relations = new ArrayList<>();
+        List<RelationCandidate> replayRelations = new ArrayList<>();
         JsonNode relationArray = root.path("relations");
         int rawRelationCount = relationArray.isArray() ? relationArray.size() : 0;
         int predicateWhitelistRejectedCount = 0;
         int relationConfidenceRejectedCount = 0;
         if (relationArray.isArray()) {
             for (JsonNode item : relationArray) {
-                if (relations.size() == 10) break;
                 String source = cleanName(item.path("source").asText(""));
                 String target = cleanName(item.path("target").asText(""));
                 String predicate = item.path("predicate").asText("").trim().toLowerCase(Locale.ROOT);
                 if (isBlank(source) || isBlank(target) || source.equalsIgnoreCase(target)) continue;
+                double relationConfidence = clamp(item.path("confidence").asDouble(0.5));
+                RelationCandidate replayCandidate = new RelationCandidate(
+                    source, target, predicate, relationConfidence,
+                    clamp(item.path("importance").asDouble(0.5)));
+                replayRelations.add(replayCandidate);
+                if (relations.size() == 10) continue;
                 if (!PREDICATES.contains(predicate)) {
                     predicateWhitelistRejectedCount++;
                     continue;
                 }
-                double relationConfidence = clamp(item.path("confidence").asDouble(0.5));
                 if (relationConfidence < 0.6) {
                     relationConfidenceRejectedCount++;
                     continue;
                 }
-                relations.add(new RelationCandidate(source, target, predicate, relationConfidence,
-                    clamp(item.path("importance").asDouble(0.5))));
+                relations.add(replayCandidate);
             }
         }
         if (!memory.isObject()) {
@@ -443,7 +675,7 @@ public class KnowledgeGraphService {
         }
         return new Extraction(worthRemembering, rawMemoryShouldRemember,
             worthRemembering && shouldRemember, importance, confidence,
-            evidence, entities, relations,
+            evidence, entities, relations, replayRelations,
             new ParseDiagnostics(memoryObjectPresent, importanceFallbackUsed,
                 confidenceFallbackUsed, importanceClamped, confidenceClamped, false, null),
             new KgFilterDiagnostics(rawEntityCount, rawRelationCount, entities.size(), relations.size(),
@@ -859,13 +1091,14 @@ public class KnowledgeGraphService {
     private record EntityRef(String id, String name) {}
     private record EntityVector(String id, float[] vector) {}
     private record Extraction(boolean rawWorthRemembering, Boolean rawMemoryShouldRemember,
-                              boolean shouldRemember, double importance, double confidence,
-                              String evidence, List<EntityCandidate> entities,
-                              List<RelationCandidate> relations,
-                              ParseDiagnostics parseDiagnostics,
-                              KgFilterDiagnostics kgFilterDiagnostics) {
+                               boolean shouldRemember, double importance, double confidence,
+                               String evidence, List<EntityCandidate> entities,
+                               List<RelationCandidate> relations,
+                               List<RelationCandidate> replayRelations,
+                               ParseDiagnostics parseDiagnostics,
+                               KgFilterDiagnostics kgFilterDiagnostics) {
         static Extraction empty() {
-            return new Extraction(false, null, false, 0.0, 0.0, "", List.of(), List.of(),
+            return new Extraction(false, null, false, 0.0, 0.0, "", List.of(), List.of(), List.of(),
                 new ParseDiagnostics(false, true, true, false, false, false, null),
                 new KgFilterDiagnostics(0, 0, 0, 0, 0, 0, 0));
         }
@@ -911,6 +1144,13 @@ public class KnowledgeGraphService {
         int normalizedEntityCount,
         int normalizedRelationCount,
         int sensitivityRejectedEntityCount,
+        int predicateWhitelistRejectedCount,
+        int relationConfidenceRejectedCount
+    ) {}
+
+    record ReplayPolicy(
+        boolean ltmDecision,
+        List<FormalEvaluationContract.RelationCandidate> relations,
         int predicateWhitelistRejectedCount,
         int relationConfidenceRejectedCount
     ) {}

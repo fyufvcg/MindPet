@@ -3,6 +3,7 @@ package controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
 import model.E2eMemoryIngestResult;
+import model.FormalEvaluationContract;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -89,6 +90,52 @@ public class EvalE2eMemoryController {
         }
     }
 
+    @PostMapping("/extract")
+    public ResponseEntity<?> extract(
+            @RequestHeader(value = "X-MindPet-Eval-Token", required = false) String token,
+            HttpServletRequest request,
+            @RequestBody FormalEvaluationContract.ExtractionRequest body) {
+        ResponseEntity<?> rejected = authorize(token, request);
+        if (rejected != null) return rejected;
+        if (body == null) return invalid(null);
+        Instant occurredAt;
+        try {
+            occurredAt = body.occurredAt() == null ? Instant.now() : Instant.parse(body.occurredAt());
+        } catch (DateTimeParseException exception) {
+            return invalid(body.sampleId());
+        }
+        try {
+            return ResponseEntity.ok(service.extract(
+                body.sampleId(), body.runId(), body.userMessage(),
+                body.assistantContext(), occurredAt));
+        } catch (E2eMemoryEvaluationService.EvaluationFailure failure) {
+            return evaluationFailure(body.sampleId(), failure);
+        }
+    }
+
+    @PostMapping("/replay")
+    public ResponseEntity<?> replay(
+            @RequestHeader(value = "X-MindPet-Eval-Token", required = false) String token,
+            HttpServletRequest request,
+            @RequestBody FormalEvaluationContract.ReplayRequest body) {
+        ResponseEntity<?> rejected = authorize(token, request);
+        if (rejected != null) return rejected;
+        if (body == null) return invalid(null);
+        Instant occurredAt;
+        try {
+            occurredAt = body.occurredAt() == null ? Instant.now() : Instant.parse(body.occurredAt());
+        } catch (DateTimeParseException exception) {
+            return invalid(body.sampleId());
+        }
+        try {
+            return ResponseEntity.ok(service.replay(
+                body.sampleId(), body.runId(), body.userMessage(), body.assistantContext(),
+                body.emotion(), occurredAt, body.variant(), body.snapshot()));
+        } catch (E2eMemoryEvaluationService.EvaluationFailure failure) {
+            return evaluationFailure(body.sampleId(), failure);
+        }
+    }
+
     @GetMapping("/snapshot")
     public ResponseEntity<?> snapshot(
             @RequestHeader(value = "X-MindPet-Eval-Token", required = false) String token,
@@ -131,7 +178,8 @@ public class EvalE2eMemoryController {
                  "SQLITE_PATH_OUTSIDE_ALLOWED_ROOT", "PRODUCTION_SQLITE_PATH_FORBIDDEN" ->
                 HttpStatus.SERVICE_UNAVAILABLE;
             case "COMPLETION_TIMEOUT" -> HttpStatus.GATEWAY_TIMEOUT;
-            case "INVALID_INPUT", "INVALID_SAMPLE_ID", "INVALID_RUN_ID", "SESSION_ID_TOO_LONG" ->
+            case "INVALID_INPUT", "INVALID_SAMPLE_ID", "INVALID_RUN_ID", "SESSION_ID_TOO_LONG",
+                 "INVALID_REPLAY_REQUEST", "VARIANT_REQUIRED", "SNAPSHOT_CONTRACT_INVALID" ->
                 HttpStatus.BAD_REQUEST;
             default -> HttpStatus.BAD_GATEWAY;
         };
