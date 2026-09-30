@@ -18,7 +18,8 @@ import java.util.Set;
 /** SQLite vector access with sqlite-vec acceleration and an exact Java fallback. */
 @Service
 public class VectorSearchService {
-    private static final Set<String> TABLES = Set.of("long_term_memory", "user_insight", "llm_growth", "kg_entity");
+    private static final Set<String> TABLES = Set.of(
+        "long_term_memory", "user_insight", "llm_growth", "kg_entity", "memory_retrieval_unit");
 
     private final JdbcTemplate jdbc;
     private final Logger logger;
@@ -47,15 +48,33 @@ public class VectorSearchService {
     public boolean isSqliteVecAvailable() { return sqliteVecAvailable; }
 
     public List<VectorMatch> search(String table, String userId, float[] query, int limit) {
+        return search(table, userId, query, limit, false, false);
+    }
+
+    public List<VectorMatch> searchMemoryUnits(String userId, float[] query, int limit,
+                                               boolean includeHistorical, boolean includePlanned) {
+        return search("memory_retrieval_unit", userId, query, limit, includeHistorical, includePlanned);
+    }
+
+    private List<VectorMatch> search(String table, String userId, float[] query, int limit,
+                                     boolean includeHistorical, boolean includePlanned) {
         if (!TABLES.contains(table)) throw new IllegalArgumentException("Unsupported vector table: " + table);
         if (query == null || query.length == 0 || limit <= 0) return List.of();
         byte[] queryBlob = encode(query);
+        String visibility = switch (table) {
+            case "long_term_memory" -> " AND searchable=1";
+            case "memory_retrieval_unit" -> " AND searchable=1 AND (status='active' OR (?=1 AND status='historical')) AND (?=1 OR scope<>'planned') AND (?=1 OR scope<>'historical')";
+            default -> "";
+        };
         if (sqliteVecAvailable) {
             try {
                 return jdbc.query("SELECT CAST(id AS TEXT) AS id, vec_distance_cosine(embedding, ?) AS distance "
-                        + "FROM " + table + " WHERE user_id=? AND embedding IS NOT NULL ORDER BY distance LIMIT ?",
+                        + "FROM " + table + " WHERE user_id=? AND embedding IS NOT NULL" + visibility + " ORDER BY distance LIMIT ?",
                     (rs, row) -> new VectorMatch(rs.getString("id"), rs.getDouble("distance")),
-                    queryBlob, userId, limit);
+                    table.equals("memory_retrieval_unit")
+                        ? new Object[] {queryBlob, userId, includeHistorical ? 1 : 0, includePlanned ? 1 : 0,
+                            includeHistorical ? 1 : 0, limit}
+                        : new Object[] {queryBlob, userId, limit});
             } catch (Exception e) {
                 sqliteVecAvailable = false;
                 logger.log("WARN", "sqlite-vec 查询失败，本次及后续查询回退 Java: " + e.getMessage());
@@ -63,13 +82,16 @@ public class VectorSearchService {
         }
         List<VectorMatch> matches = new ArrayList<>();
         jdbc.query("SELECT CAST(id AS TEXT) AS id, embedding FROM " + table
-                + " WHERE user_id=? AND embedding IS NOT NULL",
+                + " WHERE user_id=? AND embedding IS NOT NULL" + visibility,
             rs -> {
                 float[] candidate = decode(rs.getBytes("embedding"));
                 if (candidate.length == query.length) {
                     matches.add(new VectorMatch(rs.getString("id"), cosineDistance(query, candidate)));
                 }
-            }, userId);
+            }, table.equals("memory_retrieval_unit")
+                ? new Object[] {userId, includeHistorical ? 1 : 0, includePlanned ? 1 : 0,
+                    includeHistorical ? 1 : 0}
+                : new Object[] {userId});
         matches.sort(Comparator.comparingDouble(VectorMatch::distance));
         return matches.size() <= limit ? matches : new ArrayList<>(matches.subList(0, limit));
     }

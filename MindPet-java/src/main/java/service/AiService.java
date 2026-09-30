@@ -135,8 +135,8 @@ public class AiService {
     private final DynamicLlmConfig dynamicConfig;
     private final DynamicChatClientFactory chatClientFactory;
     private final SqliteMemoryService memoryStore;
+    private final MemoryCorpusCompactionService memoryCorpus;
     private final UserProfileService profileService;
-    private final UserInsightService insightService;
     private final ConversationMemoryService convMemory;
     private final SessionService sessionService;
     private final MemoryCuratorService memoryCurator;
@@ -151,8 +151,8 @@ public class AiService {
             DynamicLlmConfig dynamicConfig,
             DynamicChatClientFactory chatClientFactory,
             SqliteMemoryService memoryStore,
+            MemoryCorpusCompactionService memoryCorpus,
             UserProfileService profileService,
-            UserInsightService insightService,
             ConversationMemoryService convMemory,
             SessionService sessionService,
             MemoryCuratorService memoryCurator,
@@ -165,8 +165,8 @@ public class AiService {
         this.dynamicConfig = dynamicConfig;
         this.chatClientFactory = chatClientFactory;
         this.memoryStore = memoryStore;
+        this.memoryCorpus = memoryCorpus;
         this.profileService = profileService;
-        this.insightService = insightService;
         this.convMemory = convMemory;
         this.sessionService = sessionService;
         this.memoryCurator = memoryCurator;
@@ -1313,46 +1313,39 @@ public class AiService {
             prompt += "\n" + trend;
         }
 
-        // User profile
-        if (userId != null) {
-            try {
-                String profile = profileService.getProfileContext(userId);
-                if (profile != null && !profile.isBlank()) {
-                    prompt += "\n\n" + profile;
-                }
-            } catch (Exception ignored) {}
-        }
-        // RAG lookups — compute embedding ONCE, reuse for all 3 lookups
+        // Curated memories and migrated raw memories share one deduplicated token budget.
         if (userId != null && query != null) {
             float[] vec = embedService.embed(query);
+            boolean hasCuratedMemoryContext = false;
+            try {
+                String curatorContext = memoryCorpus.getRetrievalContext(userId, query, vec, memoryStore);
+                if (curatorContext != null && !curatorContext.isBlank()) {
+                    prompt += "\n\n" + curatorContext + "\n请按问题需要参考这些记忆，不要刻意复述。";
+                    hasCuratedMemoryContext = true;
+                }
+            } catch (Exception e) {
+                logger.log("WARN", "读取馆长检索语料失败: " + e.getMessage());
+            }
             if (vec != null) {
-                try {
-                    String insights = insightService.getInsightContext(userId, vec);
-                    if (insights != null && !insights.isBlank()) {
-                        prompt += "\n\n" + insights + "\n请自然地体现这些认知，但不要刻意复述。";
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    String growth = insightService.getGrowthContext(userId, vec);
-                    if (growth != null && !growth.isBlank()) {
-                        prompt += "\n\n" + growth;
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    var memories = memoryStore.search(userId, query, vec, 3);
-                    if (!memories.isEmpty()) {
-                        StringBuilder sb = new StringBuilder("\n\n## 相关历史记忆\n");
-                        for (var m : memories) {
-                            sb.append("- ").append(m.toPromptLine()).append("\n");
+                if (!hasCuratedMemoryContext) {
+                    try {
+                        var memories = memoryStore.search(userId, query, vec, 3);
+                        if (!memories.isEmpty()) {
+                            StringBuilder sb = new StringBuilder("\n\n## 相关历史记忆\n");
+                            for (var m : memories) {
+                                sb.append("- ").append(m.toPromptLine()).append("\n");
+                            }
+                            sb.append("请自然地参考这些记忆，不要刻意复述原文。");
+                            prompt += sb.toString();
                         }
-                        sb.append("请自然地参考这些记忆，不要刻意复述原文。");
-                        prompt += sb.toString();
-                    }
-                } catch (Exception ignored) {}
-                try {
-                    String graphContext = knowledgeGraph.getRagContext(userId, query, vec, 4);
-                    if (!graphContext.isBlank()) prompt += "\n\n" + graphContext;
-                } catch (Exception ignored) {}
+                    } catch (Exception ignored) {}
+                }
+                if (isRelationshipQuery(query)) {
+                    try {
+                        String graphContext = knowledgeGraph.getRagContext(userId, query, vec, 4);
+                        if (!graphContext.isBlank()) prompt += "\n\n" + graphContext;
+                    } catch (Exception ignored) {}
+                }
             }
         }
         // 前端选择的活跃技能 — 只注入名称列表，不注入 full content（前端已选定，无需 LLM 路由）
@@ -1371,6 +1364,17 @@ public class AiService {
         }
 
         return prompt;
+    }
+
+    private static boolean isRelationshipQuery(String query) {
+        if (query == null || query.isBlank()) return false;
+        String normalized = query.toLowerCase(java.util.Locale.ROOT);
+        for (String cue : List.of("什么关系", "关系", "和谁", "跟谁", "认识", "朋友", "家人",
+                "妈妈", "爸爸", "父母", "哥哥", "姐姐", "弟弟", "妹妹", "儿子", "女儿",
+                "同事", "同学", "伴侣", "配偶", "一起", "谁是", "谁的", "联系", "related", "relationship")) {
+            if (normalized.contains(cue)) return true;
+        }
+        return false;
     }
 
     private String normalizeIdentity(String prompt) {

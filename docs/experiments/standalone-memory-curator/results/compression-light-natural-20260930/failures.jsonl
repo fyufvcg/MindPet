@@ -1,0 +1,1 @@
+{"sample_id":"timeline-901","reason_code":"CURATOR_RUN_FAILED","detail":"Baseline LLM failed: 400 - {\"error\":{\"message\":\"Unsupported parameter: 'temperature' is not supported with this model.\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":null}}"}

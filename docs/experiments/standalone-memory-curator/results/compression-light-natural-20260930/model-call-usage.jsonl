@@ -1,0 +1,1 @@
+{"stage":"baseline_memory","timeline_id":"timeline-901","item_id":"timeline-901-turn-01","elapsed_ms":2880,"error":"400 - {\"error\":{\"message\":\"Unsupported parameter: 'temperature' is not supported with this model.\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":null}}"}

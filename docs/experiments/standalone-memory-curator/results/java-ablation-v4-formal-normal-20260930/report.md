@@ -1,0 +1,3213 @@
+# Memory Curator LLM experiment
+
+Dataset: `normal.jsonl` (SHA-256 `a87ef16b7fdace3fbac85ca2b3c10969c1941c9de7f709309b2a80fc027b202b`)
+
+This report is generated from real calls to the production Java KnowledgeGraphService, MemoryCuratorService, MemoryCorpusCompactionService, and SqliteMemoryService. Fixture output is not used as experiment data. Primary effects compare compacted G2C with G1; append-only G2A is an ablation built from the same accepted curator output.
+
+Sample: **16 timelines, 640 memory-input turns, 192 retrieval questions**.
+
+Acceptance profile: **relaxed screening** — **NOT PASSED**. The 30% full-corpus compression target is reported separately and is not implied by a relaxed screening pass. The sample is a screening evaluation, not the complete locked-test cohort.
+
+## Failed answer cases
+
+- timeline-007 / timeline-007-q08 / G1: missing_retrieved_evidence; response: 不知道。记忆只显示你在2025年完成过几期培训，没有提到此前报名的那门课程是取消了还是完成了。
+- timeline-008 / timeline-008-q08 / G1: missing_retrieved_evidence; response: 我不知道。记忆中只提到你在 2025 年完成过几期培训，没有说明此前报名的那门课程是取消了还是完成了。
+- timeline-009 / timeline-009-q08 / G1: missing_retrieved_evidence; response: 记忆中记录的第13、21、24、25、31和33期培训都已于2025年完成；没有课程被取消的记录。若你指的是另一门课程，我这里没有相关信息。
+- timeline-010 / timeline-010-q07 / G1: missing_retrieved_evidence; response: 不知道你未来可能搬去哪里；记忆中没有记录相关计划或备选地点。你目前住在福州，之前搬到厦门是历史状态，后来又重新住回福州。
+- timeline-010 / timeline-010-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的那门课程是取消了还是完成了。记忆只提到你在2025年完成过一些培训，没有说明这门课程的状态。
+- timeline-011 / timeline-011-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的具体课程是取消还是完成了。记忆只提到你在 2025 年完成过几期培训，没有说明这门课程的状态。
+- timeline-012 / timeline-012-q07 / G1: missing_retrieved_evidence; response: 记忆中没有提到未来可能搬去哪里，也没有记录任何备选地点；因此无法判断。已知你目前住在南京。
+- timeline-014 / timeline-014-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的那门课程现在是取消了还是完成了。记忆中只提到你在2025年完成过一些培训，无法确认是否就是那门课程。
+- timeline-017 / timeline-017-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的那门课程是取消了还是完成了。记忆中只记录了你在 2025 年完成过几期培训，没有提到这门课程的状态。
+- timeline-018 / timeline-018-q08 / G1: missing_retrieved_evidence; response: 我不知道。记忆中提到你在2025年完成了几期培训，但没有说明此前报名的那门课程是取消了还是完成了。
+- timeline-019 / timeline-019-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的课程现在是取消了还是完成了。记忆只记录你在2025年完成过几期培训，但没有说明是否就是那门课程。
+- timeline-019 / timeline-019-q08 / G2A: missing_retrieved_evidence; response: 记忆显示，你在 2025 年完成了此前报名的培训，并没有记录显示课程取消；但具体是哪门课程，记忆里没有注明。
+- timeline-020 / timeline-020-q08 / G1: missing_retrieved_evidence; response: 我不知道此前报名的课程是取消了还是完成了。记忆只提到你在 2025 年完成过几期培训，无法确认是否指这门课程。
+- timeline-020 / timeline-020-q08 / G2A: missing_retrieved_evidence; response: 不知道。记忆只记录你在 2025 年完成过一些期次的培训，没有说明此前报名的那门课程是取消了还是完成了。
+
+```json
+{
+  "dataset_version" : [ "memory-curator-ablation-v4" ],
+  "selected_timelines" : 16,
+  "selected_turns" : 640,
+  "selected_queries" : 192,
+  "curator_repair_calls" : 50,
+  "answer_queries" : 192,
+  "answer_calls_expected" : 576,
+  "fact_quality" : {
+    "true_positive" : 92,
+    "false_positive" : 352,
+    "false_negative" : 356,
+    "precision" : 0.2072072072072072,
+    "recall" : 0.20535714285714285,
+    "f1" : 0.20627802690582958,
+    "stored_fact_rows" : 444,
+    "exact_match_duplicate_rows" : 0,
+    "exact_match_duplicate_rate" : 0.0,
+    "semantic_duplicate_rows" : 0,
+    "semantic_duplicate_rate" : 0.0,
+    "distinct_state_interval_rows" : 0,
+    "redundant_semantic_rows" : 0,
+    "redundant_semantic_rate" : 0.0,
+    "semantic_unique_fact_quality" : {
+      "precision" : 0.2072072072072072,
+      "matching_policy" : "predicate/value/scope/assertion; temporal fields are evaluated separately",
+      "semantic_duplicate_rows" : 0,
+      "f1" : 0.20627802690582958,
+      "recall" : 0.20535714285714285,
+      "false_positive" : 352,
+      "true_positive" : 92,
+      "false_negative" : 356,
+      "semantic_duplicate_rate" : 0.0
+    },
+    "strict_row_matching_policy" : "predicate/value/scope/assertion plus expected time status and resolved start date; non-overlapping state intervals are valid repeated rows; recall uses unique matched gold; unmatched rows are not necessarily hallucinations",
+    "semantic_repetition_policy" : "semantic_duplicate_rows counts repeated meanings including legitimate state returns; distinct_state_interval_rows and redundant_semantic_rows separate them; intervals lacking provable non-overlap remain redundant",
+    "by_timeline" : [ {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-005",
+      "expected" : 28,
+      "stored" : 14,
+      "true_positive" : 3,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 3,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-006",
+      "expected" : 28,
+      "stored" : 29,
+      "true_positive" : 11,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 11,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-007",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 8,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 8,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-008",
+      "expected" : 28,
+      "stored" : 32,
+      "true_positive" : 3,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 3,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-009",
+      "expected" : 28,
+      "stored" : 28,
+      "true_positive" : 8,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 8,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-010",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 9,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 9,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-011",
+      "expected" : 28,
+      "stored" : 29,
+      "true_positive" : 4,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 4,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-012",
+      "expected" : 28,
+      "stored" : 31,
+      "true_positive" : 5,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 5,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-013",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-014",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 3,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 3,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-015",
+      "expected" : 28,
+      "stored" : 28,
+      "true_positive" : 8,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 8,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-016",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-017",
+      "expected" : 28,
+      "stored" : 31,
+      "true_positive" : 5,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 5,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-018",
+      "expected" : 28,
+      "stored" : 32,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-019",
+      "expected" : 28,
+      "stored" : 27,
+      "true_positive" : 2,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 2,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-020",
+      "expected" : 28,
+      "stored" : 28,
+      "true_positive" : 2,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 2,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    } ]
+  },
+  "g1_kg_fact_quality" : {
+    "precision" : 0.0600375234521576,
+    "recall" : 0.07142857142857142,
+    "by_timeline" : [ {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-005",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-006",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-007",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-008",
+      "unmatched_kg_relations" : 30
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-009",
+      "unmatched_kg_relations" : 30
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-010",
+      "unmatched_kg_relations" : 31
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-011",
+      "unmatched_kg_relations" : 30
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-012",
+      "unmatched_kg_relations" : 29
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-013",
+      "unmatched_kg_relations" : 31
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-014",
+      "unmatched_kg_relations" : 34
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-015",
+      "unmatched_kg_relations" : 29
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-016",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-017",
+      "unmatched_kg_relations" : 34
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-018",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-019",
+      "unmatched_kg_relations" : 32
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-020",
+      "unmatched_kg_relations" : 31
+    } ],
+    "method" : "Conservative KG relation projection by visible text; unsupported relations remain unmatched. No source-turn label inheritance."
+  },
+  "profile_quality" : {
+    "expected_entries_correct" : 40,
+    "fully_correct_timelines" : 8,
+    "by_timeline" : [ {
+      "actual" : {
+        "current_project" : "社区活动小程序"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-005",
+      "expected" : {
+        "home_location" : "武汉",
+        "current_location" : "宁波",
+        "occupation_current" : "项目运营",
+        "current_project" : "社区活动小程序"
+      },
+      "correct" : 1
+    }, {
+      "actual" : {
+        "home_location" : "厦门",
+        "occupation_current" : "测试工程师",
+        "current_location" : "长沙",
+        "current_project" : "影像归档工具"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-006",
+      "expected" : {
+        "home_location" : "厦门",
+        "current_location" : "长沙",
+        "occupation_current" : "测试工程师",
+        "current_project" : "影像归档工具"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "home_location" : "青岛",
+        "occupation_current" : "研究助理",
+        "current_location" : "郑州",
+        "current_project" : "供应链监控平台"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-007",
+      "expected" : {
+        "home_location" : "青岛",
+        "current_location" : "郑州",
+        "occupation_current" : "研究助理",
+        "current_project" : "供应链监控平台"
+      },
+      "correct" : 4
+    }, {
+      "actual" : { },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-008",
+      "expected" : {
+        "home_location" : "深圳",
+        "current_location" : "无锡",
+        "occupation_current" : "课程顾问",
+        "current_project" : "阅读计划应用"
+      },
+      "correct" : 0
+    }, {
+      "actual" : {
+        "home_location" : "广州",
+        "occupation_current" : "视觉设计师",
+        "current_location" : "天津",
+        "current_project" : "实验数据门户"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-009",
+      "expected" : {
+        "home_location" : "广州",
+        "current_location" : "天津",
+        "occupation_current" : "视觉设计师",
+        "current_project" : "实验数据门户"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "home_location" : "北京",
+        "occupation_current" : "数据分析师",
+        "current_location" : "福州",
+        "current_project" : "城市出行分析项目"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-010",
+      "expected" : {
+        "home_location" : "北京",
+        "current_location" : "福州",
+        "occupation_current" : "数据分析师",
+        "current_project" : "城市出行分析项目"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "current_location" : "济南",
+        "current_project" : "校园服务平台"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-011",
+      "expected" : {
+        "home_location" : "合肥",
+        "current_location" : "济南",
+        "occupation_current" : "产品经理",
+        "current_project" : "校园服务平台"
+      },
+      "correct" : 2
+    }, {
+      "actual" : {
+        "home_location" : "昆明",
+        "current_location" : "南京",
+        "occupation_current" : "软件工程师"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-012",
+      "expected" : {
+        "home_location" : "昆明",
+        "current_location" : "南京",
+        "occupation_current" : "软件工程师",
+        "current_project" : "门店库存改造项目"
+      },
+      "correct" : 3
+    }, {
+      "actual" : {
+        "home_location" : "宁波",
+        "occupation_current" : "中学教师",
+        "current_location" : "苏州",
+        "current_project" : "课程预约系统"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-013",
+      "expected" : {
+        "home_location" : "宁波",
+        "current_location" : "苏州",
+        "occupation_current" : "中学教师",
+        "current_project" : "课程预约系统"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "current_project" : "客户反馈看板"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-014",
+      "expected" : {
+        "home_location" : "长沙",
+        "current_location" : "杭州",
+        "occupation_current" : "交互设计师",
+        "current_project" : "客户反馈看板"
+      },
+      "correct" : 1
+    }, {
+      "actual" : {
+        "home_location" : "郑州",
+        "occupation_current" : "项目运营",
+        "current_location" : "成都",
+        "current_project" : "社区活动小程序"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-015",
+      "expected" : {
+        "home_location" : "郑州",
+        "current_location" : "成都",
+        "occupation_current" : "项目运营",
+        "current_project" : "社区活动小程序"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "home_location" : "无锡",
+        "occupation_current" : "测试工程师",
+        "current_location" : "西安",
+        "current_project" : "影像归档工具"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-016",
+      "expected" : {
+        "home_location" : "无锡",
+        "current_location" : "西安",
+        "occupation_current" : "测试工程师",
+        "current_project" : "影像归档工具"
+      },
+      "correct" : 4
+    }, {
+      "actual" : {
+        "current_location" : "武汉"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-017",
+      "expected" : {
+        "home_location" : "天津",
+        "current_location" : "武汉",
+        "occupation_current" : "研究助理",
+        "current_project" : "供应链监控平台"
+      },
+      "correct" : 1
+    }, {
+      "actual" : {
+        "home_location" : "福州",
+        "occupation_current" : "课程顾问",
+        "current_location" : "厦门",
+        "current_project" : "阅读计划应用"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-018",
+      "expected" : {
+        "home_location" : "福州",
+        "current_location" : "厦门",
+        "occupation_current" : "课程顾问",
+        "current_project" : "阅读计划应用"
+      },
+      "correct" : 4
+    }, {
+      "actual" : { },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-019",
+      "expected" : {
+        "home_location" : "济南",
+        "current_location" : "青岛",
+        "occupation_current" : "视觉设计师",
+        "current_project" : "实验数据门户"
+      },
+      "correct" : 0
+    }, {
+      "actual" : { },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-020",
+      "expected" : {
+        "home_location" : "南京",
+        "current_location" : "深圳",
+        "occupation_current" : "数据分析师",
+        "current_project" : "城市出行分析项目"
+      },
+      "correct" : 0
+    } ],
+    "expected_entries" : 64,
+    "written_entries" : 40,
+    "precision" : 1.0,
+    "recall" : 0.625
+  },
+  "retention" : {
+    "retention_at_1" : 0.3169642857142857,
+    "retention_at_3" : 0.375,
+    "retention_at_5" : null,
+    "eligible_facts_at_1" : 224,
+    "eligible_facts_at_3" : 224,
+    "reason_at_5" : "40 turns with production 15-turn triggers produce at most three commits per timeline"
+  },
+  "compression" : {
+    "actual_g1_retrieval_corpus" : {
+      "estimated_tokens" : 19484,
+      "unit_count" : 1536,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 492,
+        "knowledge_graph_relation" : 542,
+        "ordinary_long_term_memory" : 502
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 8568,
+        "knowledge_graph_relation" : 4762,
+        "ordinary_long_term_memory" : 6154
+      }
+    },
+    "actual_g2a_append_retrieval_corpus" : {
+      "estimated_tokens" : 25013,
+      "unit_count" : 2107,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 555,
+        "knowledge_graph_entity" : 492,
+        "knowledge_graph_relation" : 542,
+        "ordinary_long_term_memory" : 502,
+        "working_memory" : 16
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 5147,
+        "knowledge_graph_entity" : 8568,
+        "knowledge_graph_relation" : 4762,
+        "ordinary_long_term_memory" : 6154,
+        "working_memory" : 382
+      }
+    },
+    "actual_g2c_compacted_retrieval_corpus" : {
+      "estimated_tokens" : 18750,
+      "unit_count" : 1567,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 444,
+        "curated_knowledge_graph_entity" : 492,
+        "curated_knowledge_graph_relation" : 542,
+        "curated_residual_memory" : 36,
+        "ordinary_long_term_memory" : 53
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 4392,
+        "curated_knowledge_graph_entity" : 8568,
+        "curated_knowledge_graph_relation" : 4762,
+        "curated_residual_memory" : 368,
+        "ordinary_long_term_memory" : 660
+      }
+    },
+    "actual_g2a_token_delta_vs_g1" : 0.2837712995278177,
+    "actual_g2c_token_delta_vs_g1" : -0.03767193594744406,
+    "actual_g2c_system_compression_rate" : 0.037671935947444,
+    "g2c_compression_vs_g2a" : 0.25038979730540123,
+    "common_kg_tokens" : 13330,
+    "memory_layer_compression_vs_g2a" : 0.5360780621415733,
+    "memory_layer_compression_vs_g1" : 0.11927201819954503,
+    "actual_g2c_token_delta_vs_g2a" : -0.2503897973054012,
+    "g2c_compaction_action_counts" : {
+      "KEEP" : 478,
+      "MERGE" : 584,
+      "RESIDUAL" : 36,
+      "RESOLVE" : 616,
+      "SUPERSEDE" : 5
+    },
+    "g2c_logged_net_token_reduction" : 366,
+    "raw_turn_text_tokens_estimated" : 7398,
+    "curated_fact_projection_tokens_estimated" : 6534,
+    "curated_fact_projection_compression_estimate" : 0.11678832116788318,
+    "raw_turn_text_characters" : 10322,
+    "curated_fact_projection_characters" : 18753,
+    "curator_eligible_compression_rate" : 0.11927201819954503,
+    "information_retention_rate" : 0.5518072289156627,
+    "projection_note" : "Serving corpus is the union of default, historical, and planned searchable units. KG is identical across arms. Physical storage and archived evidence are reported separately.",
+    "estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1"
+  },
+  "temporal" : {
+    "exact_time_expected" : 0,
+    "exact_time_correct" : 0,
+    "exact_time_accuracy" : null,
+    "ambiguous_time_expected" : 0,
+    "ambiguous_time_correct" : 0,
+    "ambiguous_time_accuracy" : null
+  },
+  "source_evidence" : {
+    "stored_facts" : 444,
+    "valid_source_turns" : 444,
+    "source_completeness" : 1.0,
+    "verbatim_evidence" : 444,
+    "verbatim_evidence_rate" : 1.0,
+    "active_retrieval_units" : 1567,
+    "retrieval_unit_source_traceability" : 1567,
+    "retrieval_unit_source_traceability_rate" : 1.0
+  },
+  "integrity" : {
+    "pass" : true,
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-005",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 15,
+      "g2c_mean_duplicate_top10_occupancy" : 1.25,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-006",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 13,
+      "g2c_mean_duplicate_top10_occupancy" : 1.0833333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-007",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 10,
+      "g2c_mean_duplicate_top10_occupancy" : 0.8333333333333334,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-008",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 1,
+      "g2c_mean_duplicate_top10_occupancy" : 0.08333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-009",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 17,
+      "g2c_mean_duplicate_top10_occupancy" : 1.4166666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-010",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 13,
+      "g2c_mean_duplicate_top10_occupancy" : 1.0833333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-011",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 13,
+      "g2c_mean_duplicate_top10_occupancy" : 1.0833333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-012",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 9,
+      "g2c_mean_duplicate_top10_occupancy" : 0.75,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-013",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 17,
+      "g2c_mean_duplicate_top10_occupancy" : 1.4166666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-014",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 2,
+      "g2c_mean_duplicate_top10_occupancy" : 0.16666666666666666,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-015",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 14,
+      "g2c_mean_duplicate_top10_occupancy" : 1.1666666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-016",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 11,
+      "g2c_mean_duplicate_top10_occupancy" : 0.9166666666666666,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-017",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 4,
+      "g2c_mean_duplicate_top10_occupancy" : 0.3333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-018",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 8,
+      "g2c_mean_duplicate_top10_occupancy" : 0.6666666666666666,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-019",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 1,
+      "g2c_mean_duplicate_top10_occupancy" : 0.08333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-020",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 5,
+      "g2c_mean_duplicate_top10_occupancy" : 0.4166666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    } ]
+  },
+  "physical_storage_by_table" : {
+    "G1" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 32768,
+        "payload_bytes" : 24636
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 69632,
+        "payload_bytes" : 53592
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 30766
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 30766
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 77824,
+        "payload_bytes" : 61312
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 94208,
+        "payload_bytes" : 75136
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 81920,
+        "payload_bytes" : 62848
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 28592
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 2281472,
+        "payload_bytes" : 2113494
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 315392,
+        "payload_bytes" : 292341
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 118784,
+        "payload_bytes" : 104801
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 94208,
+        "payload_bytes" : 82160
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 7081984,
+        "payload_bytes" : 6568758
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 225280,
+        "payload_bytes" : 208812
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6640
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 20700
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 20811
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 139264,
+        "payload_bytes" : 119453
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 139264,
+        "payload_bytes" : 119345
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 22094
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 69632,
+        "payload_bytes" : 56594
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 44672
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 40832
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3359
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 37
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    },
+    "G2" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 270336,
+        "payload_bytes" : 247222
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 348160,
+        "payload_bytes" : 306309
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 13686
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6052
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 159744,
+        "payload_bytes" : 134057
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 18047
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 31232
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 32311
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 14464
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 176128,
+        "payload_bytes" : 147699
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 221184,
+        "payload_bytes" : 180486
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 180224,
+        "payload_bytes" : 151342
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1526
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 73728,
+        "payload_bytes" : 56176
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 43667
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 18103
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 18076
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 61440,
+        "payload_bytes" : 42968
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 147456,
+        "payload_bytes" : 112397
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 94208,
+        "payload_bytes" : 73981
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1559
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 28592
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 16793600,
+        "payload_bytes" : 15578782
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3399
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 1433600,
+        "payload_bytes" : 1278655
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 372736,
+        "payload_bytes" : 347352
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 110592,
+        "payload_bytes" : 90451
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 1101824,
+        "payload_bytes" : 1008168
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 624
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 139264,
+        "payload_bytes" : 125438
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 819200,
+        "payload_bytes" : 733172
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 9142272,
+        "payload_bytes" : 8610204
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 225280,
+        "payload_bytes" : 208812
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6640
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 17972
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 18216
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 303
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 26112
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1046
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 21374
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 43485
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 532480,
+        "payload_bytes" : 434285
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 303
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 43667
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 348160,
+        "payload_bytes" : 304939
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 102400,
+        "payload_bytes" : 83232
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 40832
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3359
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1419
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 97
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 143360,
+        "payload_bytes" : 121556
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3581
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    }
+  },
+  "sensitive_content" : {
+    "synthetic_sensitive_cases" : 0,
+    "fully_blocked" : 0,
+    "blocking_rate" : null,
+    "by_timeline" : [ ],
+    "scanned_tables" : [ "long_term_memory", "memory_fact", "user_profile_current", "user_insight", "llm_growth", "memory_retrieval_unit", "memory_retrieval_source", "kg_entity", "kg_relation", "kg_evidence" ]
+  },
+  "retrieval" : {
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.12500000000000003,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.21250000000000002,
+        "lower" : 0.03437500000000003
+      },
+      "delta_recall_at_10_g2c_minus_g1" : 0.01562499999999998,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.06249999999999998,
+        "lower" : -0.031250000000000014
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : 0.01562499999999998,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.06249999999999998,
+        "lower" : -0.031250000000000014
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.034375,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.024999999999999994,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.024999999999999994,
+      "g2c_minus_g2a_recall_at_5" : 0.09062499999999996,
+      "g2c_minus_g2a_recall_at_10" : -0.009374999999999911,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.6875,
+        "recall_at_10" : 0.89375,
+        "precision_at_5" : 0.134375,
+        "precision_at_10" : 0.0859375,
+        "mrr" : 0.5571701388888889,
+        "ndcg_at_10" : 0.6114550951263641,
+        "recall_at_256_estimated_tokens" : 0.853125,
+        "recall_at_512_estimated_tokens" : 0.89375,
+        "recall_at_1024_estimated_tokens" : 0.89375,
+        "mean_query_context_tokens" : 120.5,
+        "mean_duplicate_top10_occupancy" : 3.5364583333333335
+      },
+      "G2A" : {
+        "recall_at_5" : 0.721875,
+        "recall_at_10" : 0.91875,
+        "precision_at_5" : 0.13854166666666667,
+        "precision_at_10" : 0.08645833333333335,
+        "mrr" : 0.5951636904761906,
+        "ndcg_at_10" : 0.6364901015863011,
+        "recall_at_256_estimated_tokens" : 0.875,
+        "recall_at_512_estimated_tokens" : 0.91875,
+        "recall_at_1024_estimated_tokens" : 0.91875,
+        "mean_query_context_tokens" : 118.59895833333333,
+        "mean_duplicate_top10_occupancy" : 3.3333333333333335
+      },
+      "G2C" : {
+        "recall_at_5" : 0.8125,
+        "recall_at_10" : 0.909375,
+        "precision_at_5" : 0.15833333333333335,
+        "precision_at_10" : 0.08958333333333333,
+        "mrr" : 0.5675545634920635,
+        "ndcg_at_10" : 0.6476559545777187,
+        "recall_at_256_estimated_tokens" : 0.871875,
+        "recall_at_512_estimated_tokens" : 0.909375,
+        "recall_at_1024_estimated_tokens" : 0.909375,
+        "mean_query_context_tokens" : 115.25,
+        "mean_duplicate_top10_occupancy" : 0.796875
+      }
+    }
+  },
+  "shared_ranker_retrieval" : {
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : -0.05624999999999999,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : -0.015624999999999993,
+        "lower" : -0.09999999999999998
+      },
+      "delta_recall_at_10_g2c_minus_g1" : -0.0031250000000000097,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.04062499999999999,
+        "lower" : -0.05312499999999999
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : -0.0031250000000000097,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.04062499999999999,
+        "lower" : -0.05312499999999999
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : -2.7755575615628914E-17,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.018749999999999982,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.018749999999999982,
+      "g2c_minus_g2a_recall_at_5" : -0.05625000000000002,
+      "g2c_minus_g2a_recall_at_10" : -0.02187500000000009,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.909375,
+        "recall_at_10" : 0.9375,
+        "precision_at_5" : 0.18229166666666666,
+        "precision_at_10" : 0.09427083333333335,
+        "mrr" : 0.8154761904761905,
+        "ndcg_at_10" : 0.8279521105391783,
+        "recall_at_256_estimated_tokens" : 0.934375,
+        "recall_at_512_estimated_tokens" : 0.9375,
+        "recall_at_1024_estimated_tokens" : 0.9375,
+        "mean_query_context_tokens" : 118.16666666666667,
+        "mean_duplicate_top10_occupancy" : 3.21875
+      },
+      "G2A" : {
+        "recall_at_5" : 0.909375,
+        "recall_at_10" : 0.95625,
+        "precision_at_5" : 0.17604166666666668,
+        "precision_at_10" : 0.09479166666666666,
+        "mrr" : 0.8455729166666666,
+        "ndcg_at_10" : 0.8501233979248403,
+        "recall_at_256_estimated_tokens" : 0.953125,
+        "recall_at_512_estimated_tokens" : 0.95625,
+        "recall_at_1024_estimated_tokens" : 0.95625,
+        "mean_query_context_tokens" : 113.94791666666667,
+        "mean_duplicate_top10_occupancy" : 3.2760416666666665
+      },
+      "G2C" : {
+        "recall_at_5" : 0.853125,
+        "recall_at_10" : 0.934375,
+        "precision_at_5" : 0.16666666666666666,
+        "precision_at_10" : 0.09218749999999999,
+        "mrr" : 0.6830679563492064,
+        "ndcg_at_10" : 0.7402011477596379,
+        "recall_at_256_estimated_tokens" : 0.925,
+        "recall_at_512_estimated_tokens" : 0.934375,
+        "recall_at_1024_estimated_tokens" : 0.934375,
+        "mean_query_context_tokens" : 105.19270833333333,
+        "mean_duplicate_top10_occupancy" : 1.1510416666666667
+      }
+    }
+  },
+  "production_retrieval" : {
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.12500000000000003,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.21250000000000002,
+        "lower" : 0.03437500000000003
+      },
+      "delta_recall_at_10_g2c_minus_g1" : 0.01562499999999998,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.06249999999999998,
+        "lower" : -0.031250000000000014
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : 0.01562499999999998,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 16,
+        "upper" : 0.06249999999999998,
+        "lower" : -0.031250000000000014
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.034375,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.024999999999999994,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.024999999999999994,
+      "g2c_minus_g2a_recall_at_5" : 0.09062499999999996,
+      "g2c_minus_g2a_recall_at_10" : -0.009374999999999911,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.6875,
+        "recall_at_10" : 0.89375,
+        "precision_at_5" : 0.134375,
+        "precision_at_10" : 0.0859375,
+        "mrr" : 0.5571701388888889,
+        "ndcg_at_10" : 0.6114550951263641,
+        "recall_at_256_estimated_tokens" : 0.853125,
+        "recall_at_512_estimated_tokens" : 0.89375,
+        "recall_at_1024_estimated_tokens" : 0.89375,
+        "mean_query_context_tokens" : 120.5,
+        "mean_duplicate_top10_occupancy" : 3.5364583333333335
+      },
+      "G2A" : {
+        "recall_at_5" : 0.721875,
+        "recall_at_10" : 0.91875,
+        "precision_at_5" : 0.13854166666666667,
+        "precision_at_10" : 0.08645833333333335,
+        "mrr" : 0.5951636904761906,
+        "ndcg_at_10" : 0.6364901015863011,
+        "recall_at_256_estimated_tokens" : 0.875,
+        "recall_at_512_estimated_tokens" : 0.91875,
+        "recall_at_1024_estimated_tokens" : 0.91875,
+        "mean_query_context_tokens" : 118.59895833333333,
+        "mean_duplicate_top10_occupancy" : 3.3333333333333335
+      },
+      "G2C" : {
+        "recall_at_5" : 0.8125,
+        "recall_at_10" : 0.909375,
+        "precision_at_5" : 0.15833333333333335,
+        "precision_at_10" : 0.08958333333333333,
+        "mrr" : 0.5675545634920635,
+        "ndcg_at_10" : 0.6476559545777187,
+        "recall_at_256_estimated_tokens" : 0.871875,
+        "recall_at_512_estimated_tokens" : 0.909375,
+        "recall_at_1024_estimated_tokens" : 0.909375,
+        "mean_query_context_tokens" : 115.25,
+        "mean_duplicate_top10_occupancy" : 0.796875
+      }
+    }
+  },
+  "acceptance_profile" : "relaxed",
+  "end_to_end" : {
+    "answers" : 576,
+    "all_paired_comparisons" : {
+      "G2A_minus_G1" : {
+        "delta_judge_score" : 0.03125,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.03125,
+        "core_answer_score_complete_pairs" : 192
+      },
+      "G2C_minus_G1" : {
+        "delta_judge_score" : 0.07291666666666667,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.036458333333333336,
+        "core_answer_score_complete_pairs" : 192
+      },
+      "G2C_minus_G2A" : {
+        "delta_judge_score" : 0.041666666666666664,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.005208333333333333,
+        "core_answer_score_complete_pairs" : 192
+      }
+    },
+    "paired" : {
+      "primary_comparison" : "G2C minus G1",
+      "g2c_minus_g1_accuracy" : 0.0625,
+      "g1_only_approximate_correct" : 0,
+      "g2c_only_approximate_correct" : 12,
+      "g2c_minus_g1_approximate_accuracy" : 0.0625,
+      "mcnemar_g1_only_correct" : 0,
+      "mcnemar_g2_only_correct" : 12,
+      "mcnemar_p_value_approx" : 0.0014961643729289346,
+      "inference_status" : "diagnostic_query_pair_test"
+    },
+    "by_group" : {
+      "G1" : {
+        "correct" : 180,
+        "total" : 192,
+        "accuracy" : 0.9375,
+        "core_full_accuracy" : 0.9375,
+        "mean_core_answer_score" : 0.9635416666666666,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.8020833333333334,
+        "judge_mean_score" : 0.8125,
+        "approximate_correct" : 180,
+        "approximate_accuracy" : 0.9375,
+        "mean_core_fact_coverage_rate" : 0.9635416666666666,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 291,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9114583333333334,
+        "mean_prompt_tokens_reported" : 377.6614583333333,
+        "mean_latency_ms" : 1583
+      },
+      "G2A" : {
+        "correct" : 190,
+        "total" : 192,
+        "accuracy" : 0.9895833333333334,
+        "core_full_accuracy" : 0.9895833333333334,
+        "mean_core_answer_score" : 0.9947916666666666,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.8385416666666666,
+        "judge_mean_score" : 0.84375,
+        "approximate_correct" : 190,
+        "approximate_accuracy" : 0.9895833333333334,
+        "mean_core_fact_coverage_rate" : 0.9947916666666666,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 290,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9322916666666666,
+        "mean_prompt_tokens_reported" : 376.640625,
+        "mean_latency_ms" : 1635
+      },
+      "G2C" : {
+        "correct" : 192,
+        "total" : 192,
+        "accuracy" : 1.0,
+        "core_full_accuracy" : 1.0,
+        "mean_core_answer_score" : 1.0,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.8854166666666666,
+        "judge_mean_score" : 0.8854166666666666,
+        "approximate_correct" : 192,
+        "approximate_accuracy" : 1.0,
+        "mean_core_fact_coverage_rate" : 1.0,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 292,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9010416666666666,
+        "mean_prompt_tokens_reported" : 377.984375,
+        "mean_latency_ms" : 1623
+      }
+    },
+    "by_query_type" : {
+      "current_state" : {
+        "G1" : {
+          "judge_score" : 0.9791666666666666,
+          "core_score" : 1.0,
+          "total" : 48
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 48
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 48
+        }
+      },
+      "preference" : {
+        "G1" : {
+          "judge_score" : 0.53125,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2A" : {
+          "judge_score" : 0.5,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2C" : {
+          "judge_score" : 0.4375,
+          "core_score" : 1.0,
+          "total" : 32
+        }
+      },
+      "historical" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 16
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 16
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 16
+        }
+      },
+      "plan_vs_reality" : {
+        "G1" : {
+          "judge_score" : 0.75,
+          "core_score" : 0.875,
+          "total" : 16
+        },
+        "G2A" : {
+          "judge_score" : 0.9375,
+          "core_score" : 1.0,
+          "total" : 16
+        },
+        "G2C" : {
+          "judge_score" : 0.9375,
+          "core_score" : 1.0,
+          "total" : 16
+        }
+      },
+      "cancelled_or_completed" : {
+        "G1" : {
+          "judge_score" : 0.1875,
+          "core_score" : 0.6875,
+          "total" : 16
+        },
+        "G2A" : {
+          "judge_score" : 0.21875,
+          "core_score" : 0.9375,
+          "total" : 16
+        },
+        "G2C" : {
+          "judge_score" : 0.8125,
+          "core_score" : 1.0,
+          "total" : 16
+        }
+      },
+      "multi_fact" : {
+        "G1" : {
+          "judge_score" : 0.90625,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2A" : {
+          "judge_score" : 0.984375,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 32
+        }
+      },
+      "unsupported_abstention" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 32
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 32
+        }
+      }
+    }
+  },
+  "answer_failure_cases" : [ {
+    "timeline_id" : "timeline-007",
+    "query_id" : "timeline-007-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第7期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "不知道。记忆只显示你在2025年完成过几期培训，没有提到此前报名的那门课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "352", "207", "293", "349", "227", "222", "246", "282", "299", "239" ],
+    "context_token_estimate" : 324,
+    "context_text" : "[1] 2026-05-02T16:38:00Z 我现在的职业是研究助理。\n[2] 2026-03-07T16:04:00Z 我现在负责供应链监控平台。\n[3] 2026-04-18T16:26:00Z 我现在重新住在郑州。我目前担任研究助理。\n[4] 2026-05-02T16:37:00Z 我曾经2025年完成第37期培训。\n[5] 2026-03-21T16:10:00Z 我现在住在郑州。\n[6] 2026-03-07T16:08:00Z 第8期培训：用户于2025年完成的培训；培训内容未说明。\n[7] 2026-03-21T16:16:00Z 第16期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-04-04T16:24:00Z 第24期培训：用户于2025年完成的培训；培训项目未说明。\n[9] 2026-04-18T16:27:00Z 第27期培训：用户于2025年完成的培训，未说明培训名称或主办方。\n[10] 2026-03-21T16:13:00Z 第13期培训：用户于2025年完成的培训；培训主题和组织方未说明。\n",
+    "elapsed_ms" : 1764,
+    "error" : "",
+    "prompt_tokens" : 413,
+    "completion_tokens" : 83,
+    "total_tokens" : 496,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确第7期数据整理课程已取消，称不知道是错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-008",
+    "query_id" : "timeline-008-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第8期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。记忆中只提到你在 2025 年完成过几期培训，没有说明此前报名的那门课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "278", "362", "284", "432", "318", "431", "305", "327", "347", "302" ],
+    "context_token_estimate" : 329,
+    "context_text" : "[1] 2026-03-08T16:04:00Z 我现在负责阅读计划应用。\n[2] 2026-04-19T16:26:00Z 我现在重新住在无锡。我目前担任课程顾问。\n[3] 2026-03-08T16:05:00Z 我的当前工作岗位是课程顾问。\n[4] 2026-05-03T16:40:00Z 我目前住在无锡。我目前从事课程顾问。我的家乡是深圳。\n[5] 2026-03-22T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在北京，这不是我的住址。\n[6] 2026-05-03T16:38:00Z 我现在的职业是课程顾问。\n[7] 2026-03-22T16:10:00Z 我现在住在无锡。\n[8] 2026-03-22T16:16:00Z 第16期培训：用户于2025年完成的培训；培训项目或主办方未说明。\n[9] 2026-04-05T16:21:00Z 第21期培训：用户于2025年完成的培训；具体培训名称未说明。\n[10] 2026-03-22T16:09:00Z 第9期培训（2025）：用户表示于2025年完成了第9期培训；培训主题未说明。\n",
+    "elapsed_ms" : 1975,
+    "error" : "",
+    "prompt_tokens" : 418,
+    "completion_tokens" : 82,
+    "total_tokens" : 500,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程已完成；回答称状态未说明，错误拒答。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-009",
+    "query_id" : "timeline-009-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第9期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "记忆中记录的第13、21、24、25、31和33期培训都已于2025年完成；没有课程被取消的记录。若你指的是另一门课程，我这里没有相关信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "484", "541", "405", "387", "419", "459", "513", "473", "520", "479" ],
+    "context_token_estimate" : 330,
+    "context_text" : "[1] 2026-04-20T16:26:00Z 我现在重新住在天津。我目前担任视觉设计师。\n[2] 2026-05-04T16:38:00Z 我现在的职业是视觉设计师。\n[3] 2026-03-23T16:10:00Z 我现在住在天津。\n[4] 2026-03-09T16:04:00Z 我现在负责实验数据门户。\n[5] 2026-03-23T16:13:00Z 第13期培训：用户于2025年完成了第13期培训；培训具体名称未说明。\n[6] 2026-04-06T16:21:00Z 第21期培训：用户于2025年完成的培训；培训主题未说明。\n[7] 2026-04-20T16:31:00Z 第31期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-04-06T16:24:00Z 第24期培训：用户于2025年完成的培训；培训主题和主办方未说明。\n[9] 2026-05-04T16:33:00Z 第33期培训：用户于2025年完成的培训；培训具体名称未说明。\n[10] 2026-04-20T16:25:00Z 第25期培训：用户于2025年完成的培训；培训具体名称未说明。\n",
+    "elapsed_ms" : 1967,
+    "error" : "",
+    "prompt_tokens" : 419,
+    "completion_tokens" : 132,
+    "total_tokens" : 551,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误声称没有课程被取消，并把其他培训的完成情况带入答案。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "杭州",
+    "should_abstain" : false,
+    "response" : "不知道你未来可能搬去哪里；记忆中没有记录相关计划或备选地点。你目前住在福州，之前搬到厦门是历史状态，后来又重新住回福州。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "444", "542", "551", "466", "523", "453", "511", "612", "505", "491" ],
+    "context_token_estimate" : 290,
+    "context_text" : "[1] 2026-03-10T16:01:00Z 我的老家在北京。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-07T16:23:00Z 我长期的家在北京。\n[3] 2026-04-21T16:26:00Z 我现在重新住在福州。我目前担任数据分析师。\n[4] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[5] 2026-04-07T16:18:00Z 我已经搬到厦门。\n[6] 2026-03-10T16:02:00Z 搬家前我住在长沙。我以前从事中学教师。\n[7] 2026-03-24T16:15:00Z 我目前参与城市出行分析项目。\n[8] 2026-05-05T16:35:00Z 我的现居城市是福州。\n[9] 2026-03-24T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在昆明，这不是我的住址。\n[10] 2026-03-24T16:10:00Z 我现在住在福州。\n",
+    "elapsed_ms" : 2105,
+    "error" : "",
+    "prompt_tokens" : 380,
+    "completion_tokens" : 130,
+    "total_tokens" : 510,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实记录未来可能搬去杭州，称不知道且没有相关计划是错误的。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第10期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的那门课程是取消了还是完成了。记忆只提到你在2025年完成过一些培训，没有说明这门课程的状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "551", "620", "466", "505", "491", "482", "486", "517", "549", "536" ],
+    "context_token_estimate" : 335,
+    "context_text" : "[1] 2026-04-21T16:26:00Z 我现在重新住在福州。我目前担任数据分析师。\n[2] 2026-05-05T16:38:00Z 我现在的职业是数据分析师。\n[3] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[4] 2026-03-24T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在昆明，这不是我的住址。\n[5] 2026-03-24T16:10:00Z 我现在住在福州。\n[6] 2026-03-10T16:08:00Z 第8期培训：用户于2025年完成的培训，未说明培训项目名称。\n[7] 2026-03-24T16:09:00Z 第9期培训：用户于2025年完成的培训；未说明培训主题或主办方。\n[8] 2026-03-24T16:16:00Z 第16期培训：用户于2025年完成的培训；培训主题未说明。\n[9] 2026-04-21T16:25:00Z 第25期培训：用户于2025年完成的培训；培训名称未说明。\n[10] 2026-04-07T16:21:00Z 第21期培训：用户于2025年完成的培训；具体培训名称未说明。\n",
+    "elapsed_ms" : 1650,
+    "error" : "",
+    "prompt_tokens" : 424,
+    "completion_tokens" : 98,
+    "total_tokens" : 522,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程实际已完成；回答不知道，并称记录未说明状态。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-011",
+    "query_id" : "timeline-011-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第11期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的具体课程是取消还是完成了。记忆只提到你在 2025 年完成过几期培训，没有说明这门课程的状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "716", "667", "577", "592", "586", "656", "639", "673", "702", "659" ],
+    "context_token_estimate" : 325,
+    "context_text" : "[1] 2026-05-06T16:38:00Z 我现在的职业是产品经理。\n[2] 2026-04-22T16:26:00Z 我现在重新住在济南。我目前担任产品经理。\n[3] 2026-03-11T16:04:00Z 我现在负责校园服务平台。\n[4] 2026-03-25T16:10:00Z 我现在住在济南。\n[5] 2026-03-11T16:08:00Z 我曾经2025年完成第8期培训。\n[6] 2026-04-08T16:24:00Z 第24期培训：用户于2025年完成的培训；培训名称或主办方未说明。\n[7] 2026-04-08T16:21:00Z 第21期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-04-22T16:27:00Z 第27期培训：用户于2025年完成的培训；培训名称或主办方未说明。\n[9] 2026-05-06T16:33:00Z 第33期培训：用户于2025年完成的培训；培训名称或主办方未说明。\n[10] 2026-04-22T16:25:00Z 第25期培训：用户于2025年完成的培训；培训主题未说明。\n",
+    "elapsed_ms" : 2371,
+    "error" : "",
+    "prompt_tokens" : 414,
+    "completion_tokens" : 115,
+    "total_tokens" : 529,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "已知该课程后来取消，回答不知道属于错误拒答。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-012",
+    "query_id" : "timeline-012-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "西安",
+    "should_abstain" : false,
+    "response" : "记忆中没有提到未来可能搬去哪里，也没有记录任何备选地点；因此无法判断。已知你目前住在南京。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "641", "738", "730", "713", "660", "696", "800", "692", "646", "681" ],
+    "context_token_estimate" : 289,
+    "context_text" : "[1] 2026-03-12T16:01:00Z 我的老家在昆明。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-23T16:26:00Z 我现在重新住在南京。我目前担任软件工程师。\n[3] 2026-04-09T16:23:00Z 我长期的家在昆明。\n[4] 2026-04-09T16:18:00Z 我已经搬到深圳。\n[5] 2026-03-12T16:04:00Z 我现在负责门店库存改造项目。\n[6] 2026-03-26T16:15:00Z 我目前参与门店库存改造项目。\n[7] 2026-05-07T16:35:00Z 我的现居城市是南京。\n[8] 2026-03-26T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在长沙，这不是我的住址。\n[9] 2026-03-12T16:02:00Z 搬家前我住在无锡。我以前从事项目运营。\n[10] 2026-03-26T16:10:00Z 我现在住在南京。\n",
+    "elapsed_ms" : 2604,
+    "error" : "",
+    "prompt_tokens" : 379,
+    "completion_tokens" : 78,
+    "total_tokens" : 457,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误否认有备选地点；标准事实明确为未来可能搬去西安。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-014",
+    "query_id" : "timeline-014-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第14期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的那门课程现在是取消了还是完成了。记忆中只提到你在2025年完成过一些培训，无法确认是否就是那门课程。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "929", "991", "841", "881", "867", "865", "859", "923", "889", "911" ],
+    "context_token_estimate" : 333,
+    "context_text" : "[1] 2026-04-25T16:26:00Z 我现在重新住在杭州。我目前担任交互设计师。\n[2] 2026-05-09T16:38:00Z 我现在的职业是交互设计师。\n[3] 2026-03-14T16:04:00Z 我现在负责客户反馈看板。\n[4] 2026-03-28T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在无锡，这不是我的住址。\n[5] 2026-03-28T16:10:00Z 我现在住在杭州。\n[6] 2026-03-28T16:09:00Z 第9期培训：用户于2025年完成的培训；未说明培训项目名称。\n[7] 2026-03-14T16:08:00Z 第8期培训：用户于2025年完成的培训；培训名称未说明。\n[8] 2026-04-11T16:24:00Z 第24期培训：用户于2025年完成的培训，培训主题未说明。\n[9] 2026-03-28T16:16:00Z 第16期培训：用户于2025年完成的培训；培训主题未说明。\n[10] 2026-04-11T16:21:00Z 第21期培训：用户于2025年完成的培训；培训主题和主办方未说明。\n",
+    "elapsed_ms" : 4258,
+    "error" : "",
+    "prompt_tokens" : 422,
+    "completion_tokens" : 100,
+    "total_tokens" : 522,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实表明该课程已完成，回答未能确认并称不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第17期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的那门课程是取消了还是完成了。记忆中只记录了你在 2025 年完成过几期培训，没有提到这门课程的状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1265", "1161", "1326", "1192", "1182", "1236", "1176", "1317", "1256", "1193" ],
+    "context_token_estimate" : 328,
+    "context_text" : "[1] 2026-04-28T16:26:00Z 我现在重新住在武汉。我目前担任研究助理。\n[2] 2026-03-17T16:04:00Z 我现在负责供应链监控平台。\n[3] 2026-05-12T16:38:00Z 我现在的职业是研究助理。\n[4] 2026-03-31T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在济南，这不是我的住址。\n[5] 2026-03-31T16:10:00Z 我现在住在武汉。\n[6] 2026-03-31T16:16:00Z 第16期培训：用户于2025年完成了第16期培训；培训主题未说明。\n[7] 2026-03-17T16:08:00Z 第8期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-05-12T16:33:00Z 第33期培训：用户于2025年完成；培训项目未说明。\n[9] 2026-04-14T16:21:00Z 第21期培训：用户于2025年完成的培训；培训名称未说明。\n[10] 2026-03-31T16:13:00Z 第13期培训：用户于2025年完成的培训；培训主题未说明。\n",
+    "elapsed_ms" : 1744,
+    "error" : "",
+    "prompt_tokens" : 417,
+    "completion_tokens" : 108,
+    "total_tokens" : 525,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确课程取消，回答不知道属于错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-018",
+    "query_id" : "timeline-018-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第18期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。记忆中提到你在2025年完成了几期培训，但没有说明此前报名的那门课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1344", "1299", "1343", "1215", "1227", "1238", "1212", "1269", "1295", "1297" ],
+    "context_token_estimate" : 340,
+    "context_text" : "[1] 2026-05-13T16:40:00Z 我目前住在厦门。我目前从事课程顾问。我的家乡是福州。\n[2] 2026-04-29T16:26:00Z 我现在重新住在厦门。我目前担任课程顾问。\n[3] 2026-05-13T16:38:00Z 我现在的职业是课程顾问。\n[4] 2026-03-18T16:05:00Z 我的当前工作岗位是课程顾问。\n[5] 2026-04-01T16:10:00Z 我现在住在厦门。\n[6] 2026-04-01T16:13:00Z 我曾经2025年完成第13期培训。我的朋友住在南京，这不是我的住址。\n[7] 2026-03-18T16:04:00Z 我现在负责阅读计划应用。\n[8] 2026-04-01T16:16:00Z 第16期培训：用户表示在2025年完成了第16期培训；培训名称或主办方未说明。\n[9] 2026-04-15T16:24:00Z 第24期培训：用户于2025年完成了第24期培训；培训主题和主办方未说明。\n[10] 2026-04-29T16:25:00Z 第25期培训：用户于2025年完成了第25期培训；培训主题和主办方未说明。\n",
+    "elapsed_ms" : 1300,
+    "error" : "",
+    "prompt_tokens" : 429,
+    "completion_tokens" : 73,
+    "total_tokens" : 502,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程已完成；没有正确识别这门课程的完成状态。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第19期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的课程现在是取消了还是完成了。记忆只记录你在2025年完成过几期培训，但没有说明是否就是那门课程。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1534", "1502", "1402", "1428", "1521", "1418", "1472", "1421", "1525", "1497" ],
+    "context_token_estimate" : 330,
+    "context_text" : "[1] 2026-05-14T16:38:00Z 我现在的职业是视觉设计师。\n[2] 2026-04-30T16:26:00Z 我现在重新住在青岛。我目前担任视觉设计师。\n[3] 2026-03-19T16:04:00Z 我现在负责实验数据门户。\n[4] 2026-04-02T16:10:00Z 我现在住在青岛。\n[5] 2026-04-30T16:31:00Z 第31期培训：用户于2025年完成了第31期培训；培训具体名称未说明。\n[6] 2026-03-19T16:08:00Z 第8期培训：用户于2025年完成的培训；培训项目未注明。\n[7] 2026-04-02T16:16:00Z 第16期培训：用户于2025年完成的培训；培训项目名称未说明。\n[8] 2026-04-02T16:09:00Z 第9期培训：用户于2025年完成的培训；培训项目名称未说明。\n[9] 2026-05-14T16:33:00Z 第33期培训：用户于2025年完成的培训；具体培训名称未说明。\n[10] 2026-04-30T16:25:00Z 第25期培训：用户于2025年完成的培训；培训项目名称未说明。\n",
+    "elapsed_ms" : 1670,
+    "error" : "",
+    "prompt_tokens" : 419,
+    "completion_tokens" : 90,
+    "total_tokens" : 509,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确课程取消，错误地表示不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第19期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "记忆显示，你在 2025 年完成了此前报名的培训，并没有记录显示课程取消；但具体是哪门课程，记忆里没有注明。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "3068", "3004", "2806", "2858", "3043", "2837", "2945", "2843", "3051", "2995" ],
+    "context_token_estimate" : 330,
+    "context_text" : "[1] 2026-05-14T16:38:00Z 我现在的职业是视觉设计师。\n[2] 2026-04-30T16:26:00Z 我现在重新住在青岛。我目前担任视觉设计师。\n[3] 2026-03-19T16:04:00Z 我现在负责实验数据门户。\n[4] 2026-04-02T16:10:00Z 我现在住在青岛。\n[5] 2026-04-30T16:31:00Z 第31期培训：用户于2025年完成了第31期培训；培训具体名称未说明。\n[6] 2026-03-19T16:08:00Z 第8期培训：用户于2025年完成的培训；培训项目未注明。\n[7] 2026-04-02T16:16:00Z 第16期培训：用户于2025年完成的培训；培训项目名称未说明。\n[8] 2026-04-02T16:09:00Z 第9期培训：用户于2025年完成的培训；培训项目名称未说明。\n[9] 2026-05-14T16:33:00Z 第33期培训：用户于2025年完成的培训；具体培训名称未说明。\n[10] 2026-04-30T16:25:00Z 第25期培训：用户于2025年完成的培训；培训项目名称未说明。\n",
+    "elapsed_ms" : 1673,
+    "error" : "",
+    "prompt_tokens" : 419,
+    "completion_tokens" : 111,
+    "total_tokens" : 530,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "把课程说成已完成，和标准事实中的已取消状态相矛盾。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第20期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道此前报名的课程是取消了还是完成了。记忆只提到你在 2025 年完成过几期培训，无法确认是否指这门课程。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1368", "1459", "1518", "1456", "1383", "1393", "1406", "1442", "1453", "1390" ],
+    "context_token_estimate" : 326,
+    "context_text" : "[1] 2026-03-20T16:04:00Z 我现在负责城市出行分析项目。\n[2] 2026-05-01T16:26:00Z 我现在重新住在深圳。我目前担任数据分析师。\n[3] 2026-05-15T16:38:00Z 我现在的职业是数据分析师。\n[4] 2026-05-01T16:25:00Z 我曾经2025年完成第25期培训。\n[5] 2026-04-03T16:10:00Z 我现在住在深圳。\n[6] 2026-04-03T16:13:00Z 第13期培训：用户于2025年完成了第13期培训；培训项目未说明。\n[7] 2026-04-03T16:16:00Z 第16期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-04-17T16:21:00Z 第21期培训：用户于2025年完成的培训；培训主题未说明。\n[9] 2026-04-17T16:24:00Z 第24期培训：用户于2025年完成的培训；培训主题未说明。\n[10] 2026-04-03T16:12:00Z 第12期培训（2025）：用户于2025年完成了第12期培训；未说明培训名称或领域。\n",
+    "elapsed_ms" : 1811,
+    "error" : "",
+    "prompt_tokens" : 415,
+    "completion_tokens" : 108,
+    "total_tokens" : 523,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程状态已有明确记录为完成，却错误表示无法确认。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第20期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "不知道。记忆只记录你在 2025 年完成过一些期次的培训，没有说明此前报名的那门课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "2738", "2919", "3036", "2914", "2768", "2787", "2813", "2885", "2907", "2781" ],
+    "context_token_estimate" : 326,
+    "context_text" : "[1] 2026-03-20T16:04:00Z 我现在负责城市出行分析项目。\n[2] 2026-05-01T16:26:00Z 我现在重新住在深圳。我目前担任数据分析师。\n[3] 2026-05-15T16:38:00Z 我现在的职业是数据分析师。\n[4] 2026-05-01T16:25:00Z 我曾经2025年完成第25期培训。\n[5] 2026-04-03T16:10:00Z 我现在住在深圳。\n[6] 2026-04-03T16:13:00Z 第13期培训：用户于2025年完成了第13期培训；培训项目未说明。\n[7] 2026-04-03T16:16:00Z 第16期培训：用户于2025年完成的培训；培训主题未说明。\n[8] 2026-04-17T16:21:00Z 第21期培训：用户于2025年完成的培训；培训主题未说明。\n[9] 2026-04-17T16:24:00Z 第24期培训：用户于2025年完成的培训；培训主题未说明。\n[10] 2026-04-03T16:12:00Z 第12期培训（2025）：用户于2025年完成了第12期培训；未说明培训名称或领域。\n",
+    "elapsed_ms" : 2976,
+    "error" : "",
+    "prompt_tokens" : 415,
+    "completion_tokens" : 89,
+    "total_tokens" : 504,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程状态已有明确记录为完成，却错误表示不知道。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  } ],
+  "compaction_acceptance" : {
+    "gate_profile" : "relaxed",
+    "oracle_method" : "Conservative feasible corpus estimate using covered clauses, preserving unmatched raw and identical KG; not an exact minimum-cover upper bound or deletion target.",
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-005",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.04472843450479236,
+      "oracle_upper_rate" : 0.0295527156549521,
+      "oracle_efficiency" : 1.5135135135135132,
+      "curator_eligible_compression_rate" : 0.1393034825870647,
+      "curator_eligible_oracle_upper_rate" : 0.09203980099502485,
+      "curator_eligible_oracle_efficiency" : 1.5135135135135143,
+      "information_retention_rate" : 0.9259259259259259,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.04304160688665715,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-006",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.059247397918334666,
+      "oracle_upper_rate" : 0.033626901521216945,
+      "oracle_efficiency" : 1.7619047619047634,
+      "curator_eligible_compression_rate" : 0.18316831683168322,
+      "curator_eligible_oracle_upper_rate" : 0.10396039603960394,
+      "curator_eligible_oracle_efficiency" : 1.7619047619047628,
+      "information_retention_rate" : 0.48148148148148145,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.0014054813773716202,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-007",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.033419023136246784,
+      "oracle_upper_rate" : 0.033419023136246784,
+      "oracle_efficiency" : 1.0,
+      "curator_eligible_compression_rate" : 0.11403508771929827,
+      "curator_eligible_oracle_upper_rate" : 0.11403508771929827,
+      "curator_eligible_oracle_efficiency" : 1.0,
+      "information_retention_rate" : 0.48,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : -0.042134831460674205,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-008",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.027340513670256805,
+      "oracle_upper_rate" : 0.028997514498757204,
+      "oracle_efficiency" : 0.9428571428571433,
+      "curator_eligible_compression_rate" : 0.08638743455497377,
+      "curator_eligible_oracle_upper_rate" : 0.09162303664921467,
+      "curator_eligible_oracle_efficiency" : 0.9428571428571422,
+      "information_retention_rate" : 0.5384615384615384,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.07399999999999995,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-009",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.05092966855295067,
+      "oracle_upper_rate" : 0.026677445432497948,
+      "oracle_efficiency" : 1.9090909090909105,
+      "curator_eligible_compression_rate" : 0.16535433070866146,
+      "curator_eligible_oracle_upper_rate" : 0.08661417322834641,
+      "curator_eligible_oracle_efficiency" : 1.9090909090909105,
+      "information_retention_rate" : 0.5,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.0071479628305932685,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-010",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.05360134003350081,
+      "oracle_upper_rate" : 0.0368509212730318,
+      "oracle_efficiency" : 1.4545454545454548,
+      "curator_eligible_compression_rate" : 0.16326530612244894,
+      "curator_eligible_oracle_upper_rate" : 0.11224489795918369,
+      "curator_eligible_oracle_efficiency" : 1.454545454545454,
+      "information_retention_rate" : 0.5,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.0725034199726402,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-011",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.04278523489932884,
+      "oracle_upper_rate" : 0.03439597315436238,
+      "oracle_efficiency" : 1.243902439024391,
+      "curator_eligible_compression_rate" : 0.13010204081632648,
+      "curator_eligible_oracle_upper_rate" : 0.10459183673469385,
+      "curator_eligible_oracle_efficiency" : 1.24390243902439,
+      "information_retention_rate" : 0.46153846153846156,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.05197505197505192,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-012",
+      "sample_profile" : "normal",
+      "system_compression_rate" : -0.006086956521739184,
+      "oracle_upper_rate" : 0.03565217391304343,
+      "oracle_efficiency" : -0.1707317073170749,
+      "curator_eligible_compression_rate" : -0.019283746556473913,
+      "curator_eligible_oracle_upper_rate" : 0.11294765840220389,
+      "curator_eligible_oracle_efficiency" : -0.17073170731707388,
+      "information_retention_rate" : 0.52,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.14426460239268124,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : false,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-013",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.03439803439803435,
+      "oracle_upper_rate" : 0.03276003276003281,
+      "oracle_efficiency" : 1.049999999999997,
+      "curator_eligible_compression_rate" : 0.11229946524064172,
+      "curator_eligible_oracle_upper_rate" : 0.106951871657754,
+      "curator_eligible_oracle_efficiency" : 1.0500000000000003,
+      "information_retention_rate" : 0.48,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.031907671418873074,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-014",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.04556354916067151,
+      "oracle_upper_rate" : 0.03197442046362908,
+      "oracle_efficiency" : 1.4250000000000023,
+      "curator_eligible_compression_rate" : 0.15240641711229952,
+      "curator_eligible_oracle_upper_rate" : 0.106951871657754,
+      "curator_eligible_oracle_efficiency" : 1.4250000000000007,
+      "information_retention_rate" : 0.52,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.07923497267759572,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-015",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.06628003314001663,
+      "oracle_upper_rate" : 0.031483015741507914,
+      "oracle_efficiency" : 2.105263157894736,
+      "curator_eligible_compression_rate" : 0.19950124688279303,
+      "curator_eligible_oracle_upper_rate" : 0.09476309226932667,
+      "curator_eligible_oracle_efficiency" : 2.105263157894737,
+      "information_retention_rate" : 0.4444444444444444,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.010909090909090868,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-016",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.0738362760834671,
+      "oracle_upper_rate" : 0.0345104333868379,
+      "oracle_efficiency" : 2.139534883720929,
+      "curator_eligible_compression_rate" : 0.2249388753056235,
+      "curator_eligible_oracle_upper_rate" : 0.10513447432762835,
+      "curator_eligible_oracle_efficiency" : 2.139534883720931,
+      "information_retention_rate" : 0.48148148148148145,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.11749347258485643,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-017",
+      "sample_profile" : "normal",
+      "system_compression_rate" : -0.01968826907301069,
+      "oracle_upper_rate" : 0.033634126333059844,
+      "oracle_efficiency" : -0.585365853658538,
+      "curator_eligible_compression_rate" : -0.06629834254143652,
+      "curator_eligible_oracle_upper_rate" : 0.11325966850828728,
+      "curator_eligible_oracle_efficiency" : -0.5853658536585371,
+      "information_retention_rate" : 0.5833333333333334,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.05252525252525253,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-018",
+      "sample_profile" : "normal",
+      "system_compression_rate" : -0.04242928452579031,
+      "oracle_upper_rate" : 0.0391014975041597,
+      "oracle_efficiency" : -1.0851063829787233,
+      "curator_eligible_compression_rate" : -0.1356382978723405,
+      "curator_eligible_oracle_upper_rate" : 0.125,
+      "curator_eligible_oracle_efficiency" : -1.085106382978724,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.07436399217221135,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-019",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.06600660066006603,
+      "oracle_upper_rate" : 0.028052805280528004,
+      "oracle_efficiency" : 2.352941176470593,
+      "curator_eligible_compression_rate" : 0.20779220779220775,
+      "curator_eligible_oracle_upper_rate" : 0.08831168831168834,
+      "curator_eligible_oracle_efficiency" : 2.352941176470587,
+      "information_retention_rate" : 0.46153846153846156,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : -0.025623268698061086,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    }, {
+      "timeline_id" : "timeline-020",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.06651017214397492,
+      "oracle_upper_rate" : 0.028951486697965545,
+      "oracle_efficiency" : 2.297297297297298,
+      "curator_eligible_compression_rate" : 0.20481927710843373,
+      "curator_eligible_oracle_upper_rate" : 0.08915662650602407,
+      "curator_eligible_oracle_efficiency" : 2.297297297297298,
+      "information_retention_rate" : 0.4642857142857143,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : -0.01026392961876832,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    } ],
+    "strict_30_percent_compression_target" : "Always reported independently as compression_30_percent_target_met; relaxed screening permits up to 10% corpus growth."
+  },
+  "model_calls" : {
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 640,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "mean_ms" : 3478.721875,
+          "p50_ms" : 2650,
+          "p95_ms" : 8071,
+          "count" : 640,
+          "p99_ms" : 10562
+        },
+        "prompt_tokens_reported" : 280038,
+        "completion_tokens_reported" : 165738,
+        "total_tokens_reported" : 445776,
+        "calls_with_token_usage" : 640
+      },
+      "curator" : {
+        "calls" : 98,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "mean_ms" : 16937.79591836735,
+          "p50_ms" : 16723,
+          "p95_ms" : 27939,
+          "count" : 98,
+          "p99_ms" : 33986
+        },
+        "prompt_tokens_reported" : 455828,
+        "completion_tokens_reported" : 289669,
+        "total_tokens_reported" : 745497,
+        "calls_with_token_usage" : 98
+      },
+      "answer" : {
+        "calls" : 576,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "mean_ms" : 1614.4305555555557,
+          "p50_ms" : 1339,
+          "p95_ms" : 3311,
+          "count" : 576,
+          "p99_ms" : 5751
+        },
+        "prompt_tokens_reported" : 217399,
+        "completion_tokens_reported" : 16662,
+        "total_tokens_reported" : 234061,
+        "calls_with_token_usage" : 576
+      },
+      "judge" : {
+        "calls" : 192,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "mean_ms" : 2212.8385416666665,
+          "p50_ms" : 1747,
+          "p95_ms" : 4521,
+          "count" : 192,
+          "p99_ms" : 7217
+        },
+        "prompt_tokens_reported" : 81240,
+        "completion_tokens_reported" : 26498,
+        "total_tokens_reported" : 107738,
+        "calls_with_token_usage" : 192
+      }
+    },
+    "completion_tokens_reported" : 498567,
+    "calls" : 1506,
+    "calls_with_token_usage" : 1506,
+    "total_tokens_reported" : 1533072,
+    "prompt_tokens_reported" : 1034505
+  },
+  "system_performance" : {
+    "experiment_wall_ms" : 4011111,
+    "timeline_count" : 16,
+    "baseline_ingestion_per_timeline_ms" : {
+      "mean_ms" : 143621.875,
+      "p50_ms" : 141540,
+      "p95_ms" : 212525,
+      "count" : 16,
+      "p99_ms" : 212525
+    },
+    "curator_ingestion_per_timeline_ms" : {
+      "mean_ms" : 158998.125,
+      "p50_ms" : 158228,
+      "p95_ms" : 234454,
+      "count" : 16,
+      "p99_ms" : 234454
+    },
+    "retrieval_and_answer_per_timeline_ms" : {
+      "mean_ms" : 87274.625,
+      "p50_ms" : 81951,
+      "p95_ms" : 104412,
+      "count" : 16,
+      "p99_ms" : 104412
+    },
+    "query_embedding_latency_ms" : {
+      "mean_ms" : 46.734375,
+      "p50_ms" : 46,
+      "p95_ms" : 61,
+      "count" : 192,
+      "p99_ms" : 70
+    },
+    "g1_production_retrieval_search_latency_ms" : {
+      "mean_ms" : 3.3958333333333335,
+      "p50_ms" : 3,
+      "p95_ms" : 5,
+      "count" : 192,
+      "p99_ms" : 21
+    },
+    "g2a_append_retrieval_search_latency_ms" : {
+      "mean_ms" : 4.239583333333333,
+      "p50_ms" : 4,
+      "p95_ms" : 6,
+      "count" : 192,
+      "p99_ms" : 22
+    },
+    "g2c_compaction_retrieval_search_latency_ms" : {
+      "mean_ms" : 79.27083333333333,
+      "p50_ms" : 77,
+      "p95_ms" : 105,
+      "count" : 192,
+      "p99_ms" : 122
+    },
+    "g1_indexed_corpus" : {
+      "estimated_tokens" : 19484,
+      "unit_count" : 1536,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 492,
+        "knowledge_graph_relation" : 542,
+        "ordinary_long_term_memory" : 502
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 8568,
+        "knowledge_graph_relation" : 4762,
+        "ordinary_long_term_memory" : 6154
+      }
+    },
+    "g2a_indexed_corpus" : {
+      "estimated_tokens" : 25013,
+      "unit_count" : 2107,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 555,
+        "knowledge_graph_entity" : 492,
+        "knowledge_graph_relation" : 542,
+        "ordinary_long_term_memory" : 502,
+        "working_memory" : 16
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 5147,
+        "knowledge_graph_entity" : 8568,
+        "knowledge_graph_relation" : 4762,
+        "ordinary_long_term_memory" : 6154,
+        "working_memory" : 382
+      }
+    },
+    "g2c_indexed_corpus" : {
+      "estimated_tokens" : 18750,
+      "unit_count" : 1567,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 444,
+        "curated_knowledge_graph_entity" : 492,
+        "curated_knowledge_graph_relation" : 542,
+        "curated_residual_memory" : 36,
+        "ordinary_long_term_memory" : 53
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 4392,
+        "curated_knowledge_graph_entity" : 8568,
+        "curated_knowledge_graph_relation" : 4762,
+        "curated_residual_memory" : 368,
+        "ordinary_long_term_memory" : 660
+      }
+    },
+    "g1_sqlite_footprint_bytes" : {
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 11481088,
+      "total_observed_bytes" : 15642128,
+      "wal_bytes" : 4128272
+    },
+    "g2_sqlite_footprint_bytes" : {
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 33861632,
+      "total_observed_bytes" : 38026792,
+      "wal_bytes" : 4132392
+    },
+    "llm_calls_by_stage" : {
+      "by_stage" : {
+        "baseline_memory" : {
+          "calls" : 640,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "mean_ms" : 3478.721875,
+            "p50_ms" : 2650,
+            "p95_ms" : 8071,
+            "count" : 640,
+            "p99_ms" : 10562
+          },
+          "prompt_tokens_reported" : 280038,
+          "completion_tokens_reported" : 165738,
+          "total_tokens_reported" : 445776,
+          "calls_with_token_usage" : 640
+        },
+        "curator" : {
+          "calls" : 98,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "mean_ms" : 16937.79591836735,
+            "p50_ms" : 16723,
+            "p95_ms" : 27939,
+            "count" : 98,
+            "p99_ms" : 33986
+          },
+          "prompt_tokens_reported" : 455828,
+          "completion_tokens_reported" : 289669,
+          "total_tokens_reported" : 745497,
+          "calls_with_token_usage" : 98
+        },
+        "answer" : {
+          "calls" : 576,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "mean_ms" : 1614.4305555555557,
+            "p50_ms" : 1339,
+            "p95_ms" : 3311,
+            "count" : 576,
+            "p99_ms" : 5751
+          },
+          "prompt_tokens_reported" : 217399,
+          "completion_tokens_reported" : 16662,
+          "total_tokens_reported" : 234061,
+          "calls_with_token_usage" : 576
+        },
+        "judge" : {
+          "calls" : 192,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "mean_ms" : 2212.8385416666665,
+            "p50_ms" : 1747,
+            "p95_ms" : 4521,
+            "count" : 192,
+            "p99_ms" : 7217
+          },
+          "prompt_tokens_reported" : 81240,
+          "completion_tokens_reported" : 26498,
+          "total_tokens_reported" : 107738,
+          "calls_with_token_usage" : 192
+        }
+      },
+      "completion_tokens_reported" : 498567,
+      "calls" : 1506,
+      "calls_with_token_usage" : 1506,
+      "total_tokens_reported" : 1533072,
+      "prompt_tokens_reported" : 1034505
+    },
+    "baseline_turns_per_second_sum_timeline_time" : 0.27850910594225287
+  },
+  "failures" : {
+    "by_reason" : { },
+    "count" : 0
+  },
+  "acceptance_pass" : false,
+  "acceptance_gate_details" : {
+    "runtime_failures_empty" : true,
+    "provenance_pass" : true,
+    "semantic_unique_precision_minimum" : 0.4,
+    "profile" : "relaxed",
+    "integrity_pass" : true,
+    "semantic_unique_recall_minimum" : 0.5,
+    "semantic_unique_fact_quality_pass" : false
+  },
+  "evaluation_notes" : [ "G1 is the actual per-turn KnowledgeGraphService plus long_term_memory baseline. G2A and G2C reuse the same accepted real MemoryCuratorService output so the ablation isolates append-only versus compacted serving behavior.", "G1, G2A, and G2C all retain the same traceable KG entities and relations for retrieval; the G2C KG sidecar is unchanged by compaction and counted in its serving tokens.", "G1 and G2A use the production SqliteMemoryService hybrid retriever. G2C merges relevant unmapped raw candidates with production corpus ranking, with an explicit threshold and semantic de-duplication. A frozen shared text ranker provides corpus-only retrieval diagnostics.", "Retrieval reports Recall@5 and Recall@10; Recall@1 and Recall@3 are not reported.", "Memory-unit token budgets use a documented deterministic Unicode estimate; answer prompt token counts use model-reported usage when returned.", "All three answer arms receive their own production-retriever context. Frozen exact and relaxed anchor/core-fact rules score answers; one blinded LLM-judge call per question independently scores all three answers.", "The relaxed gate profile is a screening pass only. The 30% full-corpus compression target is reported independently and remains an explicit target metric.", "The proposal's 40-turn timeline and production 15-turn trigger yield three curator checkpoints; retention at 5 is not estimable in this run.", "Formal paired effects compare G2C with G1. G2A is reported as an append-only ablation." ]
+}
+```

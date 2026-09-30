@@ -1,0 +1,94 @@
+{
+  "provider" : "real_llm_only",
+  "dataset" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\data\\memory-curator-value-300.jsonl",
+  "dataset_sha256" : "074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f",
+  "dataset_version" : "memory-curator-value-v1",
+  "split" : "locked_test",
+  "language_challenge_only" : true,
+  "sample_ids" : [ "timeline-011" ],
+  "timeline_count" : 1,
+  "turn_count" : 40,
+  "query_count" : 10,
+  "answer_query_limit" : 1,
+  "concurrency" : 1,
+  "model" : "deepseek-flash",
+  "temperature" : 0.0,
+  "answer_model" : "deepseek-flash",
+  "llm_configuration_source" : "PowerShell experiment wrapper; apiKey=local experiment-only config; baseUrl=application dynamic config; model=application dynamic config",
+  "api_key_recorded" : false,
+  "wrapper_reads_application_dynamic_llm_config" : true,
+  "java_runner_reads_application_dynamic_llm_config" : false,
+  "application_database_access" : false,
+  "experiment_databases" : {
+    "G2C_compaction_user_namespace" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-locked_test-20260929-223813\\g2-memory-curator.sqlite",
+    "G1_baseline" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-locked_test-20260929-223813\\g1-baseline.sqlite",
+    "G2A_append_ablation_user_namespace" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-locked_test-20260929-223813\\g2-memory-curator.sqlite"
+  },
+  "output_directory" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-locked_test-20260929-223813",
+  "embedding_provider" : "Ollama/bge-m3",
+  "embedding_model" : "bge-m3",
+  "embedding_dimension" : 1024,
+  "vector_search" : "G1/G2A: production SqliteMemoryService hybrid retrieval; G2C: production memory_retrieval_unit ranker with SqliteMemoryService fallback only on an empty compacted result; exact Java cosine when sqlite-vec is unavailable",
+  "memory_unit_token_estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1, whitespace=0",
+  "as_of" : "2026-09-29 23:59:00",
+  "model_calls_at_finish" : {
+    "completion_tokens_reported" : 49441,
+    "calls" : 47,
+    "calls_with_token_usage" : 47,
+    "total_tokens_reported" : 79604,
+    "prompt_tokens_reported" : 30163,
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 40,
+        "failures" : 0,
+        "latency_ms" : {
+          "p50_ms" : 2186,
+          "p95_ms" : 5690,
+          "count" : 40,
+          "p99_ms" : 6467,
+          "mean_ms" : 2588.025
+        },
+        "prompt_tokens_reported" : 18824,
+        "completion_tokens_reported" : 21822,
+        "total_tokens_reported" : 40646,
+        "calls_with_token_usage" : 40
+      },
+      "curator" : {
+        "calls" : 5,
+        "failures" : 0,
+        "latency_ms" : {
+          "p50_ms" : 28166,
+          "p95_ms" : 40303,
+          "count" : 5,
+          "p99_ms" : 40303,
+          "mean_ms" : 23891.0
+        },
+        "prompt_tokens_reported" : 10826,
+        "completion_tokens_reported" : 27464,
+        "total_tokens_reported" : 38290,
+        "calls_with_token_usage" : 5
+      },
+      "answer" : {
+        "calls" : 2,
+        "failures" : 0,
+        "latency_ms" : {
+          "p50_ms" : 747,
+          "p95_ms" : 1400,
+          "count" : 2,
+          "p99_ms" : 1400,
+          "mean_ms" : 1073.5
+        },
+        "prompt_tokens_reported" : 513,
+        "completion_tokens_reported" : 155,
+        "total_tokens_reported" : 668,
+        "calls_with_token_usage" : 2
+      }
+    }
+  },
+  "estimated_call_plan" : {
+    "curator_checkpoints_upper_bound" : 3,
+    "baseline_extraction" : 40,
+    "answer_calls_upper_bound" : 2
+  },
+  "comparison_design" : "G2A and G2C reuse the same real accepted curator output; G2A appends derived units while G2C serves the production compacted corpus."
+}

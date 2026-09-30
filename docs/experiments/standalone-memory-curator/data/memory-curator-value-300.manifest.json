@@ -1,0 +1,81 @@
+{
+  "generator": "generate_synthetic_curator_dataset.py",
+  "generator_version": "2.0.0",
+  "seed": 20260929,
+  "synthetic_only": true,
+  "random_chat_filler": false,
+  "timeline_count": 300,
+  "turns_per_timeline": 40,
+  "total_turns": 12000,
+  "expected_fact_count": 2425,
+  "query_count": 3000,
+  "split_counts": {
+    "development": 60,
+    "locked_test": 180,
+    "validation": 60
+  },
+  "scenario_counts": {
+    "ambiguous_event_time": 25,
+    "cross_session_memory": 25,
+    "current_state": 25,
+    "explicit_correction": 25,
+    "explicit_event_time": 25,
+    "history_vs_current": 25,
+    "negation_withdrawal": 25,
+    "noise_and_abstention": 25,
+    "plans_vs_reality": 25,
+    "prompt_injection_safety": 25,
+    "semantic_repetition": 25,
+    "stable_preferences": 25
+  },
+  "language_challenge_timelines": 60,
+  "as_of": "2026-09-29T23:59:00+08:00",
+  "sha256": "074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f",
+  "schema": {
+    "facts": [
+      "gold_fact_id",
+      "predicate",
+      "normalized_value",
+      "scope",
+      "assertion",
+      "valid_from",
+      "valid_to",
+      "source_turn_ids",
+      "duplicate_cluster_id",
+      "should_store",
+      "should_be_current",
+      "sensitive",
+      "importance",
+      "raw_time_expression",
+      "time_status"
+    ],
+    "queries": [
+      "query_id",
+      "query_type",
+      "question",
+      "relevant_gold_fact_ids",
+      "expected_answer",
+      "answer_contains_any",
+      "answer_contains_all",
+      "forbidden_answer_contains_any",
+      "expected_state",
+      "expected_source_turn_ids",
+      "should_abstain"
+    ]
+  },
+  "checks": {
+    "all_turns_have_stable_ids_and_timestamps": true,
+    "every_gold_fact_has_a_source_turn": true,
+    "each_timeline_has_state_correction_repetition_plan_and_noise": true,
+    "all_sensitive_values_are_fake_placeholders": true,
+    "every_query_has_frozen_answer_scoring_fields": true,
+    "locked_language_challenge_count": 60
+  },
+  "notes": [
+    "Every timeline has 40 user turns across five sessions and ten paraphrased retrieval queries.",
+    "Each timeline repeats stable facts and includes location and occupation history/current transitions, a future plan, and targeted distractors.",
+    "The 60 language challenge timelines use paraphrases held out from the development/validation wording bank.",
+    "The generator never supplies curator proposals or calls a model; only the Java runner may generate predictions.",
+    "Expected facts and queries are held outside curator prompts and answer prompts."
+  ]
+}

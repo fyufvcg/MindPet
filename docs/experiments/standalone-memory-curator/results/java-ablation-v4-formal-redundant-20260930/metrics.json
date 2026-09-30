@@ -1,0 +1,4645 @@
+{
+  "dataset_version" : [ "memory-curator-ablation-v4" ],
+  "selected_timelines" : 16,
+  "selected_turns" : 640,
+  "selected_queries" : 192,
+  "curator_repair_calls" : 27,
+  "answer_queries" : 192,
+  "answer_calls_expected" : 576,
+  "fact_quality" : {
+    "true_positive" : 127,
+    "false_positive" : 67,
+    "false_negative" : 81,
+    "precision" : 0.654639175257732,
+    "recall" : 0.6105769230769231,
+    "f1" : 0.6318407960199004,
+    "stored_fact_rows" : 194,
+    "exact_match_duplicate_rows" : 0,
+    "exact_match_duplicate_rate" : 0.0,
+    "semantic_duplicate_rows" : 0,
+    "semantic_duplicate_rate" : 0.0,
+    "distinct_state_interval_rows" : 0,
+    "redundant_semantic_rows" : 0,
+    "redundant_semantic_rate" : 0.0,
+    "semantic_unique_fact_quality" : {
+      "matching_policy" : "predicate/value/scope/assertion; temporal fields are evaluated separately",
+      "semantic_duplicate_rows" : 0,
+      "f1" : 0.6318407960199004,
+      "recall" : 0.6105769230769231,
+      "false_positive" : 67,
+      "true_positive" : 127,
+      "false_negative" : 81,
+      "semantic_duplicate_rate" : 0.0,
+      "precision" : 0.654639175257732
+    },
+    "strict_row_matching_policy" : "predicate/value/scope/assertion plus expected time status and resolved start date; non-overlapping state intervals are valid repeated rows; recall uses unique matched gold; unmatched rows are not necessarily hallucinations",
+    "semantic_repetition_policy" : "semantic_duplicate_rows counts repeated meanings including legitimate state returns; distinct_state_interval_rows and redundant_semantic_rows separate them; intervals lacking provable non-overlap remain redundant",
+    "by_timeline" : [ {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-005",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-006",
+      "expected" : 13,
+      "stored" : 13,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-007",
+      "expected" : 13,
+      "stored" : 11,
+      "true_positive" : 9,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 9,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-008",
+      "expected" : 13,
+      "stored" : 11,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-009",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 9,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 9,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-010",
+      "expected" : 13,
+      "stored" : 11,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-011",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 10,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 10,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-012",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-013",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 6,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 6,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-014",
+      "expected" : 13,
+      "stored" : 14,
+      "true_positive" : 7,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 7,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-015",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 8,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 8,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-016",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 8,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 8,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-017",
+      "expected" : 13,
+      "stored" : 13,
+      "true_positive" : 12,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 12,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-018",
+      "expected" : 13,
+      "stored" : 11,
+      "true_positive" : 9,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 9,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-019",
+      "expected" : 13,
+      "stored" : 14,
+      "true_positive" : 5,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 5,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    }, {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-020",
+      "expected" : 13,
+      "stored" : 12,
+      "true_positive" : 9,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 9,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    } ]
+  },
+  "g1_kg_fact_quality" : {
+    "precision" : 0.1111111111111111,
+    "recall" : 0.15384615384615385,
+    "by_timeline" : [ {
+      "duplicate_relations" : 1,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-005",
+      "unmatched_kg_relations" : 15
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-006",
+      "unmatched_kg_relations" : 18
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-007",
+      "unmatched_kg_relations" : 16
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-008",
+      "unmatched_kg_relations" : 16
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-009",
+      "unmatched_kg_relations" : 16
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-010",
+      "unmatched_kg_relations" : 17
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-011",
+      "unmatched_kg_relations" : 17
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-012",
+      "unmatched_kg_relations" : 18
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-013",
+      "unmatched_kg_relations" : 15
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-014",
+      "unmatched_kg_relations" : 17
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-015",
+      "unmatched_kg_relations" : 13
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-016",
+      "unmatched_kg_relations" : 16
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 2,
+      "timeline_id" : "timeline-017",
+      "unmatched_kg_relations" : 18
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 3,
+      "timeline_id" : "timeline-018",
+      "unmatched_kg_relations" : 14
+    }, {
+      "duplicate_relations" : 1,
+      "matched_gold" : 1,
+      "timeline_id" : "timeline-019",
+      "unmatched_kg_relations" : 15
+    }, {
+      "duplicate_relations" : 0,
+      "matched_gold" : 4,
+      "timeline_id" : "timeline-020",
+      "unmatched_kg_relations" : 15
+    } ],
+    "method" : "Conservative KG relation projection by visible text; unsupported relations remain unmatched. No source-turn label inheritance."
+  },
+  "profile_quality" : {
+    "by_timeline" : [ {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-005",
+      "expected" : {
+        "home_location" : "武汉",
+        "current_location" : "宁波",
+        "occupation_current" : "项目运营",
+        "current_project" : "社区活动小程序"
+      },
+      "correct" : 3,
+      "actual" : {
+        "occupation_current" : "项目运营",
+        "current_location" : "宁波",
+        "current_project" : "社区活动小程序"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-006",
+      "expected" : {
+        "home_location" : "厦门",
+        "current_location" : "长沙",
+        "occupation_current" : "测试工程师",
+        "current_project" : "影像归档工具"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "厦门",
+        "current_project" : "影像归档工具",
+        "occupation_current" : "测试工程师",
+        "current_location" : "长沙"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-007",
+      "expected" : {
+        "home_location" : "青岛",
+        "current_location" : "郑州",
+        "occupation_current" : "研究助理",
+        "current_project" : "供应链监控平台"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "青岛",
+        "occupation_current" : "研究助理",
+        "current_location" : "郑州",
+        "current_project" : "供应链监控平台"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-008",
+      "expected" : {
+        "home_location" : "深圳",
+        "current_location" : "无锡",
+        "occupation_current" : "课程顾问",
+        "current_project" : "阅读计划应用"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "深圳",
+        "current_project" : "阅读计划应用",
+        "occupation_current" : "课程顾问",
+        "current_location" : "无锡"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-009",
+      "expected" : {
+        "home_location" : "广州",
+        "current_location" : "天津",
+        "occupation_current" : "视觉设计师",
+        "current_project" : "实验数据门户"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "广州",
+        "current_project" : "实验数据门户",
+        "occupation_current" : "视觉设计师",
+        "current_location" : "天津"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-010",
+      "expected" : {
+        "home_location" : "北京",
+        "current_location" : "福州",
+        "occupation_current" : "数据分析师",
+        "current_project" : "城市出行分析项目"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "北京",
+        "occupation_current" : "数据分析师",
+        "current_location" : "福州",
+        "current_project" : "城市出行分析项目"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-011",
+      "expected" : {
+        "home_location" : "合肥",
+        "current_location" : "济南",
+        "occupation_current" : "产品经理",
+        "current_project" : "校园服务平台"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "合肥",
+        "occupation_current" : "产品经理",
+        "current_location" : "济南",
+        "current_project" : "校园服务平台"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-012",
+      "expected" : {
+        "home_location" : "昆明",
+        "current_location" : "南京",
+        "occupation_current" : "软件工程师",
+        "current_project" : "门店库存改造项目"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "昆明",
+        "current_project" : "门店库存改造项目",
+        "occupation_current" : "软件工程师",
+        "current_location" : "南京"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-013",
+      "expected" : {
+        "home_location" : "宁波",
+        "current_location" : "苏州",
+        "occupation_current" : "中学教师",
+        "current_project" : "课程预约系统"
+      },
+      "correct" : 2,
+      "actual" : {
+        "home_location" : "宁波",
+        "occupation_current" : "中学教师"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-014",
+      "expected" : {
+        "home_location" : "长沙",
+        "current_location" : "杭州",
+        "occupation_current" : "交互设计师",
+        "current_project" : "客户反馈看板"
+      },
+      "correct" : 4,
+      "actual" : {
+        "current_project" : "客户反馈看板",
+        "home_location" : "长沙",
+        "occupation_current" : "交互设计师",
+        "current_location" : "杭州"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-015",
+      "expected" : {
+        "home_location" : "郑州",
+        "current_location" : "成都",
+        "occupation_current" : "项目运营",
+        "current_project" : "社区活动小程序"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "郑州",
+        "current_project" : "社区活动小程序",
+        "occupation_current" : "项目运营",
+        "current_location" : "成都"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-016",
+      "expected" : {
+        "home_location" : "无锡",
+        "current_location" : "西安",
+        "occupation_current" : "测试工程师",
+        "current_project" : "影像归档工具"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "无锡",
+        "occupation_current" : "测试工程师",
+        "current_location" : "西安",
+        "current_project" : "影像归档工具"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-017",
+      "expected" : {
+        "home_location" : "天津",
+        "current_location" : "武汉",
+        "occupation_current" : "研究助理",
+        "current_project" : "供应链监控平台"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "天津",
+        "occupation_current" : "研究助理",
+        "current_location" : "武汉",
+        "current_project" : "供应链监控平台"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-018",
+      "expected" : {
+        "home_location" : "福州",
+        "current_location" : "厦门",
+        "occupation_current" : "课程顾问",
+        "current_project" : "阅读计划应用"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "福州",
+        "current_project" : "阅读计划应用",
+        "occupation_current" : "课程顾问",
+        "current_location" : "厦门"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-019",
+      "expected" : {
+        "home_location" : "济南",
+        "current_location" : "青岛",
+        "occupation_current" : "视觉设计师",
+        "current_project" : "实验数据门户"
+      },
+      "correct" : 1,
+      "actual" : {
+        "occupation_current" : "视觉设计师"
+      }
+    }, {
+      "expected_count" : 4,
+      "timeline_id" : "timeline-020",
+      "expected" : {
+        "home_location" : "南京",
+        "current_location" : "深圳",
+        "occupation_current" : "数据分析师",
+        "current_project" : "城市出行分析项目"
+      },
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "南京",
+        "current_project" : "城市出行分析项目",
+        "occupation_current" : "数据分析师",
+        "current_location" : "深圳"
+      }
+    } ],
+    "expected_entries" : 64,
+    "written_entries" : 58,
+    "precision" : 1.0,
+    "recall" : 0.90625,
+    "expected_entries_correct" : 58,
+    "fully_correct_timelines" : 13
+  },
+  "retention" : {
+    "retention_at_1" : 0.6875,
+    "retention_at_3" : 0.75625,
+    "retention_at_5" : null,
+    "eligible_facts_at_1" : 160,
+    "eligible_facts_at_3" : 160,
+    "reason_at_5" : "40 turns with production 15-turn triggers produce at most three commits per timeline"
+  },
+  "compression" : {
+    "actual_g1_retrieval_corpus" : {
+      "unit_count" : 1076,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 252,
+        "knowledge_graph_relation" : 294,
+        "ordinary_long_term_memory" : 530
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 3685,
+        "knowledge_graph_relation" : 2684,
+        "ordinary_long_term_memory" : 5781
+      },
+      "estimated_tokens" : 12150
+    },
+    "actual_g2a_append_retrieval_corpus" : {
+      "unit_count" : 1456,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 364,
+        "knowledge_graph_entity" : 252,
+        "knowledge_graph_relation" : 294,
+        "ordinary_long_term_memory" : 530,
+        "working_memory" : 16
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 2933,
+        "knowledge_graph_entity" : 3685,
+        "knowledge_graph_relation" : 2684,
+        "ordinary_long_term_memory" : 5781,
+        "working_memory" : 356
+      },
+      "estimated_tokens" : 15439
+    },
+    "actual_g2c_compacted_retrieval_corpus" : {
+      "unit_count" : 801,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 194,
+        "curated_knowledge_graph_entity" : 252,
+        "curated_knowledge_graph_relation" : 294,
+        "curated_residual_memory" : 31,
+        "ordinary_long_term_memory" : 30
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 1658,
+        "curated_knowledge_graph_entity" : 3685,
+        "curated_knowledge_graph_relation" : 2684,
+        "curated_residual_memory" : 307,
+        "ordinary_long_term_memory" : 355
+      },
+      "estimated_tokens" : 8689
+    },
+    "actual_g2a_token_delta_vs_g1" : 0.27069958847736625,
+    "actual_g2c_token_delta_vs_g1" : -0.2848559670781893,
+    "actual_g2c_system_compression_rate" : 0.2848559670781893,
+    "g2c_compression_vs_g2a" : 0.43720448215558005,
+    "common_kg_tokens" : 6369,
+    "memory_layer_compression_vs_g2a" : 0.7442116868798236,
+    "memory_layer_compression_vs_g1" : 0.5986853485556132,
+    "actual_g2c_token_delta_vs_g2a" : -0.43720448215558,
+    "g2c_compaction_action_counts" : {
+      "KEEP" : 223,
+      "MERGE" : 886,
+      "RESIDUAL" : 31,
+      "RESOLVE" : 613,
+      "SUPERSEDE" : 7
+    },
+    "g2c_logged_net_token_reduction" : 3154,
+    "raw_turn_text_tokens_estimated" : 6658,
+    "curated_fact_projection_tokens_estimated" : 2281,
+    "curated_fact_projection_compression_estimate" : 0.657404626013818,
+    "raw_turn_text_characters" : 9279,
+    "curated_fact_projection_characters" : 7497,
+    "curator_eligible_compression_rate" : 0.5986853485556132,
+    "information_retention_rate" : 1.0,
+    "projection_note" : "Serving corpus is the union of default, historical, and planned searchable units. KG is identical across arms. Physical storage and archived evidence are reported separately.",
+    "estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1"
+  },
+  "temporal" : {
+    "exact_time_expected" : 0,
+    "exact_time_correct" : 0,
+    "exact_time_accuracy" : null,
+    "ambiguous_time_expected" : 0,
+    "ambiguous_time_correct" : 0,
+    "ambiguous_time_accuracy" : null
+  },
+  "source_evidence" : {
+    "stored_facts" : 194,
+    "valid_source_turns" : 194,
+    "source_completeness" : 1.0,
+    "verbatim_evidence" : 194,
+    "verbatim_evidence_rate" : 1.0,
+    "active_retrieval_units" : 801,
+    "retrieval_unit_source_traceability" : 801,
+    "retrieval_unit_source_traceability_rate" : 1.0
+  },
+  "integrity" : {
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-005",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 17,
+      "g2c_mean_duplicate_top10_occupancy" : 1.4166666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-006",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 9,
+      "g2c_mean_duplicate_top10_occupancy" : 0.75,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-007",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 16,
+      "g2c_mean_duplicate_top10_occupancy" : 1.3333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-008",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 16,
+      "g2c_mean_duplicate_top10_occupancy" : 1.3333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-009",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 18,
+      "g2c_mean_duplicate_top10_occupancy" : 1.5,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-010",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 18,
+      "g2c_mean_duplicate_top10_occupancy" : 1.5,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-011",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 16,
+      "g2c_mean_duplicate_top10_occupancy" : 1.3333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-012",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 17,
+      "g2c_mean_duplicate_top10_occupancy" : 1.4166666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-013",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 14,
+      "g2c_mean_duplicate_top10_occupancy" : 1.1666666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-014",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 13,
+      "g2c_mean_duplicate_top10_occupancy" : 1.0833333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-015",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 20,
+      "g2c_mean_duplicate_top10_occupancy" : 1.6666666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-016",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 13,
+      "g2c_mean_duplicate_top10_occupancy" : 1.0833333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-017",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 20,
+      "g2c_mean_duplicate_top10_occupancy" : 1.6666666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-018",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 33,
+      "g2c_mean_duplicate_top10_occupancy" : 2.75,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-019",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 14,
+      "g2c_mean_duplicate_top10_occupancy" : 1.1666666666666667,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    }, {
+      "timeline_id" : "timeline-020",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 16,
+      "g2c_mean_duplicate_top10_occupancy" : 1.3333333333333333,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    } ],
+    "pass" : true
+  },
+  "physical_storage_by_table" : {
+    "G2" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 192512,
+        "payload_bytes" : 171542
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 229376,
+        "payload_bytes" : 201204
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 12026
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 5882
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 163840,
+        "payload_bytes" : 133888
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 11515
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 31232
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 32347
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 14464
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 126976,
+        "payload_bytes" : 102608
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 151552,
+        "payload_bytes" : 125396
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 131072,
+        "payload_bytes" : 105140
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1527
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 77824,
+        "payload_bytes" : 57909
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 17627
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 8343
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 7826
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 27453
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 122880,
+        "payload_bytes" : 94347
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 61440,
+        "payload_bytes" : 48334
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2261
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 28592
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 11673600,
+        "payload_bytes" : 10818665
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3400
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 1892352,
+        "payload_bytes" : 1690990
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 405504,
+        "payload_bytes" : 375574
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 102400,
+        "payload_bytes" : 88062
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 1130496,
+        "payload_bytes" : 1032540
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 624
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 61440,
+        "payload_bytes" : 52721
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 729088,
+        "payload_bytes" : 620011
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 5865472,
+        "payload_bytes" : 5517775
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 229376,
+        "payload_bytes" : 208422
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6640
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 11627
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 11537
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 303
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 26112
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1047
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 28306
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 40854
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 499712,
+        "payload_bytes" : 398269
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 303
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 17627
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 315392,
+        "payload_bytes" : 259478
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 69632,
+        "payload_bytes" : 53500
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 40832
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3359
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2063
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 97
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 73728,
+        "payload_bytes" : 60750
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 5184
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    },
+    "G1" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 12876
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 65536,
+        "payload_bytes" : 51432
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 16630
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 16630
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 42912
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 65536,
+        "payload_bytes" : 52596
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 43988
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 28592
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 1175552,
+        "payload_bytes" : 1081516
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 303104,
+        "payload_bytes" : 281040
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 65536,
+        "payload_bytes" : 56065
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 94208,
+        "payload_bytes" : 82100
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 4964352,
+        "payload_bytes" : 4597657
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 225280,
+        "payload_bytes" : 208422
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6640
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 10860
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 11322
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 131072,
+        "payload_bytes" : 114719
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 131072,
+        "payload_bytes" : 114467
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 11926
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 40960,
+        "payload_bytes" : 30266
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 44672
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 53248,
+        "payload_bytes" : 40832
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3359
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 37
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    }
+  },
+  "sensitive_content" : {
+    "synthetic_sensitive_cases" : 0,
+    "fully_blocked" : 0,
+    "blocking_rate" : null,
+    "by_timeline" : [ ],
+    "scanned_tables" : [ "long_term_memory", "memory_fact", "user_profile_current", "user_insight", "llm_growth", "memory_retrieval_unit", "memory_retrieval_source", "kg_entity", "kg_relation", "kg_evidence" ]
+  },
+  "retrieval" : {
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.296875,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.34375,
+        "lower" : 0.24687500000000004,
+        "resamples" : 10000
+      },
+      "delta_recall_at_10_g2c_minus_g1" : 0.18125,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.22187500000000004,
+        "lower" : 0.140625,
+        "resamples" : 10000
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : 0.18125,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.22187500000000004,
+        "lower" : 0.140625,
+        "resamples" : 10000
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.0031250000000000028,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.07500000000000001,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.07500000000000001,
+      "g2c_minus_g2a_recall_at_5" : 0.29374999999999996,
+      "g2c_minus_g2a_recall_at_10" : 0.10625000000000007,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.6375,
+        "recall_at_10" : 0.78125,
+        "precision_at_5" : 0.11979166666666667,
+        "precision_at_10" : 0.07447916666666667,
+        "mrr" : 0.551046626984127,
+        "ndcg_at_10" : 0.5668699612911784,
+        "recall_at_256_estimated_tokens" : 0.69375,
+        "recall_at_512_estimated_tokens" : 0.78125,
+        "recall_at_1024_estimated_tokens" : 0.78125,
+        "mean_query_context_tokens" : 124.07291666666667,
+        "mean_duplicate_top10_occupancy" : 6.104166666666667
+      },
+      "G2A" : {
+        "recall_at_5" : 0.640625,
+        "recall_at_10" : 0.85625,
+        "precision_at_5" : 0.12083333333333335,
+        "precision_at_10" : 0.08072916666666667,
+        "mrr" : 0.5935565476190476,
+        "ndcg_at_10" : 0.6095587008002135,
+        "recall_at_256_estimated_tokens" : 0.7375,
+        "recall_at_512_estimated_tokens" : 0.85625,
+        "recall_at_1024_estimated_tokens" : 0.85625,
+        "mean_query_context_tokens" : 120.953125,
+        "mean_duplicate_top10_occupancy" : 6.036458333333333
+      },
+      "G2C" : {
+        "recall_at_5" : 0.934375,
+        "recall_at_10" : 0.9625,
+        "precision_at_5" : 0.1875,
+        "precision_at_10" : 0.09635416666666667,
+        "mrr" : 0.6438616071428571,
+        "ndcg_at_10" : 0.7253294996994478,
+        "recall_at_256_estimated_tokens" : 0.9625,
+        "recall_at_512_estimated_tokens" : 0.9625,
+        "recall_at_1024_estimated_tokens" : 0.9625,
+        "mean_query_context_tokens" : 105.734375,
+        "mean_duplicate_top10_occupancy" : 1.40625
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json"
+  },
+  "shared_ranker_retrieval" : {
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.006250000000000026,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.050000000000000024,
+        "lower" : -0.03124999999999998,
+        "resamples" : 10000
+      },
+      "delta_recall_at_10_g2c_minus_g1" : 0.021875,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.04374999999999999,
+        "lower" : 0.006249999999999999,
+        "resamples" : 10000
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : 0.021875,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.04374999999999999,
+        "lower" : 0.006249999999999999,
+        "resamples" : 10000
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : -1.3877787807814457E-17,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.015624999999999993,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.015624999999999993,
+      "g2c_minus_g2a_recall_at_5" : 0.006249999999999978,
+      "g2c_minus_g2a_recall_at_10" : 0.006250000000000089,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.89375,
+        "recall_at_10" : 0.934375,
+        "precision_at_5" : 0.17604166666666668,
+        "precision_at_10" : 0.09375,
+        "mrr" : 0.8607638888888889,
+        "ndcg_at_10" : 0.8518813723177786,
+        "recall_at_256_estimated_tokens" : 0.915625,
+        "recall_at_512_estimated_tokens" : 0.934375,
+        "recall_at_1024_estimated_tokens" : 0.934375,
+        "mean_query_context_tokens" : 123.38020833333333,
+        "mean_duplicate_top10_occupancy" : 4.96875
+      },
+      "G2A" : {
+        "recall_at_5" : 0.89375,
+        "recall_at_10" : 0.95,
+        "precision_at_5" : 0.1729166666666667,
+        "precision_at_10" : 0.09479166666666666,
+        "mrr" : 0.8825694444444444,
+        "ndcg_at_10" : 0.8673569646155551,
+        "recall_at_256_estimated_tokens" : 0.9375,
+        "recall_at_512_estimated_tokens" : 0.95,
+        "recall_at_1024_estimated_tokens" : 0.95,
+        "mean_query_context_tokens" : 118.09375,
+        "mean_duplicate_top10_occupancy" : 4.890625
+      },
+      "G2C" : {
+        "recall_at_5" : 0.9,
+        "recall_at_10" : 0.95625,
+        "precision_at_5" : 0.18125000000000002,
+        "precision_at_10" : 0.09583333333333334,
+        "mrr" : 0.7636334325396825,
+        "ndcg_at_10" : 0.8048162411320805,
+        "recall_at_256_estimated_tokens" : 0.9375,
+        "recall_at_512_estimated_tokens" : 0.95625,
+        "recall_at_1024_estimated_tokens" : 0.95625,
+        "mean_query_context_tokens" : 107.11458333333333,
+        "mean_duplicate_top10_occupancy" : 2.2291666666666665
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json"
+  },
+  "production_retrieval" : {
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.296875,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.34375,
+        "lower" : 0.24687500000000004,
+        "resamples" : 10000
+      },
+      "delta_recall_at_10_g2c_minus_g1" : 0.18125,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.22187500000000004,
+        "lower" : 0.140625,
+        "resamples" : 10000
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : 0.18125,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "cluster_count" : 16,
+        "upper" : 0.22187500000000004,
+        "lower" : 0.140625,
+        "resamples" : 10000
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.0031250000000000028,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.07500000000000001,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.07500000000000001,
+      "g2c_minus_g2a_recall_at_5" : 0.29374999999999996,
+      "g2c_minus_g2a_recall_at_10" : 0.10625000000000007,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    },
+    "query_count" : 192,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.6375,
+        "recall_at_10" : 0.78125,
+        "precision_at_5" : 0.11979166666666667,
+        "precision_at_10" : 0.07447916666666667,
+        "mrr" : 0.551046626984127,
+        "ndcg_at_10" : 0.5668699612911784,
+        "recall_at_256_estimated_tokens" : 0.69375,
+        "recall_at_512_estimated_tokens" : 0.78125,
+        "recall_at_1024_estimated_tokens" : 0.78125,
+        "mean_query_context_tokens" : 124.07291666666667,
+        "mean_duplicate_top10_occupancy" : 6.104166666666667
+      },
+      "G2A" : {
+        "recall_at_5" : 0.640625,
+        "recall_at_10" : 0.85625,
+        "precision_at_5" : 0.12083333333333335,
+        "precision_at_10" : 0.08072916666666667,
+        "mrr" : 0.5935565476190476,
+        "ndcg_at_10" : 0.6095587008002135,
+        "recall_at_256_estimated_tokens" : 0.7375,
+        "recall_at_512_estimated_tokens" : 0.85625,
+        "recall_at_1024_estimated_tokens" : 0.85625,
+        "mean_query_context_tokens" : 120.953125,
+        "mean_duplicate_top10_occupancy" : 6.036458333333333
+      },
+      "G2C" : {
+        "recall_at_5" : 0.934375,
+        "recall_at_10" : 0.9625,
+        "precision_at_5" : 0.1875,
+        "precision_at_10" : 0.09635416666666667,
+        "mrr" : 0.6438616071428571,
+        "ndcg_at_10" : 0.7253294996994478,
+        "recall_at_256_estimated_tokens" : 0.9625,
+        "recall_at_512_estimated_tokens" : 0.9625,
+        "recall_at_1024_estimated_tokens" : 0.9625,
+        "mean_query_context_tokens" : 105.734375,
+        "mean_duplicate_top10_occupancy" : 1.40625
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json"
+  },
+  "acceptance_profile" : "relaxed",
+  "end_to_end" : {
+    "answers" : 576,
+    "all_paired_comparisons" : {
+      "G2A_minus_G1" : {
+        "delta_judge_score" : 0.057291666666666664,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.057291666666666664,
+        "core_answer_score_complete_pairs" : 192
+      },
+      "G2C_minus_G1" : {
+        "delta_judge_score" : 0.13541666666666666,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.13020833333333334,
+        "core_answer_score_complete_pairs" : 192
+      },
+      "G2C_minus_G2A" : {
+        "delta_judge_score" : 0.078125,
+        "judge_score_complete_pairs" : 192,
+        "delta_core_answer_score" : 0.07291666666666667,
+        "core_answer_score_complete_pairs" : 192
+      }
+    },
+    "paired" : {
+      "primary_comparison" : "G2C minus G1",
+      "g2c_minus_g1_accuracy" : 0.16666666666666666,
+      "g1_only_approximate_correct" : 0,
+      "g2c_only_approximate_correct" : 32,
+      "g2c_minus_g1_approximate_accuracy" : 0.16666666666666666,
+      "mcnemar_g1_only_correct" : 0,
+      "mcnemar_g2_only_correct" : 32,
+      "mcnemar_p_value_approx" : 4.251394168903625E-8,
+      "inference_status" : "diagnostic_query_pair_test"
+    },
+    "by_group" : {
+      "G1" : {
+        "correct" : 158,
+        "total" : 192,
+        "accuracy" : 0.8229166666666666,
+        "core_full_accuracy" : 0.8229166666666666,
+        "mean_core_answer_score" : 0.8645833333333334,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.7239583333333334,
+        "judge_mean_score" : 0.7239583333333334,
+        "approximate_correct" : 158,
+        "approximate_accuracy" : 0.8229166666666666,
+        "mean_core_fact_coverage_rate" : 0.8645833333333334,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 299,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.8177083333333334,
+        "mean_prompt_tokens_reported" : 385.1458333333333,
+        "mean_latency_ms" : 1962
+      },
+      "G2A" : {
+        "correct" : 169,
+        "total" : 192,
+        "accuracy" : 0.8802083333333334,
+        "core_full_accuracy" : 0.8802083333333334,
+        "mean_core_answer_score" : 0.921875,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.78125,
+        "judge_mean_score" : 0.78125,
+        "approximate_correct" : 169,
+        "approximate_accuracy" : 0.8802083333333334,
+        "mean_core_fact_coverage_rate" : 0.921875,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 296,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.8802083333333334,
+        "mean_prompt_tokens_reported" : 381.9427083333333,
+        "mean_latency_ms" : 1940
+      },
+      "G2C" : {
+        "correct" : 190,
+        "total" : 192,
+        "accuracy" : 0.9895833333333334,
+        "core_full_accuracy" : 0.9895833333333334,
+        "mean_core_answer_score" : 0.9947916666666666,
+        "judge_scored_answers" : 192,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.859375,
+        "judge_mean_score" : 0.859375,
+        "approximate_correct" : 190,
+        "approximate_accuracy" : 0.9895833333333334,
+        "mean_core_fact_coverage_rate" : 0.9947916666666666,
+        "abstention_correct" : 32,
+        "abstention_total" : 32,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 283,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9635416666666666,
+        "mean_prompt_tokens_reported" : 369.234375,
+        "mean_latency_ms" : 2063
+      }
+    },
+    "by_query_type" : {
+      "current_state" : {
+        "G1" : {
+          "core_score" : 1.0,
+          "total" : 48,
+          "judge_score" : 0.9583333333333334
+        },
+        "G2A" : {
+          "core_score" : 1.0,
+          "total" : 48,
+          "judge_score" : 0.9166666666666666
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 48,
+          "judge_score" : 1.0
+        }
+      },
+      "preference" : {
+        "G1" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 0.5
+        },
+        "G2A" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 0.53125
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 0.34375
+        }
+      },
+      "historical" : {
+        "G1" : {
+          "core_score" : 0.6875,
+          "total" : 16,
+          "judge_score" : 0.6875
+        },
+        "G2A" : {
+          "core_score" : 0.8125,
+          "total" : 16,
+          "judge_score" : 0.8125
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 16,
+          "judge_score" : 1.0
+        }
+      },
+      "plan_vs_reality" : {
+        "G1" : {
+          "core_score" : 0.1875,
+          "total" : 16,
+          "judge_score" : 0.1875
+        },
+        "G2A" : {
+          "core_score" : 0.75,
+          "total" : 16,
+          "judge_score" : 0.75
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 16,
+          "judge_score" : 0.9375
+        }
+      },
+      "cancelled_or_completed" : {
+        "G1" : {
+          "core_score" : 0.5,
+          "total" : 16,
+          "judge_score" : 0.0
+        },
+        "G2A" : {
+          "core_score" : 0.5,
+          "total" : 16,
+          "judge_score" : 0.0
+        },
+        "G2C" : {
+          "core_score" : 0.9375,
+          "total" : 16,
+          "judge_score" : 0.6875
+        }
+      },
+      "multi_fact" : {
+        "G1" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 0.96875
+        },
+        "G2A" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 1.0
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 1.0
+        }
+      },
+      "unsupported_abstention" : {
+        "G1" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 1.0
+        },
+        "G2A" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 1.0
+        },
+        "G2C" : {
+          "core_score" : 1.0,
+          "total" : 32,
+          "judge_score" : 1.0
+        }
+      }
+    }
+  },
+  "answer_failure_cases" : [ {
+    "timeline_id" : "timeline-005",
+    "query_id" : "timeline-005-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "天津",
+    "should_abstain" : false,
+    "response" : "记忆中没有提到未来可能搬去哪里。苏州曾记录为“已经搬到”，属于已发生的状态；但之后确认目前住在宁波。武汉是长期的家，不等于已确定的未来搬家计划。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "136", "1", "119", "104", "95", "56", "79", "130", "111", "9" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-04-30T16:40:00Z 再次确认，我现在重新住在宁波。再次确认，我目前担任项目运营。再次确认，我长期的家在武汉。\n[2] 2026-03-05T16:01:00Z 我的老家在武汉。我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-16T16:31:00Z 长期住址是武汉。\n[4] 2026-04-16T16:26:00Z 我现在重新住在宁波。我的现职是项目运营。\n[5] 2026-04-02T16:23:00Z 我长期的家在武汉。\n[6] 2026-03-19T16:13:00Z 我正在负责社区活动小程序。我的朋友住在青岛，这不是我的住址。\n[7] 2026-04-02T16:18:00Z 我已经搬到苏州。\n[8] 2026-04-30T16:36:00Z 目前我一直住在宁波。\n[9] 2026-04-16T16:30:00Z 我的现居城市是宁波。\n[10] 2026-03-05T16:02:00Z 搬家前我住在广州。我以前从事课程顾问。\n",
+    "elapsed_ms" : 2034,
+    "error" : "",
+    "prompt_tokens" : 397,
+    "completion_tokens" : 180,
+    "total_tokens" : 577,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误地称未提及未来可能去处；标准事实是可能搬去天津。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-005",
+    "query_id" : "timeline-005-q07",
+    "group" : "G2A",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "天津",
+    "should_abstain" : false,
+    "response" : "记忆里没有记录未来可能搬去哪里，也没有备选地点。苏州是过去搬去过的地方，不是已知的未来计划；目前记录的现居地是宁波。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "272", "238", "208", "160", "112", "260", "223", "25", "256", "96" ],
+    "context_token_estimate" : 296,
+    "context_text" : "[1] 2026-04-30T16:40:00Z 再次确认，我现在重新住在宁波。再次确认，我目前担任项目运营。再次确认，我长期的家在武汉。\n[2] 2026-04-16T16:31:00Z 长期住址是武汉。\n[3] 2026-04-16T16:26:00Z 我现在重新住在宁波。我的现职是项目运营。\n[4] 2026-04-02T16:18:00Z 我已经搬到苏州。\n[5] 2026-03-19T16:13:00Z 我正在负责社区活动小程序。我的朋友住在青岛，这不是我的住址。\n[6] 2026-04-30T16:36:00Z 目前我一直住在宁波。\n[7] 2026-04-16T16:30:00Z 我的现居城市是宁波。\n[8] 2026-03-05T16:02:00Z 搬家前我住在广州。我以前从事课程顾问。\n[9] 2026-04-30T16:35:00Z 我目前住在宁波。\n[10] 2026-03-19T16:10:00Z 我现在住在宁波。\n",
+    "elapsed_ms" : 2041,
+    "error" : "",
+    "prompt_tokens" : 386,
+    "completion_tokens" : 139,
+    "total_tokens" : 525,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误地称没有未来备选地点；标准事实是可能搬去天津。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-005",
+    "query_id" : "timeline-005-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第5期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有记录你此前报名的课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "136", "75", "66", "87", "104", "134", "123", "24", "82", "69" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-04-30T16:40:00Z 再次确认，我现在重新住在宁波。再次确认，我目前担任项目运营。再次确认，我长期的家在武汉。\n[2] 2026-03-19T16:16:00Z 我比较习惯先看结论，再看简洁步骤。\n[3] 2026-03-19T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[4] 2026-04-02T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[5] 2026-04-16T16:26:00Z 我现在重新住在宁波。我的现职是项目运营。\n[6] 2026-04-30T16:38:00Z 再次确认，我的当前工作岗位是项目运营。\n[7] 2026-04-16T16:32:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-03-05T16:04:00Z 我现在负责社区活动小程序。\n[9] 2026-04-02T16:19:00Z 我现在的职业是项目运营。\n[10] 2026-03-19T16:15:00Z 我继续负责社区活动小程序。\n",
+    "elapsed_ms" : 1316,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 59,
+    "total_tokens" : 455,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误表示不知道；标准事实明确记录课程已取消。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-005",
+    "query_id" : "timeline-005-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第5期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "结论：我不知道。现有记忆没有记录此前报名的课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "152", "134", "272", "176", "208", "268", "246", "50", "164", "138" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-03-19T16:16:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-03-19T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[3] 2026-04-30T16:40:00Z 再次确认，我现在重新住在宁波。再次确认，我目前担任项目运营。再次确认，我长期的家在武汉。\n[4] 2026-04-02T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[5] 2026-04-16T16:26:00Z 我现在重新住在宁波。我的现职是项目运营。\n[6] 2026-04-30T16:38:00Z 再次确认，我的当前工作岗位是项目运营。\n[7] 2026-04-16T16:32:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-03-05T16:04:00Z 我现在负责社区活动小程序。\n[9] 2026-04-02T16:19:00Z 我现在的职业是项目运营。\n[10] 2026-03-19T16:15:00Z 我继续负责社区活动小程序。\n",
+    "elapsed_ms" : 1742,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 70,
+    "total_tokens" : 466,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误表示不知道；标准事实明确记录课程已取消。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-006",
+    "query_id" : "timeline-006-q06",
+    "group" : "G1",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "北京",
+    "should_abstain" : false,
+    "response" : "搬到杭州前，你住在长沙。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "135", "117", "70", "110", "6", "55", "126", "84", "57", "103" ],
+    "context_token_estimate" : 298,
+    "context_text" : "[1] 2026-05-01T16:40:00Z 我目前住在长沙。再次确认，我的当前工作岗位是测试工程师。再次确认，长期住址是厦门。\n[2] 2026-04-17T16:30:00Z 再次确认，我长期的家在厦门。\n[3] 2026-03-20T16:13:00Z 我现在的职业是测试工程师。我的朋友住在深圳，这不是我的住址。\n[4] 2026-04-17T16:26:00Z 我现在重新住在长沙。我目前从事测试工程师。\n[5] 2026-03-06T16:01:00Z 我的老家在厦门。我希望回复先说结论，再列简洁步骤。\n[6] 2026-03-20T16:09:00Z 我长期的家在厦门。\n[7] 2026-05-01T16:35:00Z 我的现居城市是长沙。\n[8] 2026-04-03T16:18:00Z 我已经搬到杭州。\n[9] 2026-03-20T16:10:00Z 我现在住在长沙。\n[10] 2026-04-03T16:23:00Z 长期住址是厦门。\n",
+    "elapsed_ms" : 1356,
+    "error" : "",
+    "prompt_tokens" : 384,
+    "completion_tokens" : 93,
+    "total_tokens" : 477,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误回答为长沙，标准事实是北京。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-006",
+    "query_id" : "timeline-006-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "福州",
+    "should_abstain" : false,
+    "response" : "记忆里没有记录你未来可能搬去哪里，也没有记录备选地点。曾记录你已搬到杭州（4月3日），但后来确认现居长沙；厦门是你的长期住址。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "117", "135", "70", "6", "55", "84", "126", "103", "57", "36" ],
+    "context_token_estimate" : 293,
+    "context_text" : "[1] 2026-04-17T16:30:00Z 再次确认，我长期的家在厦门。\n[2] 2026-05-01T16:40:00Z 我目前住在长沙。再次确认，我的当前工作岗位是测试工程师。再次确认，长期住址是厦门。\n[3] 2026-03-20T16:13:00Z 我现在的职业是测试工程师。我的朋友住在深圳，这不是我的住址。\n[4] 2026-03-06T16:01:00Z 我的老家在厦门。我希望回复先说结论，再列简洁步骤。\n[5] 2026-03-20T16:09:00Z 我长期的家在厦门。\n[6] 2026-04-03T16:18:00Z 我已经搬到杭州。\n[7] 2026-05-01T16:35:00Z 我的现居城市是长沙。\n[8] 2026-04-03T16:23:00Z 长期住址是厦门。\n[9] 2026-03-20T16:10:00Z 我现在住在长沙。\n[10] 2026-03-06T16:04:00Z 我现在负责影像归档工具。\n",
+    "elapsed_ms" : 5591,
+    "error" : "",
+    "prompt_tokens" : 383,
+    "completion_tokens" : 141,
+    "total_tokens" : 524,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称没有记录备选地点，并引入标准事实未支持的住址信息。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-006",
+    "query_id" : "timeline-006-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第6期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "结论：我不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "71", "118", "6", "70", "110", "131", "107", "120", "124", "84" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-03-20T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-17T16:31:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-03-06T16:01:00Z 我的老家在厦门。我希望回复先说结论，再列简洁步骤。\n[4] 2026-03-20T16:13:00Z 我现在的职业是测试工程师。我的朋友住在深圳，这不是我的住址。\n[5] 2026-04-17T16:26:00Z 我现在重新住在长沙。我目前从事测试工程师。\n[6] 2026-05-01T16:37:00Z 我仍偏好先说结论，再列简洁步骤。\n[7] 2026-04-17T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[8] 2026-04-17T16:32:00Z 再次确认，我希望回复使用分点表达。\n[9] 2026-05-01T16:33:00Z 当前项目是影像归档工具。\n[10] 2026-04-03T16:18:00Z 我已经搬到杭州。\n",
+    "elapsed_ms" : 1706,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 67,
+    "total_tokens" : 463,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确课程已完成，错误地表示不知道。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-006",
+    "query_id" : "timeline-006-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第6期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "结论：我不知道此前报名的课程是取消了还是完成了；现有记忆里没有相关信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "144", "236", "140", "220", "262", "216", "242", "248", "74", "116" ],
+    "context_token_estimate" : 297,
+    "context_text" : "[1] 2026-03-20T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-17T16:31:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-03-20T16:13:00Z 我现在的职业是测试工程师。我的朋友住在深圳，这不是我的住址。\n[4] 2026-04-17T16:26:00Z 我现在重新住在长沙。我目前从事测试工程师。\n[5] 2026-05-01T16:37:00Z 我仍偏好先说结论，再列简洁步骤。\n[6] 2026-04-17T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[7] 2026-04-17T16:32:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-05-01T16:33:00Z 当前项目是影像归档工具。\n[9] 2026-03-06T16:04:00Z 我现在负责影像归档工具。\n[10] 2026-03-20T16:10:00Z 我现在住在长沙。\n",
+    "elapsed_ms" : 1176,
+    "error" : "",
+    "prompt_tokens" : 386,
+    "completion_tokens" : 55,
+    "total_tokens" : 441,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确第6期数据整理课程已完成，错误地表示不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-007",
+    "query_id" : "timeline-007-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "济南",
+    "should_abstain" : false,
+    "response" : "结论：不知道你未来可能搬去哪里；记忆里没有记录未来搬迁目的地或备选地点。\n\n已知的是：你曾搬到成都，之后又重新住在郑州；目前住在郑州。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "137", "238", "248", "269", "227", "178", "169", "207", "142", "258" ],
+    "context_token_estimate" : 306,
+    "context_text" : "[1] 2026-03-07T16:01:00Z 我的老家在青岛。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-04T16:23:00Z 长期住址是青岛。\n[3] 2026-04-18T16:26:00Z 我现在重新住在郑州。我现在的职业是研究助理。\n[4] 2026-05-02T16:40:00Z 我目前住在郑州。再次确认，我目前担任研究助理。再次确认，我的老家在青岛。\n[5] 2026-04-04T16:18:00Z 我已经搬到成都。\n[6] 2026-03-07T16:08:00Z 我长期的家在青岛。\n[7] 2026-03-07T16:05:00Z 我的当前工作岗位是研究助理。\n[8] 2026-03-21T16:13:00Z 我的家乡是青岛。我的朋友住在广州，这不是我的住址。\n[9] 2026-03-07T16:02:00Z 搬家前我住在合肥。我以前从事数据分析师。\n[10] 2026-05-02T16:33:00Z 我的现职是研究助理。\n",
+    "elapsed_ms" : 4910,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 122,
+    "total_tokens" : 518,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误声称没有记录未来搬迁的备选地点。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-007",
+    "query_id" : "timeline-007-q07",
+    "group" : "G2A",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "济南",
+    "should_abstain" : false,
+    "response" : "记忆里没有记录你未来可能搬去哪里，也没有备选地点；因此无法判断是否已经发生。你目前住在郑州。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "278", "476", "496", "456", "357", "417", "288", "516", "521", "380" ],
+    "context_token_estimate" : 285,
+    "context_text" : "[1] 2026-03-07T16:01:00Z 我的老家在青岛。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-04T16:23:00Z 长期住址是青岛。\n[3] 2026-04-18T16:26:00Z 我现在重新住在郑州。我现在的职业是研究助理。\n[4] 2026-04-04T16:18:00Z 我已经搬到成都。\n[5] 2026-03-07T16:08:00Z 我长期的家在青岛。\n[6] 2026-03-21T16:13:00Z 我的家乡是青岛。我的朋友住在广州，这不是我的住址。\n[7] 2026-03-07T16:02:00Z 搬家前我住在合肥。我以前从事数据分析师。\n[8] 2026-05-02T16:33:00Z 我的现职是研究助理。\n[9] 2026-05-02T16:35:00Z 我的现居城市是郑州。\n[10] 2026-03-21T16:10:00Z 我现在住在郑州。\n",
+    "elapsed_ms" : 1853,
+    "error" : "",
+    "prompt_tokens" : 375,
+    "completion_tokens" : 136,
+    "total_tokens" : 511,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误声称没有记录未来搬迁的备选地点。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-007",
+    "query_id" : "timeline-007-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第7期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "结论：我不知道此前报名的课程是取消了还是完成了；记忆中没有相关信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "263", "250", "240", "211", "183", "230", "248", "266", "227", "234" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-05-02T16:36:00Z 再次确认，之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-18T16:30:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-04T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[4] 2026-03-21T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-03-21T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-04-04T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[7] 2026-04-18T16:26:00Z 我现在重新住在郑州。我现在的职业是研究助理。\n[8] 2026-05-02T16:38:00Z 再次确认，我的当前工作岗位是研究助理。\n[9] 2026-04-04T16:18:00Z 我已经搬到成都。\n[10] 2026-04-04T16:21:00Z 我继续负责供应链监控平台。\n",
+    "elapsed_ms" : 1693,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 54,
+    "total_tokens" : 450,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "已有信息明确说明第7期数据整理课程已取消，错误地回答不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-007",
+    "query_id" : "timeline-007-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第7期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "结论：不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "526", "500", "482", "422", "368", "460", "496", "534", "456", "468" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-05-02T16:36:00Z 再次确认，之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-18T16:30:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-04T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[4] 2026-03-21T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-03-21T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-04-04T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[7] 2026-04-18T16:26:00Z 我现在重新住在郑州。我现在的职业是研究助理。\n[8] 2026-05-02T16:38:00Z 再次确认，我的当前工作岗位是研究助理。\n[9] 2026-04-04T16:18:00Z 我已经搬到成都。\n[10] 2026-04-04T16:21:00Z 我继续负责供应链监控平台。\n",
+    "elapsed_ms" : 1919,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 58,
+    "total_tokens" : 454,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "已有信息明确说明课程已取消，错误地回答不知道。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-008",
+    "query_id" : "timeline-008-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "南京",
+    "should_abstain" : false,
+    "response" : "记忆中没有记录未来可能搬去哪里，因此无法判断具体目的地，也没有证据表明这是已发生的搬家或备选计划。当前居住地是无锡。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "202", "206", "147", "265", "217", "236", "255", "158", "239", "195" ],
+    "context_token_estimate" : 312,
+    "context_text" : "[1] 2026-03-22T16:12:00Z 我长期的家在深圳。\n[2] 2026-03-22T16:13:00Z 我比较习惯先看结论，再看简洁步骤。我的朋友住在北京，这不是我的住址。\n[3] 2026-03-08T16:01:00Z 我的老家在深圳。我希望回复先说结论，再列简洁步骤。\n[4] 2026-05-03T16:40:00Z 再次确认，我现在重新住在无锡。再次确认，我的当前工作岗位是课程顾问。长期住址是深圳。\n[5] 2026-04-05T16:18:00Z 我已经搬到西安。\n[6] 2026-04-19T16:26:00Z 我现在重新住在无锡。我目前从事课程顾问。\n[7] 2026-05-03T16:35:00Z 目前我一直住在无锡。\n[8] 2026-03-08T16:02:00Z 搬家前我住在昆明。我以前从事产品经理。\n[9] 2026-04-19T16:27:00Z 我的现居城市是无锡。\n[10] 2026-03-22T16:10:00Z 我现在住在无锡。\n",
+    "elapsed_ms" : 4338,
+    "error" : "",
+    "prompt_tokens" : 402,
+    "completion_tokens" : 104,
+    "total_tokens" : 506,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已记录未来可能搬去南京，且属于未发生的备选计划；称无法判断不正确。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-008",
+    "query_id" : "timeline-008-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第8期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "结论：我不知道此前报名的课程是取消了还是完成了；现有记忆没有提到课程状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "186", "212", "206", "226", "172", "265", "236", "216", "260", "166" ],
+    "context_token_estimate" : 310,
+    "context_text" : "[1] 2026-03-08T16:08:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-03-22T16:14:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-03-22T16:13:00Z 我比较习惯先看结论，再看简洁步骤。我的朋友住在北京，这不是我的住址。\n[4] 2026-04-05T16:21:00Z 我现在的职业是课程顾问。\n[5] 2026-03-08T16:05:00Z 我的当前工作岗位是课程顾问。\n[6] 2026-05-03T16:40:00Z 再次确认，我现在重新住在无锡。再次确认，我的当前工作岗位是课程顾问。长期住址是深圳。\n[7] 2026-04-19T16:26:00Z 我现在重新住在无锡。我目前从事课程顾问。\n[8] 2026-03-22T16:16:00Z 我目前担任课程顾问。\n[9] 2026-05-03T16:38:00Z 我的现职是课程顾问。\n[10] 2026-03-08T16:04:00Z 我现在负责阅读计划应用。\n",
+    "elapsed_ms" : 2443,
+    "error" : "",
+    "prompt_tokens" : 399,
+    "completion_tokens" : 67,
+    "total_tokens" : 466,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "已有事实表明课程已完成，错误地回答不知道。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-008",
+    "query_id" : "timeline-008-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第8期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "452", "346", "530", "473", "432", "524", "334", "502", "518", "470" ],
+    "context_token_estimate" : 277,
+    "context_text" : "[1] 2026-04-05T16:21:00Z 我现在的职业是课程顾问。\n[2] 2026-03-08T16:05:00Z 我的当前工作岗位是课程顾问。\n[3] 2026-05-03T16:40:00Z 再次确认，我现在重新住在无锡。再次确认，我的当前工作岗位是课程顾问。长期住址是深圳。\n[4] 2026-04-19T16:26:00Z 我现在重新住在无锡。我目前从事课程顾问。\n[5] 2026-03-22T16:16:00Z 我目前担任课程顾问。\n[6] 2026-05-03T16:38:00Z 我的现职是课程顾问。\n[7] 2026-03-08T16:04:00Z 我现在负责阅读计划应用。\n[8] 2026-04-19T16:31:00Z 我继续负责阅读计划应用。\n[9] 2026-05-03T16:37:00Z 当前项目是阅读计划应用。\n[10] 2026-04-19T16:25:00Z 我正在负责阅读计划应用。\n",
+    "elapsed_ms" : 973,
+    "error" : "",
+    "prompt_tokens" : 366,
+    "completion_tokens" : 23,
+    "total_tokens" : 389,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "已有事实表明课程已完成，错误地回答不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-009",
+    "query_id" : "timeline-009-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "苏州",
+    "should_abstain" : false,
+    "response" : "- 记忆中没有记录你未来可能搬去哪里，因此不知道具体备选地点。\n- 武汉是曾记录过的搬家去向，不是未来计划；较新的记录显示你目前住在天津。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "385", "341", "319", "395", "356", "270", "365", "346", "275", "386" ],
+    "context_token_estimate" : 301,
+    "context_text" : "[1] 2026-05-04T16:33:00Z 再次确认，我长期的家在广州。\n[2] 2026-03-23T16:16:00Z 我长期的家在广州。\n[3] 2026-03-23T16:13:00Z 回复形式我偏好使用分点表达。我的朋友住在合肥，这不是我的住址。\n[4] 2026-05-04T16:40:00Z 我目前住在天津。再次确认，我目前担任视觉设计师。再次确认，我的家乡是广州。\n[5] 2026-04-06T16:23:00Z 长期住址是广州。\n[6] 2026-03-09T16:01:00Z 我的老家在广州。我希望回复先说结论，再列简洁步骤。\n[7] 2026-04-20T16:27:00Z 再次确认，我的老家在广州。\n[8] 2026-04-06T16:18:00Z 我已经搬到武汉。\n[9] 2026-03-09T16:02:00Z 搬家前我住在宁波。我以前从事软件工程师。\n[10] 2026-05-04T16:35:00Z 我的现居城市是天津。\n",
+    "elapsed_ms" : 5505,
+    "error" : "",
+    "prompt_tokens" : 391,
+    "completion_tokens" : 131,
+    "total_tokens" : 522,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误声称没有记录未来备选地点，且引入标准事实未提供的武汉和天津信息。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-009",
+    "query_id" : "timeline-009-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第9期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "- 结论：我不知道此前报名的课程是取消了还是完成了；现有记忆里没有相关信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "327", "384", "363", "370", "315", "391", "361", "383", "289", "270" ],
+    "context_token_estimate" : 292,
+    "context_text" : "[1] 2026-03-23T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-04-20T16:32:00Z 再次确认，我希望回复使用分点表达。\n[3] 2026-04-20T16:26:00Z 我现在重新住在天津。我现在的职业是视觉设计师。\n[4] 2026-04-20T16:30:00Z 再次确认，我现在负责实验数据门户。\n[5] 2026-03-23T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-05-04T16:38:00Z 再次确认，我的当前工作岗位是视觉设计师。\n[7] 2026-04-20T16:25:00Z 我目前担任视觉设计师。\n[8] 2026-04-20T16:31:00Z 我目前从事视觉设计师。\n[9] 2026-03-09T16:07:00Z 我希望回复使用分点表达。\n[10] 2026-03-09T16:01:00Z 我的老家在广州。我希望回复先说结论，再列简洁步骤。\n",
+    "elapsed_ms" : 2027,
+    "error" : "",
+    "prompt_tokens" : 381,
+    "completion_tokens" : 54,
+    "total_tokens" : 435,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "记忆已表明课程取消，错误地表示不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-009",
+    "query_id" : "timeline-009-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第9期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "- 结论：我不知道此前报名的课程是取消了还是已经完成；现有记忆里没有相关信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "654", "768", "726", "740", "630", "782", "722", "568", "774", "694" ],
+    "context_token_estimate" : 282,
+    "context_text" : "[1] 2026-03-23T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-04-20T16:32:00Z 再次确认，我希望回复使用分点表达。\n[3] 2026-04-20T16:26:00Z 我现在重新住在天津。我现在的职业是视觉设计师。\n[4] 2026-04-20T16:30:00Z 再次确认，我现在负责实验数据门户。\n[5] 2026-03-23T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-05-04T16:38:00Z 再次确认，我的当前工作岗位是视觉设计师。\n[7] 2026-04-20T16:25:00Z 我目前担任视觉设计师。\n[8] 2026-03-09T16:04:00Z 我现在负责实验数据门户。\n[9] 2026-05-04T16:36:00Z 再次确认，我目前参与实验数据门户。\n[10] 2026-04-06T16:18:00Z 我已经搬到武汉。\n",
+    "elapsed_ms" : 1350,
+    "error" : "",
+    "prompt_tokens" : 371,
+    "completion_tokens" : 61,
+    "total_tokens" : 432,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "记忆已表明课程取消，错误地表示不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q06",
+    "group" : "G1",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "长沙",
+    "should_abstain" : false,
+    "response" : "如果你指的是搬回福州之前，住在厦门。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "294", "412", "377", "371", "340", "312", "345", "388", "358", "328" ],
+    "context_token_estimate" : 302,
+    "context_text" : "[1] 2026-03-10T16:01:00Z 我的老家在北京。我希望回复先说结论，再列简洁步骤。\n[2] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[3] 2026-04-21T16:26:00Z 我现在重新住在福州。我的现职是数据分析师。\n[4] 2026-04-07T16:23:00Z 我长期的家在北京。\n[5] 2026-03-24T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在昆明，这不是我的住址。\n[6] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[7] 2026-03-24T16:15:00Z 我继续负责城市出行分析项目。\n[8] 2026-04-21T16:31:00Z 我的现居城市是福州。\n[9] 2026-04-07T16:18:00Z 我已经搬到厦门。\n[10] 2026-03-10T16:08:00Z 我目前参与城市出行分析项目。\n",
+    "elapsed_ms" : 2142,
+    "error" : "",
+    "prompt_tokens" : 388,
+    "completion_tokens" : 149,
+    "total_tokens" : 537,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "回答厦门，与标准事实长沙不符。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q06",
+    "group" : "G2A",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "长沙",
+    "should_abstain" : false,
+    "response" : "不知道搬家前实际住在哪座城市。记录只说明你曾搬到厦门，后来重新住在福州；北京是你的长期住址。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "592", "825", "742", "680", "754", "626", "690", "776", "718", "656" ],
+    "context_token_estimate" : 302,
+    "context_text" : "[1] 2026-03-10T16:01:00Z 我的老家在北京。我希望回复先说结论，再列简洁步骤。\n[2] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[3] 2026-04-07T16:23:00Z 我长期的家在北京。\n[4] 2026-03-24T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在昆明，这不是我的住址。\n[5] 2026-04-21T16:26:00Z 我现在重新住在福州。我的现职是数据分析师。\n[6] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[7] 2026-03-24T16:15:00Z 我继续负责城市出行分析项目。\n[8] 2026-04-21T16:31:00Z 我的现居城市是福州。\n[9] 2026-04-07T16:18:00Z 我已经搬到厦门。\n[10] 2026-03-10T16:08:00Z 我目前参与城市出行分析项目。\n",
+    "elapsed_ms" : 2763,
+    "error" : "",
+    "prompt_tokens" : 388,
+    "completion_tokens" : 276,
+    "total_tokens" : 664,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已知为长沙，却错误表示不知道，并补充无依据的信息。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "杭州",
+    "should_abstain" : false,
+    "response" : "结论：不知道你未来可能搬去哪里；记忆里没有记录备选城市。\n\n已发生的搬迁是：你曾搬到厦门，之后又重新住在福州。目前住在福州；北京是长期住址，不代表未来搬迁计划。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "294", "371", "412", "340", "377", "312", "358", "388", "328", "299" ],
+    "context_token_estimate" : 309,
+    "context_text" : "[1] 2026-03-10T16:01:00Z 我的老家在北京。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-07T16:23:00Z 我长期的家在北京。\n[3] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[4] 2026-03-24T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在昆明，这不是我的住址。\n[5] 2026-04-21T16:26:00Z 我现在重新住在福州。我的现职是数据分析师。\n[6] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[7] 2026-04-07T16:18:00Z 我已经搬到厦门。\n[8] 2026-04-21T16:31:00Z 我的现居城市是福州。\n[9] 2026-03-10T16:08:00Z 我目前参与城市出行分析项目。\n[10] 2026-03-10T16:02:00Z 搬家前我住在长沙。我以前从事中学教师。\n",
+    "elapsed_ms" : 1940,
+    "error" : "",
+    "prompt_tokens" : 399,
+    "completion_tokens" : 157,
+    "total_tokens" : 556,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误地说不知道并否认有备选城市；未来可能搬去杭州。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q07",
+    "group" : "G2A",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "杭州",
+    "should_abstain" : false,
+    "response" : "记忆中没有提到未来可能搬去哪里。北京是你的长期住址，但没有证据表明这是未来搬迁计划；目前你住在福州。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "825", "742", "680", "626", "718", "776", "601", "664", "795", "800" ],
+    "context_token_estimate" : 289,
+    "context_text" : "[1] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[2] 2026-04-07T16:23:00Z 我长期的家在北京。\n[3] 2026-03-24T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在昆明，这不是我的住址。\n[4] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[5] 2026-04-07T16:18:00Z 我已经搬到厦门。\n[6] 2026-04-21T16:31:00Z 我的现居城市是福州。\n[7] 2026-03-10T16:02:00Z 搬家前我住在长沙。我以前从事中学教师。\n[8] 2026-03-24T16:10:00Z 我现在住在福州。\n[9] 2026-05-05T16:35:00Z 我目前住在福州。\n[10] 2026-05-05T16:37:00Z 目前我一直住在福州。\n",
+    "elapsed_ms" : 6126,
+    "error" : "",
+    "prompt_tokens" : 379,
+    "completion_tokens" : 135,
+    "total_tokens" : 514,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误地说没有未来搬迁计划；备选地点是杭州。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第10期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "401", "362", "392", "378", "355", "367", "412", "342", "312", "377" ],
+    "context_token_estimate" : 319,
+    "context_text" : "[1] 2026-05-05T16:38:00Z 再次确认，我现在的职业是数据分析师。\n[2] 2026-04-07T16:19:00Z 我现在的职业是数据分析师。\n[3] 2026-05-05T16:33:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[4] 2026-04-21T16:27:00Z 我仍偏好先说结论，再列简洁步骤。\n[5] 2026-03-24T16:16:00Z 我比较习惯先看结论，再看简洁步骤。\n[6] 2026-04-07T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[7] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[8] 2026-03-24T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[9] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n[10] 2026-04-21T16:26:00Z 我现在重新住在福州。我的现职是数据分析师。\n",
+    "elapsed_ms" : 1639,
+    "error" : "",
+    "prompt_tokens" : 408,
+    "completion_tokens" : 55,
+    "total_tokens" : 463,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录第10期数据整理课程已完成，错误地回答不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-010",
+    "query_id" : "timeline-010-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第10期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆里没有提到此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "802", "724", "786", "756", "710", "736", "825", "686", "754", "626" ],
+    "context_token_estimate" : 319,
+    "context_text" : "[1] 2026-05-05T16:38:00Z 再次确认，我现在的职业是数据分析师。\n[2] 2026-04-07T16:19:00Z 我现在的职业是数据分析师。\n[3] 2026-05-05T16:33:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[4] 2026-04-21T16:27:00Z 我仍偏好先说结论，再列简洁步骤。\n[5] 2026-03-24T16:16:00Z 我比较习惯先看结论，再看简洁步骤。\n[6] 2026-04-07T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[7] 2026-05-05T16:40:00Z 再次确认，我现在重新住在福州。再次确认，我目前从事数据分析师。长期住址是北京。\n[8] 2026-03-24T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[9] 2026-04-21T16:26:00Z 我现在重新住在福州。我的现职是数据分析师。\n[10] 2026-03-10T16:04:00Z 我现在负责城市出行分析项目。\n",
+    "elapsed_ms" : 1514,
+    "error" : "",
+    "prompt_tokens" : 408,
+    "completion_tokens" : 56,
+    "total_tokens" : 464,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录第10期数据整理课程已完成，错误地回答不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-011",
+    "query_id" : "timeline-011-q06",
+    "group" : "G1",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "郑州",
+    "should_abstain" : false,
+    "response" : "搬家前应该住在济南；记忆中“搬到青岛”前的城市没有直接明说，这是根据后来“重新住在济南”推断的。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "520", "402", "527", "456", "426", "505", "524", "481", "490", "496" ],
+    "context_token_estimate" : 308,
+    "context_text" : "[1] 2026-04-22T16:31:00Z 再次确认，我长期的家在合肥。\n[2] 2026-03-11T16:01:00Z 我的老家在合肥。我希望回复先说结论，再列简洁步骤。\n[3] 2026-05-06T16:40:00Z 再次确认，我现在重新住在济南。再次确认，我的当前工作岗位是产品经理。再次确认，长期住址是合肥。\n[4] 2026-03-25T16:13:00Z 我现在的职业是产品经理。我的朋友住在宁波，这不是我的住址。\n[5] 2026-03-25T16:09:00Z 我长期的家在合肥。\n[6] 2026-04-22T16:30:00Z 我的现居城市是济南。\n[7] 2026-05-06T16:36:00Z 目前我一直住在济南。\n[8] 2026-04-08T16:18:00Z 我已经搬到青岛。\n[9] 2026-04-08T16:23:00Z 长期住址是合肥。\n[10] 2026-04-22T16:26:00Z 我现在重新住在济南。我目前从事产品经理。\n",
+    "elapsed_ms" : 3340,
+    "error" : "",
+    "prompt_tokens" : 394,
+    "completion_tokens" : 309,
+    "total_tokens" : 703,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "将搬家前的城市错误回答为济南；标准事实是郑州。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-011",
+    "query_id" : "timeline-011-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "成都",
+    "should_abstain" : false,
+    "response" : "记忆里没有记录未来可能搬去哪里，也没有备选城市。青岛是过去搬去过的地方；目前住在济南，长期住址是合肥。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "520", "402", "527", "456", "426", "481", "490", "505", "524", "407" ],
+    "context_token_estimate" : 312,
+    "context_text" : "[1] 2026-04-22T16:31:00Z 再次确认，我长期的家在合肥。\n[2] 2026-03-11T16:01:00Z 我的老家在合肥。我希望回复先说结论，再列简洁步骤。\n[3] 2026-05-06T16:40:00Z 再次确认，我现在重新住在济南。再次确认，我的当前工作岗位是产品经理。再次确认，长期住址是合肥。\n[4] 2026-03-25T16:13:00Z 我现在的职业是产品经理。我的朋友住在宁波，这不是我的住址。\n[5] 2026-03-25T16:09:00Z 我长期的家在合肥。\n[6] 2026-04-08T16:18:00Z 我已经搬到青岛。\n[7] 2026-04-08T16:23:00Z 长期住址是合肥。\n[8] 2026-04-22T16:30:00Z 我的现居城市是济南。\n[9] 2026-05-06T16:36:00Z 目前我一直住在济南。\n[10] 2026-03-11T16:02:00Z 搬家前我住在郑州。我以前从事交互设计师。\n",
+    "elapsed_ms" : 1722,
+    "error" : "",
+    "prompt_tokens" : 402,
+    "completion_tokens" : 119,
+    "total_tokens" : 521,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实记录了成都是未来备选；称没有记录属于错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-011",
+    "query_id" : "timeline-011-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第11期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "- 不知道。现有记忆里没有此前报名课程的取消或完成状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "492", "457", "522", "402", "527", "456", "499", "463", "422", "526" ],
+    "context_token_estimate" : 319,
+    "context_text" : "[1] 2026-04-22T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-03-25T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[3] 2026-05-06T16:33:00Z 再次确认，回复形式我偏好使用分点表达。\n[4] 2026-03-11T16:01:00Z 我的老家在合肥。我希望回复先说结论，再列简洁步骤。\n[5] 2026-05-06T16:40:00Z 再次确认，我现在重新住在济南。再次确认，我的当前工作岗位是产品经理。再次确认，长期住址是合肥。\n[6] 2026-03-25T16:13:00Z 我现在的职业是产品经理。我的朋友住在宁波，这不是我的住址。\n[7] 2026-04-22T16:27:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-03-25T16:15:00Z 我正在负责校园服务平台。\n[9] 2026-03-11T16:07:00Z 我希望回复使用分点表达。\n[10] 2026-05-06T16:38:00Z 我的现职是产品经理。\n",
+    "elapsed_ms" : 1311,
+    "error" : "",
+    "prompt_tokens" : 408,
+    "completion_tokens" : 51,
+    "total_tokens" : 459,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录课程已取消，回答不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-011",
+    "query_id" : "timeline-011-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第11期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "- 不知道；现有记忆没有提到此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "986", "922", "1044", "1055", "912", "1000", "926", "846", "834", "992" ],
+    "context_token_estimate" : 314,
+    "context_text" : "[1] 2026-04-22T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-03-25T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[3] 2026-05-06T16:33:00Z 再次确认，回复形式我偏好使用分点表达。\n[4] 2026-05-06T16:40:00Z 再次确认，我现在重新住在济南。再次确认，我的当前工作岗位是产品经理。再次确认，长期住址是合肥。\n[5] 2026-03-25T16:13:00Z 我现在的职业是产品经理。我的朋友住在宁波，这不是我的住址。\n[6] 2026-04-22T16:27:00Z 再次确认，我希望回复使用分点表达。\n[7] 2026-03-25T16:15:00Z 我正在负责校园服务平台。\n[8] 2026-03-11T16:07:00Z 我希望回复使用分点表达。\n[9] 2026-03-11T16:04:00Z 我现在负责校园服务平台。\n[10] 2026-04-22T16:26:00Z 我现在重新住在济南。我目前从事产品经理。\n",
+    "elapsed_ms" : 1700,
+    "error" : "",
+    "prompt_tokens" : 403,
+    "completion_tokens" : 52,
+    "total_tokens" : 455,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录课程已取消，回答不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-012",
+    "query_id" : "timeline-012-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "西安",
+    "should_abstain" : false,
+    "response" : "记忆中没有提到未来可能搬去哪里，也没有记录相关备选。已发生的是你搬到了深圳；你的长期家在昆明。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "541", "428", "497", "533", "449", "464", "495", "479", "508", "475" ],
+    "context_token_estimate" : 285,
+    "context_text" : "[1] 2026-05-07T16:36:00Z 再次确认，我长期的家在昆明。\n[2] 2026-03-12T16:01:00Z 我的老家在昆明。我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-09T16:18:00Z 我已经搬到深圳。\n[4] 2026-05-07T16:33:00Z 再次确认，我现在负责门店库存改造项目。\n[5] 2026-03-12T16:04:00Z 我现在负责门店库存改造项目。\n[6] 2026-03-12T16:08:00Z 我长期的家在昆明。\n[7] 2026-03-26T16:16:00Z 我正在负责门店库存改造项目。\n[8] 2026-03-26T16:15:00Z 我目前参与门店库存改造项目。\n[9] 2026-04-09T16:23:00Z 长期住址是昆明。\n[10] 2026-03-26T16:13:00Z 我的家乡是昆明。我的朋友住在长沙，这不是我的住址。\n",
+    "elapsed_ms" : 1477,
+    "error" : "",
+    "prompt_tokens" : 375,
+    "completion_tokens" : 97,
+    "total_tokens" : 472,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称没有相关记录，并编造已搬到深圳及长期家在昆明的信息。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-012",
+    "query_id" : "timeline-012-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第12期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "547", "529", "478", "465", "513", "509", "501", "533", "449", "474" ],
+    "context_token_estimate" : 309,
+    "context_text" : "[1] 2026-05-07T16:37:00Z 再次确认，之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-23T16:31:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[3] 2026-03-26T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[4] 2026-03-26T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[5] 2026-04-23T16:26:00Z 我现在重新住在南京。我现在的职业是软件工程师。\n[6] 2026-04-09T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[7] 2026-04-09T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[8] 2026-05-07T16:33:00Z 再次确认，我现在负责门店库存改造项目。\n[9] 2026-03-12T16:04:00Z 我现在负责门店库存改造项目。\n[10] 2026-03-26T16:12:00Z 我目前担任软件工程师。\n",
+    "elapsed_ms" : 1333,
+    "error" : "",
+    "prompt_tokens" : 398,
+    "completion_tokens" : 48,
+    "total_tokens" : 446,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录课程已完成，不应回答不知道。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-012",
+    "query_id" : "timeline-012-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第12期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1096", "1058", "956", "932", "1026", "1020", "1004", "1066", "900", "948" ],
+    "context_token_estimate" : 309,
+    "context_text" : "[1] 2026-05-07T16:37:00Z 再次确认，之后回答请先给结论，再列简洁步骤。\n[2] 2026-04-23T16:31:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[3] 2026-03-26T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[4] 2026-03-26T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[5] 2026-04-23T16:26:00Z 我现在重新住在南京。我现在的职业是软件工程师。\n[6] 2026-04-09T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[7] 2026-04-09T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[8] 2026-05-07T16:33:00Z 再次确认，我现在负责门店库存改造项目。\n[9] 2026-03-12T16:04:00Z 我现在负责门店库存改造项目。\n[10] 2026-03-26T16:12:00Z 我目前担任软件工程师。\n",
+    "elapsed_ms" : 1512,
+    "error" : "",
+    "prompt_tokens" : 398,
+    "completion_tokens" : 59,
+    "total_tokens" : 457,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录课程已完成，不应回答不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-013",
+    "query_id" : "timeline-013-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "武汉",
+    "should_abstain" : false,
+    "response" : "记忆中没有提到未来可能搬去哪里，因此无法判断备选地点。宁波是长期住址，苏州是目前居住地；广州是曾经搬去过的地方，不是未来计划。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "536", "571", "573", "666", "633", "611", "632", "551", "660", "565" ],
+    "context_token_estimate" : 298,
+    "context_text" : "[1] 2026-03-13T16:01:00Z 我的老家在宁波。我希望回复先说结论，再列简洁步骤。\n[2] 2026-03-27T16:12:00Z 我长期的家在宁波。\n[3] 2026-03-27T16:13:00Z 我比较习惯先看结论，再看简洁步骤。我的朋友住在郑州，这不是我的住址。\n[4] 2026-05-08T16:40:00Z 我目前住在苏州。再次确认，我现在的职业是中学教师。长期住址是宁波。\n[5] 2026-04-24T16:26:00Z 我现在重新住在苏州。我目前从事中学教师。\n[6] 2026-04-10T16:18:00Z 我已经搬到广州。\n[7] 2026-04-24T16:25:00Z 我正在负责课程预约系统。\n[8] 2026-03-13T16:04:00Z 我现在负责课程预约系统。\n[9] 2026-05-08T16:35:00Z 我的现居城市是苏州。\n[10] 2026-03-27T16:10:00Z 我现在住在苏州。\n",
+    "elapsed_ms" : 1861,
+    "error" : "",
+    "prompt_tokens" : 388,
+    "completion_tokens" : 130,
+    "total_tokens" : 518,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称没有提到未来地点并无法判断；已知备选地点是武汉。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-013",
+    "query_id" : "timeline-013-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第13期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。可检索记忆中没有此前报名课程的取消或完成状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "663", "646", "579", "631", "658", "628", "665", "560", "664", "554" ],
+    "context_token_estimate" : 298,
+    "context_text" : "[1] 2026-05-08T16:36:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-24T16:30:00Z 我仍偏好先说结论，再列简洁步骤。\n[3] 2026-03-27T16:14:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[4] 2026-04-10T16:24:00Z 再次确认，我希望回复使用分点表达。\n[5] 2026-05-08T16:33:00Z 再次确认，我的当前工作岗位是中学教师。\n[6] 2026-04-10T16:21:00Z 我现在的职业是中学教师。\n[7] 2026-05-08T16:38:00Z 再次确认，我目前担任中学教师。\n[8] 2026-03-13T16:08:00Z 之后回答请先给结论，再列简洁步骤。\n[9] 2026-05-08T16:37:00Z 再次确认，我希望回复使用分点表达。\n[10] 2026-03-13T16:05:00Z 我的当前工作岗位是中学教师。\n",
+    "elapsed_ms" : 1090,
+    "error" : "",
+    "prompt_tokens" : 387,
+    "completion_tokens" : 51,
+    "total_tokens" : 438,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误表示没有课程状态信息；标准事实明确课程已取消。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-013",
+    "query_id" : "timeline-013-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第13期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到你此前报名的课程，也没有课程取消或完成的状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1326", "1292", "1160", "1262", "1318", "1256", "1330", "1122", "1266", "1332" ],
+    "context_token_estimate" : 317,
+    "context_text" : "[1] 2026-05-08T16:36:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-24T16:30:00Z 我仍偏好先说结论，再列简洁步骤。\n[3] 2026-03-27T16:14:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[4] 2026-04-10T16:24:00Z 再次确认，我希望回复使用分点表达。\n[5] 2026-05-08T16:33:00Z 再次确认，我的当前工作岗位是中学教师。\n[6] 2026-04-10T16:21:00Z 我现在的职业是中学教师。\n[7] 2026-05-08T16:38:00Z 再次确认，我目前担任中学教师。\n[8] 2026-03-13T16:08:00Z 之后回答请先给结论，再列简洁步骤。\n[9] 2026-04-24T16:26:00Z 我现在重新住在苏州。我目前从事中学教师。\n[10] 2026-05-08T16:40:00Z 我目前住在苏州。再次确认，我现在的职业是中学教师。长期住址是宁波。\n",
+    "elapsed_ms" : 1349,
+    "error" : "",
+    "prompt_tokens" : 406,
+    "completion_tokens" : 55,
+    "total_tokens" : 461,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "明确拒答，但标准事实已说明第13期课程已取消。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-014",
+    "query_id" : "timeline-014-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第14期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "结论：我不知道此前报名的课程是取消了还是完成了。\n\n- 可检索记忆中没有关于该课程状态的信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "614", "700", "667", "625", "650", "651", "640", "661", "681", "593" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-03-28T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-05-09T16:40:00Z 再次确认，我现在重新住在杭州。我的现职是交互设计师。再次确认，我的老家在长沙。\n[3] 2026-04-25T16:31:00Z 再次确认，我现在负责客户反馈看板。\n[4] 2026-03-28T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-04-25T16:25:00Z 我目前担任交互设计师。\n[6] 2026-04-25T16:26:00Z 我现在重新住在杭州。我现在的职业是交互设计师。\n[7] 2026-04-11T16:19:00Z 我继续负责客户反馈看板。\n[8] 2026-04-25T16:30:00Z 再次确认，我希望回复使用分点表达。\n[9] 2026-05-09T16:36:00Z 再次确认，回复形式我偏好使用分点表达。\n[10] 2026-03-14T16:04:00Z 我现在负责客户反馈看板。\n",
+    "elapsed_ms" : 7219,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 67,
+    "total_tokens" : 463,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确课程完成；称没有状态信息是错误拒答。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-014",
+    "query_id" : "timeline-014-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第14期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1228", "1400", "1334", "1252", "1303", "1282", "1324", "1188", "1276", "1210" ],
+    "context_token_estimate" : 295,
+    "context_text" : "[1] 2026-03-28T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-05-09T16:40:00Z 再次确认，我现在重新住在杭州。我的现职是交互设计师。再次确认，我的老家在长沙。\n[3] 2026-04-25T16:31:00Z 再次确认，我现在负责客户反馈看板。\n[4] 2026-03-28T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-04-25T16:26:00Z 我现在重新住在杭州。我现在的职业是交互设计师。\n[6] 2026-04-11T16:19:00Z 我继续负责客户反馈看板。\n[7] 2026-04-25T16:30:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-03-14T16:04:00Z 我现在负责客户反馈看板。\n[9] 2026-04-11T16:18:00Z 我已经搬到北京。\n[10] 2026-03-28T16:10:00Z 我现在住在杭州。\n",
+    "elapsed_ms" : 5309,
+    "error" : "",
+    "prompt_tokens" : 384,
+    "completion_tokens" : 63,
+    "total_tokens" : 447,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确课程完成；称不知道是错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-015",
+    "query_id" : "timeline-015-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第15期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "结论：我不知道。现有记忆没有提到此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "739", "718", "757", "797", "793", "764", "795", "787", "772", "692" ],
+    "context_token_estimate" : 291,
+    "context_text" : "[1] 2026-03-29T16:16:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-03-29T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[3] 2026-04-12T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[4] 2026-05-10T16:38:00Z 再次确认，我现在的职业是项目运营。\n[5] 2026-05-10T16:36:00Z 再次确认，我现在负责社区活动小程序。\n[6] 2026-04-26T16:26:00Z 我现在重新住在成都。我的现职是项目运营。\n[7] 2026-05-10T16:37:00Z 再次确认，我目前担任项目运营。\n[8] 2026-04-26T16:31:00Z 再次确认，我的当前工作岗位是项目运营。\n[9] 2026-04-26T16:30:00Z 当前项目是社区活动小程序。\n[10] 2026-03-15T16:05:00Z 我的当前工作岗位是项目运营。\n",
+    "elapsed_ms" : 1907,
+    "error" : "",
+    "prompt_tokens" : 380,
+    "completion_tokens" : 62,
+    "total_tokens" : 442,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录第15期数据整理课程已取消，回答不知道是错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-015",
+    "query_id" : "timeline-015-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第15期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到此前报名的课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1594", "1586", "1528", "1590", "1574", "1544", "1376", "1500", "1448", "1404" ],
+    "context_token_estimate" : 270,
+    "context_text" : "[1] 2026-05-10T16:38:00Z 再次确认，我现在的职业是项目运营。\n[2] 2026-05-10T16:36:00Z 再次确认，我现在负责社区活动小程序。\n[3] 2026-04-26T16:26:00Z 我现在重新住在成都。我的现职是项目运营。\n[4] 2026-05-10T16:37:00Z 再次确认，我目前担任项目运营。\n[5] 2026-04-26T16:31:00Z 再次确认，我的当前工作岗位是项目运营。\n[6] 2026-04-26T16:30:00Z 当前项目是社区活动小程序。\n[7] 2026-03-15T16:04:00Z 我现在负责社区活动小程序。\n[8] 2026-04-12T16:19:00Z 我现在的职业是项目运营。\n[9] 2026-03-29T16:15:00Z 我继续负责社区活动小程序。\n[10] 2026-03-29T16:10:00Z 我现在住在成都。\n",
+    "elapsed_ms" : 1294,
+    "error" : "",
+    "prompt_tokens" : 359,
+    "completion_tokens" : 45,
+    "total_tokens" : 404,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录课程已取消，回答不知道是错误拒答。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-016",
+    "query_id" : "timeline-016-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "深圳",
+    "should_abstain" : false,
+    "response" : "记忆里没有记录未来搬家的目的地或备选地点。昆明是曾经搬去过的地方；目前住在西安，长期的家在无锡。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "806", "778", "708", "735", "767", "804", "736", "725", "749", "715" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-05-11T16:40:00Z 再次确认，我现在重新住在西安。再次确认，我现在的职业是测试工程师。再次确认，我长期的家在无锡。\n[2] 2026-04-13T16:23:00Z 长期住址是无锡。\n[3] 2026-03-16T16:01:00Z 我的老家在无锡。我希望回复先说结论，再列简洁步骤。\n[4] 2026-03-30T16:09:00Z 我长期的家在无锡。\n[5] 2026-04-13T16:18:00Z 我已经搬到昆明。\n[6] 2026-05-11T16:37:00Z 目前我一直住在西安。\n[7] 2026-03-30T16:10:00Z 我现在住在西安。\n[8] 2026-03-16T16:04:00Z 我现在负责影像归档工具。\n[9] 2026-03-30T16:13:00Z 我现在的职业是测试工程师。我的朋友住在福州，这不是我的住址。\n[10] 2026-03-16T16:02:00Z 搬家前我住在南京。我以前从事视觉设计师。\n",
+    "elapsed_ms" : 6008,
+    "error" : "",
+    "prompt_tokens" : 397,
+    "completion_tokens" : 196,
+    "total_tokens" : 593,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录深圳是未来备选地点；称没有记录，且补充的其他地点信息不符本题事实。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-016",
+    "query_id" : "timeline-016-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第16期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。记忆中没有此前报名课程的取消或完成状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "806", "798", "780", "783", "751", "796", "803", "708", "781", "805" ],
+    "context_token_estimate" : 332,
+    "context_text" : "[1] 2026-05-11T16:40:00Z 再次确认，我现在重新住在西安。再次确认，我现在的职业是测试工程师。再次确认，我长期的家在无锡。\n[2] 2026-05-11T16:33:00Z 我仍偏好先说结论，再列简洁步骤。\n[3] 2026-04-27T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[4] 2026-04-27T16:27:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[5] 2026-03-30T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-04-27T16:32:00Z 再次确认，我希望回复使用分点表达。\n[7] 2026-05-11T16:36:00Z 再次确认，我的当前工作岗位是测试工程师。\n[8] 2026-03-16T16:01:00Z 我的老家在无锡。我希望回复先说结论，再列简洁步骤。\n[9] 2026-04-27T16:26:00Z 我现在重新住在西安。我目前从事测试工程师。\n[10] 2026-05-11T16:38:00Z 再次确认，我目前担任测试工程师。\n",
+    "elapsed_ms" : 2886,
+    "error" : "",
+    "prompt_tokens" : 421,
+    "completion_tokens" : 20,
+    "total_tokens" : 441,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录第16期数据整理课程已完成，错误地表示不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-016",
+    "query_id" : "timeline-016-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第16期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆里没有关于此前报名课程取消或完成的记录。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1612", "1598", "1560", "1568", "1502", "1592", "1606", "1420", "1563", "1610" ],
+    "context_token_estimate" : 332,
+    "context_text" : "[1] 2026-05-11T16:40:00Z 再次确认，我现在重新住在西安。再次确认，我现在的职业是测试工程师。再次确认，我长期的家在无锡。\n[2] 2026-05-11T16:33:00Z 我仍偏好先说结论，再列简洁步骤。\n[3] 2026-04-27T16:25:00Z 我比较习惯先看结论，再看简洁步骤。\n[4] 2026-04-27T16:27:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[5] 2026-03-30T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-04-27T16:32:00Z 再次确认，我希望回复使用分点表达。\n[7] 2026-05-11T16:36:00Z 再次确认，我的当前工作岗位是测试工程师。\n[8] 2026-03-16T16:01:00Z 我的老家在无锡。我希望回复先说结论，再列简洁步骤。\n[9] 2026-04-27T16:26:00Z 我现在重新住在西安。我目前从事测试工程师。\n[10] 2026-05-11T16:38:00Z 再次确认，我目前担任测试工程师。\n",
+    "elapsed_ms" : 2418,
+    "error" : "",
+    "prompt_tokens" : 421,
+    "completion_tokens" : 23,
+    "total_tokens" : 444,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实明确记录第16期数据整理课程已完成，错误地表示不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q06",
+    "group" : "G1",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "苏州",
+    "should_abstain" : false,
+    "response" : "搬到武汉前，你住在宁波。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "918", "856", "807", "959", "879", "901", "911", "939", "920", "936" ],
+    "context_token_estimate" : 294,
+    "context_text" : "[1] 2026-04-28T16:26:00Z 我现在重新住在武汉。我现在的职业是研究助理。\n[2] 2026-03-17T16:08:00Z 我长期的家在天津。\n[3] 2026-03-17T16:01:00Z 我的老家在天津。我希望回复先说结论，再列简洁步骤。\n[4] 2026-05-12T16:40:00Z 再次确认，我现在重新住在武汉。我的现职是研究助理。再次确认，我的家乡是天津。\n[5] 2026-03-31T16:13:00Z 我的家乡是天津。我的朋友住在济南，这不是我的住址。\n[6] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[7] 2026-04-14T16:23:00Z 长期住址是天津。\n[8] 2026-05-12T16:37:00Z 再次确认，我长期的家在天津。\n[9] 2026-04-28T16:30:00Z 我的现居城市是武汉。\n[10] 2026-05-12T16:35:00Z 我目前住在武汉。\n",
+    "elapsed_ms" : 2433,
+    "error" : "",
+    "prompt_tokens" : 380,
+    "completion_tokens" : 226,
+    "total_tokens" : 606,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "把搬家前居住地说成宁波，标准事实是苏州。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q06",
+    "group" : "G2A",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "苏州",
+    "should_abstain" : false,
+    "response" : "记忆里提到你曾搬到宁波；但没有明确说明搬回武汉前是否一直住在宁波。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1836", "1712", "1618", "1919", "1804", "1823", "1878", "1762", "1840", "1873" ],
+    "context_token_estimate" : 294,
+    "context_text" : "[1] 2026-04-28T16:26:00Z 我现在重新住在武汉。我现在的职业是研究助理。\n[2] 2026-03-17T16:08:00Z 我长期的家在天津。\n[3] 2026-03-17T16:01:00Z 我的老家在天津。我希望回复先说结论，再列简洁步骤。\n[4] 2026-05-12T16:40:00Z 再次确认，我现在重新住在武汉。我的现职是研究助理。再次确认，我的家乡是天津。\n[5] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[6] 2026-04-14T16:23:00Z 长期住址是天津。\n[7] 2026-05-12T16:37:00Z 再次确认，我长期的家在天津。\n[8] 2026-03-31T16:13:00Z 我的家乡是天津。我的朋友住在济南，这不是我的住址。\n[9] 2026-04-28T16:30:00Z 我的现居城市是武汉。\n[10] 2026-05-12T16:35:00Z 我目前住在武汉。\n",
+    "elapsed_ms" : 2199,
+    "error" : "",
+    "prompt_tokens" : 380,
+    "completion_tokens" : 220,
+    "total_tokens" : 600,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "未回答搬家前住的城市，提到宁波且表示不确定。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "广州",
+    "should_abstain" : false,
+    "response" : "没有记录你未来可能搬去哪里。宁波是你曾经搬去过的地方，不是已记录的未来备选；你目前住在武汉。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "856", "807", "918", "959", "901", "911", "939", "879", "920", "867" ],
+    "context_token_estimate" : 294,
+    "context_text" : "[1] 2026-03-17T16:08:00Z 我长期的家在天津。\n[2] 2026-03-17T16:01:00Z 我的老家在天津。我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-28T16:26:00Z 我现在重新住在武汉。我现在的职业是研究助理。\n[4] 2026-05-12T16:40:00Z 再次确认，我现在重新住在武汉。我的现职是研究助理。再次确认，我的家乡是天津。\n[5] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[6] 2026-04-14T16:23:00Z 长期住址是天津。\n[7] 2026-05-12T16:37:00Z 再次确认，我长期的家在天津。\n[8] 2026-03-31T16:13:00Z 我的家乡是天津。我的朋友住在济南，这不是我的住址。\n[9] 2026-04-28T16:30:00Z 我的现居城市是武汉。\n[10] 2026-03-31T16:10:00Z 我现在住在武汉。\n",
+    "elapsed_ms" : 1882,
+    "error" : "",
+    "prompt_tokens" : 384,
+    "completion_tokens" : 128,
+    "total_tokens" : 512,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误否认未来可能搬去广州的记录。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q07",
+    "group" : "G2A",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "广州",
+    "should_abstain" : false,
+    "response" : "记忆中没有记录未来可能搬去哪里，也没有记录搬迁备选。你目前住在武汉，长期的家在天津；宁波是过去搬去过的地方，不是已知的未来计划。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1712", "1618", "1804", "1823", "1878", "1762", "1840", "1736", "1873", "1876" ],
+    "context_token_estimate" : 265,
+    "context_text" : "[1] 2026-03-17T16:08:00Z 我长期的家在天津。\n[2] 2026-03-17T16:01:00Z 我的老家在天津。我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[4] 2026-04-14T16:23:00Z 长期住址是天津。\n[5] 2026-05-12T16:37:00Z 再次确认，我长期的家在天津。\n[6] 2026-03-31T16:13:00Z 我的家乡是天津。我的朋友住在济南，这不是我的住址。\n[7] 2026-04-28T16:30:00Z 我的现居城市是武汉。\n[8] 2026-03-31T16:10:00Z 我现在住在武汉。\n[9] 2026-05-12T16:35:00Z 我目前住在武汉。\n[10] 2026-05-12T16:36:00Z 目前我一直住在武汉。\n",
+    "elapsed_ms" : 1878,
+    "error" : "",
+    "prompt_tokens" : 355,
+    "completion_tokens" : 145,
+    "total_tokens" : 500,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误否认未来可能搬去广州的记录。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第17期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆里没有此前报名课程的取消或完成状态记录。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "915", "905", "918", "884", "863", "959", "931", "901", "898", "852" ],
+    "context_token_estimate" : 306,
+    "context_text" : "[1] 2026-04-14T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[2] 2026-04-14T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-04-28T16:26:00Z 我现在重新住在武汉。我现在的职业是研究助理。\n[4] 2026-03-31T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-03-31T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-05-12T16:40:00Z 再次确认，我现在重新住在武汉。我的现职是研究助理。再次确认，我的家乡是天津。\n[7] 2026-04-28T16:32:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[9] 2026-03-31T16:16:00Z 我正在负责供应链监控平台。\n[10] 2026-03-17T16:07:00Z 我希望回复使用分点表达。\n",
+    "elapsed_ms" : 2337,
+    "error" : "",
+    "prompt_tokens" : 395,
+    "completion_tokens" : 58,
+    "total_tokens" : 453,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程已取消；称没有取消或完成状态记录，属于错误拒答。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第17期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆里没有此前报名课程的取消或完成状态。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1830", "1810", "1836", "1768", "1728", "1919", "1864", "1804", "1796", "1674" ],
+    "context_token_estimate" : 307,
+    "context_text" : "[1] 2026-04-14T16:24:00Z 我仍偏好先说结论，再列简洁步骤。\n[2] 2026-04-14T16:19:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-04-28T16:26:00Z 我现在重新住在武汉。我现在的职业是研究助理。\n[4] 2026-03-31T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[5] 2026-03-31T16:09:00Z 之后回答请先给结论，再列简洁步骤。\n[6] 2026-05-12T16:40:00Z 再次确认，我现在重新住在武汉。我的现职是研究助理。再次确认，我的家乡是天津。\n[7] 2026-04-28T16:32:00Z 再次确认，我希望回复使用分点表达。\n[8] 2026-04-14T16:18:00Z 我已经搬到宁波。\n[9] 2026-03-31T16:16:00Z 我正在负责供应链监控平台。\n[10] 2026-03-17T16:04:00Z 我现在负责供应链监控平台。\n",
+    "elapsed_ms" : 1176,
+    "error" : "",
+    "prompt_tokens" : 396,
+    "completion_tokens" : 63,
+    "total_tokens" : 459,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "课程已取消；称没有取消或完成状态，属于错误拒答。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-017",
+    "query_id" : "timeline-017-q08",
+    "group" : "G2C",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第17期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "已取消原计划；记忆中没有课程已完成的记录。此前记录的是计划参加，并未明确记载已报名。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : true,
+    "state_confusion" : false,
+    "error_type" : "answer_rule_failure",
+    "source_unit_ids" : [ "0f328725-35bc-3cbe-a73a-2ee664c6ce40", "233c7bf6-a19f-305d-8251-974e802e1044", "a46e5621-e9c7-369e-85cf-0d821011c26b", "81c61447-91bd-321b-8809-1aa7543269d8", "baseline-knowledge_graph_entity-1742", "baseline-knowledge_graph_relation-1743", "baseline-knowledge_graph_entity-1802", "f8d80c6a-27cc-3495-b675-d9b4c8dfdff6", "836287ac-336e-39fa-8c6a-fa7f950d490c", "baseline-knowledge_graph_entity-1663" ],
+    "context_token_estimate" : 292,
+    "context_text" : "[1] 2026-04-28T16:28:00Z 用户已否定或取消原计划：第17期数据整理课程\n[2] 2026-03-31T16:11:00Z 用户已安排计划（尚未完成）：参加第17期数据整理课程\n[3] 2026-05-12T16:40:00Z 用户当前职位：研究助理\n[4] 2026-04-14T16:21:00Z 用户当前项目：供应链监控平台\n[5] 2026-03-31T16:11:00Z 第17期数据整理课程：用户计划参加的数据整理课程。\n[6] 2026-03-31T16:11:00Z User —plans→ 第17期数据整理课程\n[7] 2026-04-14T16:18:00Z 宁波：用户已搬到宁波。\n[8] 2026-04-14T16:24:00Z preference：先说结论，再列简洁步骤\n[9] 2026-05-12T16:40:00Z 用户现居城市：武汉\n[10] 2026-03-17T16:03:00Z 可能搬去广州：用户考虑未来搬到广州，尚未确定。\n",
+    "elapsed_ms" : 1840,
+    "error" : "",
+    "prompt_tokens" : 381,
+    "completion_tokens" : 106,
+    "total_tokens" : 487,
+    "judge_score" : 1.0,
+    "judge_correct" : true,
+    "judge_reason" : "正确说明原计划已取消，且没有称课程已完成。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-018",
+    "query_id" : "timeline-018-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "北京",
+    "should_abstain" : false,
+    "response" : "结论：不知道你未来可能搬去哪里；记忆中没有记录未来搬家的计划或备选地点。\n\n已知的是：你曾搬到长沙，后来重新住在厦门；福州是你的长期家。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "812", "870", "933", "887", "916", "866", "908", "822", "926", "857" ],
+    "context_token_estimate" : 310,
+    "context_text" : "[1] 2026-03-18T16:01:00Z 我的老家在福州。我希望回复先说结论，再列简洁步骤。\n[2] 2026-04-01T16:13:00Z 我比较习惯先看结论，再看简洁步骤。我的朋友住在南京，这不是我的住址。\n[3] 2026-05-13T16:40:00Z 我目前住在厦门。再次确认，我的当前工作岗位是课程顾问。再次确认，我长期的家在福州。\n[4] 2026-04-15T16:18:00Z 我已经搬到长沙。\n[5] 2026-04-29T16:30:00Z 长期住址是福州。\n[6] 2026-04-01T16:12:00Z 我长期的家在福州。\n[7] 2026-04-29T16:26:00Z 我现在重新住在厦门。我目前从事课程顾问。\n[8] 2026-03-18T16:02:00Z 搬家前我住在杭州。我以前从事产品经理。\n[9] 2026-05-13T16:35:00Z 我的现居城市是厦门。\n[10] 2026-04-01T16:10:00Z 我现在住在厦门。\n",
+    "elapsed_ms" : 1788,
+    "error" : "",
+    "prompt_tokens" : 400,
+    "completion_tokens" : 119,
+    "total_tokens" : 519,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称没有记录搬家计划，遗漏并否认了北京这一备选地点。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-018",
+    "query_id" : "timeline-018-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第18期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有记录你此前报名的课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "933", "928", "921", "851", "842", "908", "925", "897", "929", "910" ],
+    "context_token_estimate" : 299,
+    "context_text" : "[1] 2026-05-13T16:40:00Z 我目前住在厦门。再次确认，我的当前工作岗位是课程顾问。再次确认，我长期的家在福州。\n[2] 2026-05-13T16:37:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[3] 2026-04-29T16:31:00Z 我仍偏好先说结论，再列简洁步骤。\n[4] 2026-03-18T16:08:00Z 之后回答请先给结论，再列简洁步骤。\n[5] 2026-03-18T16:05:00Z 我的当前工作岗位是课程顾问。\n[6] 2026-04-29T16:26:00Z 我现在重新住在厦门。我目前从事课程顾问。\n[7] 2026-05-13T16:33:00Z 当前项目是阅读计划应用。\n[8] 2026-04-15T16:21:00Z 我现在的职业是课程顾问。\n[9] 2026-05-13T16:38:00Z 我的现职是课程顾问。\n[10] 2026-04-29T16:27:00Z 我继续负责阅读计划应用。\n",
+    "elapsed_ms" : 1577,
+    "error" : "",
+    "prompt_tokens" : 388,
+    "completion_tokens" : 77,
+    "total_tokens" : 465,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "记忆明确记录课程已完成，称不知道属于错误拒答。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-018",
+    "query_id" : "timeline-018-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第18期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到此前报名的课程是取消了还是完成了。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1856", "1868", "1686", "1816", "1850", "1794", "1858", "1820", "1812", "1680" ],
+    "context_token_estimate" : 285,
+    "context_text" : "[1] 2026-05-13T16:37:00Z 再次确认，我希望回复先说结论，再列简洁步骤。\n[2] 2026-05-13T16:40:00Z 我目前住在厦门。再次确认，我的当前工作岗位是课程顾问。再次确认，我长期的家在福州。\n[3] 2026-03-18T16:05:00Z 我的当前工作岗位是课程顾问。\n[4] 2026-04-29T16:26:00Z 我现在重新住在厦门。我目前从事课程顾问。\n[5] 2026-05-13T16:33:00Z 当前项目是阅读计划应用。\n[6] 2026-04-15T16:21:00Z 我现在的职业是课程顾问。\n[7] 2026-05-13T16:38:00Z 我的现职是课程顾问。\n[8] 2026-04-29T16:27:00Z 我继续负责阅读计划应用。\n[9] 2026-04-29T16:25:00Z 我正在负责阅读计划应用。\n[10] 2026-03-18T16:04:00Z 我现在负责阅读计划应用。\n",
+    "elapsed_ms" : 1972,
+    "error" : "",
+    "prompt_tokens" : 374,
+    "completion_tokens" : 25,
+    "total_tokens" : 399,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "记忆明确记录课程已完成，称不知道属于错误拒答。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q07",
+    "group" : "G1",
+    "query_type" : "plan_vs_reality",
+    "question" : "未来可能搬去哪里，这是已发生还是备选？",
+    "expected_answer" : "合肥",
+    "should_abstain" : false,
+    "response" : "没有记录你未来可能搬去哪里。郑州是你曾经搬去过的地方，不是未来备选；你目前住在青岛。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1071", "996", "1021", "940", "1033", "956", "1040", "1063", "1023", "946" ],
+    "context_token_estimate" : 300,
+    "context_text" : "[1] 2026-05-14T16:40:00Z 我目前住在青岛。再次确认，我目前担任视觉设计师。再次确认，我的老家在济南。\n[2] 2026-04-02T16:13:00Z 回复形式我偏好使用分点表达。我的朋友住在苏州，这不是我的住址。\n[3] 2026-04-02T16:16:00Z 我长期的家在济南。\n[4] 2026-03-19T16:01:00Z 我的老家在济南。我希望回复先说结论，再列简洁步骤。\n[5] 2026-04-16T16:23:00Z 长期住址是济南。\n[6] 2026-03-19T16:04:00Z 我现在负责实验数据门户。\n[7] 2026-04-30T16:25:00Z 我目前担任视觉设计师。\n[8] 2026-05-14T16:35:00Z 我的现居城市是青岛。\n[9] 2026-04-16T16:18:00Z 我已经搬到郑州。\n[10] 2026-03-19T16:02:00Z 搬家前我住在成都。我以前从事软件工程师。\n",
+    "elapsed_ms" : 1620,
+    "error" : "",
+    "prompt_tokens" : 390,
+    "completion_tokens" : 125,
+    "total_tokens" : 515,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称没有记录未来备选地点，并未回答合肥这一已知可能去向。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第19期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆没有提到你此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1000", "1052", "1065", "993", "1026", "1067", "956", "1044", "1060", "1040" ],
+    "context_token_estimate" : 292,
+    "context_text" : "[1] 2026-04-02T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-04-30T16:30:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-05-14T16:36:00Z 我仍偏好先说结论，再列简洁步骤。\n[4] 2026-04-02T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[5] 2026-04-16T16:19:00Z 我继续负责实验数据门户。\n[6] 2026-05-14T16:37:00Z 再次确认，回复形式我偏好使用分点表达。\n[7] 2026-03-19T16:04:00Z 我现在负责实验数据门户。\n[8] 2026-04-30T16:26:00Z 我现在重新住在青岛。我现在的职业是视觉设计师。\n[9] 2026-04-30T16:31:00Z 再次确认，我希望回复使用分点表达。\n[10] 2026-04-30T16:25:00Z 我目前担任视觉设计师。\n",
+    "elapsed_ms" : 1912,
+    "error" : "",
+    "prompt_tokens" : 381,
+    "completion_tokens" : 24,
+    "total_tokens" : 405,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确第19期数据整理课程取消，错误地表示不知道。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第19期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "我不知道：记忆中没有关于你此前报名的课程是否取消或完成的信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "2000", "2106", "2130", "1988", "2052", "2134", "1914", "2088", "2120", "2080" ],
+    "context_token_estimate" : 292,
+    "context_text" : "[1] 2026-04-02T16:14:00Z 我比较习惯先看结论，再看简洁步骤。\n[2] 2026-04-30T16:30:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[3] 2026-05-14T16:36:00Z 我仍偏好先说结论，再列简洁步骤。\n[4] 2026-04-02T16:12:00Z 之后回答请先给结论，再列简洁步骤。\n[5] 2026-04-16T16:19:00Z 我继续负责实验数据门户。\n[6] 2026-05-14T16:37:00Z 再次确认，回复形式我偏好使用分点表达。\n[7] 2026-03-19T16:04:00Z 我现在负责实验数据门户。\n[8] 2026-04-30T16:26:00Z 我现在重新住在青岛。我现在的职业是视觉设计师。\n[9] 2026-04-30T16:31:00Z 再次确认，我希望回复使用分点表达。\n[10] 2026-04-30T16:25:00Z 我目前担任视觉设计师。\n",
+    "elapsed_ms" : 1625,
+    "error" : "",
+    "prompt_tokens" : 381,
+    "completion_tokens" : 23,
+    "total_tokens" : 404,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "标准事实已明确第19期数据整理课程取消，错误地表示不知道。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-019",
+    "query_id" : "timeline-019-q08",
+    "group" : "G2C",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第19期数据整理课程；取消",
+    "should_abstain" : false,
+    "response" : "已取消原计划，没有记录显示课程已完成；记忆也未确认你是否正式报名。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "c713a585-b13e-3caf-b384-abceb498c1ee", "baseline-knowledge_graph_entity-1974", "f4293812-ad72-3a58-874d-aa86649a1290", "baseline-knowledge_graph_relation-1975", "baseline-knowledge_graph_entity-2046", "98eb726b-9db9-309b-a5ba-4d1b546378fc", "7050e81b-4030-3a6e-80cf-10a9a40e0f11", "baseline-knowledge_graph_entity-1903", "d1310488-98a7-30aa-bfe4-556058e5bc8f", "baseline-knowledge_graph_relation-1987" ],
+    "context_token_estimate" : 290,
+    "context_text" : "[1] 2026-04-30T16:28:00Z 用户已否定或取消原计划：第19期数据整理课程\n[2] 2026-04-02T16:11:00Z 第19期数据整理课程：用户计划参加的数据整理课程。\n[3] 2026-04-16T16:24:00Z 用户当前项目：实验数据门户\n[4] 2026-04-02T16:11:00Z User —plans→ 第19期数据整理课程\n[5] 2026-04-16T16:18:00Z 郑州：用户已搬到郑州。\n[6] 2026-05-14T16:36:00Z preference：先说结论，再列简洁步骤\n[7] 2026-03-19T16:01:00Z preference：先说结论，再列简洁步骤\n[8] 2026-04-16T16:20:00Z 合肥：用户考虑未来搬迁前往的城市。\n[9] 2026-05-14T16:40:00Z 用户现居城市：青岛\n[10] 2026-04-02T16:14:00Z User —prefers→ 结论优先、步骤简洁\n",
+    "elapsed_ms" : 1929,
+    "error" : "",
+    "prompt_tokens" : 379,
+    "completion_tokens" : 80,
+    "total_tokens" : 459,
+    "judge_score" : 1.0,
+    "judge_correct" : true,
+    "judge_reason" : "正确说明课程已取消，且没有记录显示已完成；报名状态的补充未与标准事实冲突。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q06",
+    "group" : "G1",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "西安",
+    "should_abstain" : false,
+    "response" : "搬家前住在无锡。长期的家在南京。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "968", "1076", "1015", "1030", "1048", "1055", "1074", "990", "1020", "1066" ],
+    "context_token_estimate" : 304,
+    "context_text" : "[1] 2026-03-20T16:01:00Z 我的老家在南京。我希望回复先说结论，再列简洁步骤。\n[2] 2026-05-15T16:40:00Z 再次确认，我现在重新住在深圳。再次确认，我目前担任数据分析师。长期住址是南京。\n[3] 2026-04-03T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在杭州，这不是我的住址。\n[4] 2026-04-17T16:18:00Z 我已经搬到无锡。\n[5] 2026-04-17T16:23:00Z 我长期的家在南京。\n[6] 2026-05-01T16:26:00Z 我现在重新住在深圳。我的现职是数据分析师。\n[7] 2026-05-15T16:37:00Z 再次确认，我现在负责城市出行分析项目。\n[8] 2026-03-20T16:04:00Z 我现在负责城市出行分析项目。\n[9] 2026-04-03T16:15:00Z 我继续负责城市出行分析项目。\n[10] 2026-05-01T16:31:00Z 当前项目是城市出行分析项目。\n",
+    "elapsed_ms" : 2003,
+    "error" : "",
+    "prompt_tokens" : 390,
+    "completion_tokens" : 148,
+    "total_tokens" : 538,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "把搬家前住址说成无锡，与标准事实西安不符。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q06",
+    "group" : "G2A",
+    "query_type" : "historical",
+    "question" : "搬家前住在哪座城市？",
+    "expected_answer" : "西安",
+    "should_abstain" : false,
+    "response" : "如果你指 4 月搬到无锡之前，记忆只提到你的长期住址是南京，但无法确认你当时实际住在哪座城市。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.0,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.0,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "2152", "2031", "2062", "2110", "2097", "2148", "1982", "2040", "2132", "2010" ],
+    "context_token_estimate" : 295,
+    "context_text" : "[1] 2026-05-15T16:40:00Z 再次确认，我现在重新住在深圳。再次确认，我目前担任数据分析师。长期住址是南京。\n[2] 2026-04-03T16:13:00Z 我正在负责城市出行分析项目。我的朋友住在杭州，这不是我的住址。\n[3] 2026-04-17T16:18:00Z 我已经搬到无锡。\n[4] 2026-05-01T16:26:00Z 我现在重新住在深圳。我的现职是数据分析师。\n[5] 2026-04-17T16:23:00Z 我长期的家在南京。\n[6] 2026-05-15T16:37:00Z 再次确认，我现在负责城市出行分析项目。\n[7] 2026-03-20T16:04:00Z 我现在负责城市出行分析项目。\n[8] 2026-04-03T16:15:00Z 我继续负责城市出行分析项目。\n[9] 2026-05-01T16:31:00Z 当前项目是城市出行分析项目。\n[10] 2026-03-20T16:08:00Z 我目前参与城市出行分析项目。\n",
+    "elapsed_ms" : 2540,
+    "error" : "",
+    "prompt_tokens" : 381,
+    "completion_tokens" : 248,
+    "total_tokens" : 629,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误地称无法确认，并把南京说成记忆中的住址；标准事实是西安。",
+    "judge_anonymous_id" : "A0",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q08",
+    "group" : "G1",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第20期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "我不知道。现有记忆里没有此前报名课程是否取消或完成的信息。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "1017", "1068", "1075", "1055", "1076", "1041", "1006", "997", "1074", "1030" ],
+    "context_token_estimate" : 304,
+    "context_text" : "[1] 2026-04-03T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-05-01T16:32:00Z 再次确认，我希望回复使用分点表达。\n[3] 2026-05-15T16:38:00Z 再次确认，我的当前工作岗位是数据分析师。\n[4] 2026-05-01T16:26:00Z 我现在重新住在深圳。我的现职是数据分析师。\n[5] 2026-05-15T16:40:00Z 再次确认，我现在重新住在深圳。再次确认，我目前担任数据分析师。长期住址是南京。\n[6] 2026-04-17T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[7] 2026-04-03T16:09:00Z 我目前担任数据分析师。\n[8] 2026-03-20T16:05:00Z 我的当前工作岗位是数据分析师。\n[9] 2026-05-15T16:37:00Z 再次确认，我现在负责城市出行分析项目。\n[10] 2026-04-17T16:18:00Z 我已经搬到无锡。\n",
+    "elapsed_ms" : 1345,
+    "error" : "",
+    "prompt_tokens" : 393,
+    "completion_tokens" : 54,
+    "total_tokens" : 447,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称现有记忆没有课程状态；标准事实明确记录课程已完成。",
+    "judge_anonymous_id" : "A1",
+    "judge_error" : ""
+  }, {
+    "timeline_id" : "timeline-020",
+    "query_id" : "timeline-020-q08",
+    "group" : "G2A",
+    "query_type" : "cancelled_or_completed",
+    "question" : "此前报名的课程现在取消了还是完成了？",
+    "expected_answer" : "第20期数据整理课程；完成",
+    "should_abstain" : false,
+    "response" : "- 不知道。现有记忆没有提到此前报名的课程是否取消或完成。",
+    "correct_by_frozen_rules" : false,
+    "core_fact_coverage_rate" : 0.5,
+    "correct_by_approximate_rules" : false,
+    "core_answer_score" : 0.5,
+    "correct_core_full" : false,
+    "answer_budget" : 512,
+    "evaluation_version" : "memory-eval-v4-core-state",
+    "evidence_supported" : false,
+    "state_confusion" : false,
+    "error_type" : "missing_retrieved_evidence",
+    "source_unit_ids" : [ "2036", "2136", "2150", "2152", "2084", "2013", "2148", "2110", "2062", "2068" ],
+    "context_token_estimate" : 304,
+    "context_text" : "[1] 2026-04-03T16:14:00Z 之后回答请先给结论，再列简洁步骤。\n[2] 2026-05-01T16:32:00Z 再次确认，我希望回复使用分点表达。\n[3] 2026-05-15T16:38:00Z 再次确认，我的当前工作岗位是数据分析师。\n[4] 2026-05-15T16:40:00Z 再次确认，我现在重新住在深圳。再次确认，我目前担任数据分析师。长期住址是南京。\n[5] 2026-04-17T16:21:00Z 回复形式我偏好先说结论，再列简洁步骤。\n[6] 2026-04-03T16:09:00Z 我目前担任数据分析师。\n[7] 2026-05-15T16:37:00Z 再次确认，我现在负责城市出行分析项目。\n[8] 2026-05-01T16:26:00Z 我现在重新住在深圳。我的现职是数据分析师。\n[9] 2026-04-17T16:18:00Z 我已经搬到无锡。\n[10] 2026-04-17T16:19:00Z 我现在的职业是数据分析师。\n",
+    "elapsed_ms" : 1251,
+    "error" : "",
+    "prompt_tokens" : 393,
+    "completion_tokens" : 50,
+    "total_tokens" : 443,
+    "judge_score" : 0.0,
+    "judge_correct" : false,
+    "judge_reason" : "错误称现有记忆没有课程状态；标准事实明确记录课程已完成。",
+    "judge_anonymous_id" : "A2",
+    "judge_error" : ""
+  } ],
+  "compaction_acceptance" : {
+    "oracle_method" : "Conservative feasible corpus estimate using covered clauses, preserving unmatched raw and identical KG; not an exact minimum-cover upper bound or deletion target.",
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-005",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.28246318607764387,
+      "oracle_upper_rate" : 0.28647925033467203,
+      "oracle_efficiency" : 0.9859813084112148,
+      "curator_eligible_compression_rate" : 0.6187683284457478,
+      "curator_eligible_oracle_upper_rate" : 0.6275659824046921,
+      "curator_eligible_oracle_efficiency" : 0.985981308411215,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.16533333333333333,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-006",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2638717632552404,
+      "oracle_upper_rate" : 0.2836004932182491,
+      "oracle_efficiency" : 0.9304347826086955,
+      "curator_eligible_compression_rate" : 0.5768194070080863,
+      "curator_eligible_oracle_upper_rate" : 0.6199460916442048,
+      "curator_eligible_oracle_efficiency" : 0.9304347826086958,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.75,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.75,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.1393939393939394,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-007",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.3128205128205128,
+      "oracle_upper_rate" : 0.3243589743589743,
+      "oracle_efficiency" : 0.9644268774703558,
+      "curator_eligible_compression_rate" : 0.6387434554973822,
+      "curator_eligible_oracle_upper_rate" : 0.662303664921466,
+      "curator_eligible_oracle_efficiency" : 0.9644268774703557,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.17759388924252062,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-008",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.3076923076923077,
+      "oracle_upper_rate" : 0.28708791208791207,
+      "oracle_efficiency" : 1.0717703349282297,
+      "curator_eligible_compression_rate" : 0.6327683615819208,
+      "curator_eligible_oracle_upper_rate" : 0.5903954802259888,
+      "curator_eligible_oracle_efficiency" : 1.0717703349282295,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.18710089399744578,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-009",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.3046062407132244,
+      "oracle_upper_rate" : 0.3075780089153046,
+      "oracle_efficiency" : 0.9903381642512078,
+      "curator_eligible_compression_rate" : 0.6119402985074627,
+      "curator_eligible_oracle_upper_rate" : 0.6179104477611941,
+      "curator_eligible_oracle_efficiency" : 0.9903381642512076,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.16782246879334262,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-010",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2919254658385093,
+      "oracle_upper_rate" : 0.29068322981366457,
+      "oracle_efficiency" : 1.0042735042735043,
+      "curator_eligible_compression_rate" : 0.6233421750663131,
+      "curator_eligible_oracle_upper_rate" : 0.6206896551724138,
+      "curator_eligible_oracle_efficiency" : 1.0042735042735043,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.75,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.75,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.1918340894361633,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-011",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.29096045197740117,
+      "oracle_upper_rate" : 0.306497175141243,
+      "oracle_efficiency" : 0.9493087557603687,
+      "curator_eligible_compression_rate" : 0.5953757225433526,
+      "curator_eligible_oracle_upper_rate" : 0.6271676300578035,
+      "curator_eligible_oracle_efficiency" : 0.9493087557603686,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.75,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.75,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.15925680159256805,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-012",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2311161217587373,
+      "oracle_upper_rate" : 0.2784667418263811,
+      "oracle_efficiency" : 0.8299595141700403,
+      "curator_eligible_compression_rate" : 0.5297157622739018,
+      "curator_eligible_oracle_upper_rate" : 0.6382428940568475,
+      "curator_eligible_oracle_efficiency" : 0.8299595141700405,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.13063973063973067,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-013",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.30027932960893855,
+      "oracle_upper_rate" : 0.3254189944134078,
+      "oracle_efficiency" : 0.9227467811158798,
+      "curator_eligible_compression_rate" : 0.587431693989071,
+      "curator_eligible_oracle_upper_rate" : 0.6366120218579234,
+      "curator_eligible_oracle_efficiency" : 0.9227467811158799,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.16498993963782693,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-014",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.24843161856963614,
+      "oracle_upper_rate" : 0.2722710163111669,
+      "oracle_efficiency" : 0.912442396313364,
+      "curator_eligible_compression_rate" : 0.55,
+      "curator_eligible_oracle_upper_rate" : 0.6027777777777779,
+      "curator_eligible_oracle_efficiency" : 0.912442396313364,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.10489014883061654,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-015",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2989985693848355,
+      "oracle_upper_rate" : 0.3147353361945636,
+      "oracle_efficiency" : 0.9500000000000002,
+      "curator_eligible_compression_rate" : 0.6023054755043228,
+      "curator_eligible_oracle_upper_rate" : 0.6340057636887608,
+      "curator_eligible_oracle_efficiency" : 0.95,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.9166666666666666,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.9166666666666666,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.11622807017543857,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-016",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.3324538258575198,
+      "oracle_upper_rate" : 0.30606860158311344,
+      "oracle_efficiency" : 1.0862068965517242,
+      "curator_eligible_compression_rate" : 0.6702127659574468,
+      "curator_eligible_oracle_upper_rate" : 0.6170212765957447,
+      "curator_eligible_oracle_efficiency" : 1.0862068965517242,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.10171821305841922,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-017",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2571428571428571,
+      "oracle_upper_rate" : 0.2831168831168831,
+      "oracle_efficiency" : 0.908256880733945,
+      "curator_eligible_compression_rate" : 0.5755813953488372,
+      "curator_eligible_oracle_upper_rate" : 0.6337209302325582,
+      "curator_eligible_oracle_efficiency" : 0.908256880733945,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.75,
+      "g2c_answer_accuracy" : 0.9166666666666666,
+      "g1_approximate_answer_accuracy" : 0.75,
+      "g2c_approximate_answer_accuracy" : 0.9166666666666666,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.1067415730337079,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-018",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.330150068212824,
+      "oracle_upper_rate" : 0.3001364256480218,
+      "oracle_efficiency" : 1.1,
+      "curator_eligible_compression_rate" : 0.6648351648351649,
+      "curator_eligible_oracle_upper_rate" : 0.6043956043956045,
+      "curator_eligible_oracle_efficiency" : 1.1,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : true,
+      "query_context_compression_rate" : 0.2332268370607028,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-019",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.23497267759562845,
+      "oracle_upper_rate" : 0.3183060109289617,
+      "oracle_efficiency" : 0.738197424892704,
+      "curator_eligible_compression_rate" : 0.4725274725274725,
+      "curator_eligible_oracle_upper_rate" : 0.6401098901098901,
+      "curator_eligible_oracle_efficiency" : 0.7381974248927039,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 0.9166666666666666,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 0.9166666666666666,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.1672046481601034,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    }, {
+      "timeline_id" : "timeline-020",
+      "sample_profile" : "redundant",
+      "system_compression_rate" : 0.2866004962779156,
+      "oracle_upper_rate" : 0.27915632754342434,
+      "oracle_efficiency" : 1.0266666666666666,
+      "curator_eligible_compression_rate" : 0.6294277929155314,
+      "curator_eligible_oracle_upper_rate" : 0.6130790190735695,
+      "curator_eligible_oracle_efficiency" : 1.0266666666666666,
+      "information_retention_rate" : 1.0,
+      "g1_answer_accuracy" : 0.8333333333333334,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 0.8333333333333334,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.03082191780821919,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : true,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : true
+    } ],
+    "strict_30_percent_compression_target" : "Always reported independently as compression_30_percent_target_met; relaxed screening permits up to 10% corpus growth.",
+    "gate_profile" : "relaxed"
+  },
+  "model_calls" : {
+    "completion_tokens_reported" : 370544,
+    "calls" : 1483,
+    "calls_with_token_usage" : 1483,
+    "total_tokens_reported" : 1236785,
+    "prompt_tokens_reported" : 866241,
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 640,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p50_ms" : 2405,
+          "p95_ms" : 5871,
+          "count" : 640,
+          "p99_ms" : 7342,
+          "mean_ms" : 2860.228125
+        },
+        "prompt_tokens_reported" : 279298,
+        "completion_tokens_reported" : 148215,
+        "total_tokens_reported" : 427513,
+        "calls_with_token_usage" : 640
+      },
+      "curator" : {
+        "calls" : 75,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p50_ms" : 15753,
+          "p95_ms" : 23834,
+          "count" : 75,
+          "p99_ms" : 32568,
+          "mean_ms" : 15172.173333333334
+        },
+        "prompt_tokens_reported" : 280534,
+        "completion_tokens_reported" : 179824,
+        "total_tokens_reported" : 460358,
+        "calls_with_token_usage" : 75
+      },
+      "answer" : {
+        "calls" : 576,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p50_ms" : 1320,
+          "p95_ms" : 5823,
+          "count" : 576,
+          "p99_ms" : 8918,
+          "mean_ms" : 1988.7309027777778
+        },
+        "prompt_tokens_reported" : 218174,
+        "completion_tokens_reported" : 17820,
+        "total_tokens_reported" : 235994,
+        "calls_with_token_usage" : 576
+      },
+      "judge" : {
+        "calls" : 192,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p50_ms" : 1779,
+          "p95_ms" : 5179,
+          "count" : 192,
+          "p99_ms" : 10768,
+          "mean_ms" : 2484.4635416666665
+        },
+        "prompt_tokens_reported" : 88235,
+        "completion_tokens_reported" : 24685,
+        "total_tokens_reported" : 112920,
+        "calls_with_token_usage" : 192
+      }
+    }
+  },
+  "system_performance" : {
+    "experiment_wall_ms" : 3559347,
+    "timeline_count" : 16,
+    "baseline_ingestion_per_timeline_ms" : {
+      "p50_ms" : 114915,
+      "p95_ms" : 136437,
+      "count" : 16,
+      "p99_ms" : 136437,
+      "mean_ms" : 117746.875
+    },
+    "curator_ingestion_per_timeline_ms" : {
+      "p50_ms" : 97676,
+      "p95_ms" : 160099,
+      "count" : 16,
+      "p99_ms" : 160099,
+      "mean_ms" : 107487.0
+    },
+    "retrieval_and_answer_per_timeline_ms" : {
+      "p50_ms" : 90450,
+      "p95_ms" : 218373,
+      "count" : 16,
+      "p99_ms" : 218373,
+      "mean_ms" : 103469.5625
+    },
+    "query_embedding_latency_ms" : {
+      "p50_ms" : 45,
+      "p95_ms" : 62,
+      "count" : 192,
+      "p99_ms" : 64,
+      "mean_ms" : 46.744791666666664
+    },
+    "g1_production_retrieval_search_latency_ms" : {
+      "p50_ms" : 2,
+      "p95_ms" : 4,
+      "count" : 192,
+      "p99_ms" : 37,
+      "mean_ms" : 3.15625
+    },
+    "g2a_append_retrieval_search_latency_ms" : {
+      "p50_ms" : 3,
+      "p95_ms" : 4,
+      "count" : 192,
+      "p99_ms" : 20,
+      "mean_ms" : 3.0364583333333335
+    },
+    "g2c_compaction_retrieval_search_latency_ms" : {
+      "p50_ms" : 44,
+      "p95_ms" : 58,
+      "count" : 192,
+      "p99_ms" : 67,
+      "mean_ms" : 44.692708333333336
+    },
+    "g1_indexed_corpus" : {
+      "unit_count" : 1076,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 252,
+        "knowledge_graph_relation" : 294,
+        "ordinary_long_term_memory" : 530
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 3685,
+        "knowledge_graph_relation" : 2684,
+        "ordinary_long_term_memory" : 5781
+      },
+      "estimated_tokens" : 12150
+    },
+    "g2a_indexed_corpus" : {
+      "unit_count" : 1456,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 364,
+        "knowledge_graph_entity" : 252,
+        "knowledge_graph_relation" : 294,
+        "ordinary_long_term_memory" : 530,
+        "working_memory" : 16
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 2933,
+        "knowledge_graph_entity" : 3685,
+        "knowledge_graph_relation" : 2684,
+        "ordinary_long_term_memory" : 5781,
+        "working_memory" : 356
+      },
+      "estimated_tokens" : 15439
+    },
+    "g2c_indexed_corpus" : {
+      "unit_count" : 801,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 194,
+        "curated_knowledge_graph_entity" : 252,
+        "curated_knowledge_graph_relation" : 294,
+        "curated_residual_memory" : 31,
+        "ordinary_long_term_memory" : 30
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 1658,
+        "curated_knowledge_graph_entity" : 3685,
+        "curated_knowledge_graph_relation" : 2684,
+        "curated_residual_memory" : 307,
+        "ordinary_long_term_memory" : 355
+      },
+      "estimated_tokens" : 8689
+    },
+    "g1_sqlite_footprint_bytes" : {
+      "main_db_bytes" : 7991296,
+      "total_observed_bytes" : 9886336,
+      "wal_bytes" : 1862272,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars."
+    },
+    "g2_sqlite_footprint_bytes" : {
+      "main_db_bytes" : 25124864,
+      "total_observed_bytes" : 28078744,
+      "wal_bytes" : 2921112,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars."
+    },
+    "llm_calls_by_stage" : {
+      "completion_tokens_reported" : 370544,
+      "calls" : 1483,
+      "calls_with_token_usage" : 1483,
+      "total_tokens_reported" : 1236785,
+      "prompt_tokens_reported" : 866241,
+      "by_stage" : {
+        "baseline_memory" : {
+          "calls" : 640,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p50_ms" : 2405,
+            "p95_ms" : 5871,
+            "count" : 640,
+            "p99_ms" : 7342,
+            "mean_ms" : 2860.228125
+          },
+          "prompt_tokens_reported" : 279298,
+          "completion_tokens_reported" : 148215,
+          "total_tokens_reported" : 427513,
+          "calls_with_token_usage" : 640
+        },
+        "curator" : {
+          "calls" : 75,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p50_ms" : 15753,
+            "p95_ms" : 23834,
+            "count" : 75,
+            "p99_ms" : 32568,
+            "mean_ms" : 15172.173333333334
+          },
+          "prompt_tokens_reported" : 280534,
+          "completion_tokens_reported" : 179824,
+          "total_tokens_reported" : 460358,
+          "calls_with_token_usage" : 75
+        },
+        "answer" : {
+          "calls" : 576,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p50_ms" : 1320,
+            "p95_ms" : 5823,
+            "count" : 576,
+            "p99_ms" : 8918,
+            "mean_ms" : 1988.7309027777778
+          },
+          "prompt_tokens_reported" : 218174,
+          "completion_tokens_reported" : 17820,
+          "total_tokens_reported" : 235994,
+          "calls_with_token_usage" : 576
+        },
+        "judge" : {
+          "calls" : 192,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p50_ms" : 1779,
+            "p95_ms" : 5179,
+            "count" : 192,
+            "p99_ms" : 10768,
+            "mean_ms" : 2484.4635416666665
+          },
+          "prompt_tokens_reported" : 88235,
+          "completion_tokens_reported" : 24685,
+          "total_tokens_reported" : 112920,
+          "calls_with_token_usage" : 192
+        }
+      }
+    },
+    "baseline_turns_per_second_sum_timeline_time" : 0.339711775790228
+  },
+  "failures" : {
+    "by_reason" : { },
+    "count" : 0
+  },
+  "acceptance_pass" : true,
+  "acceptance_gate_details" : {
+    "profile" : "relaxed",
+    "integrity_pass" : true,
+    "semantic_unique_recall_minimum" : 0.5,
+    "semantic_unique_fact_quality_pass" : true,
+    "runtime_failures_empty" : true,
+    "provenance_pass" : true,
+    "semantic_unique_precision_minimum" : 0.4
+  },
+  "evaluation_notes" : [ "G1 is the actual per-turn KnowledgeGraphService plus long_term_memory baseline. G2A and G2C reuse the same accepted real MemoryCuratorService output so the ablation isolates append-only versus compacted serving behavior.", "G1, G2A, and G2C all retain the same traceable KG entities and relations for retrieval; the G2C KG sidecar is unchanged by compaction and counted in its serving tokens.", "G1 and G2A use the production SqliteMemoryService hybrid retriever. G2C merges relevant unmapped raw candidates with production corpus ranking, with an explicit threshold and semantic de-duplication. A frozen shared text ranker provides corpus-only retrieval diagnostics.", "Retrieval reports Recall@5 and Recall@10; Recall@1 and Recall@3 are not reported.", "Memory-unit token budgets use a documented deterministic Unicode estimate; answer prompt token counts use model-reported usage when returned.", "All three answer arms receive their own production-retriever context. Frozen exact and relaxed anchor/core-fact rules score answers; one blinded LLM-judge call per question independently scores all three answers.", "The relaxed gate profile is a screening pass only. The 30% full-corpus compression target is reported independently and remains an explicit target metric.", "The proposal's 40-turn timeline and production 15-turn trigger yield three curator checkpoints; retention at 5 is not estimable in this run.", "Formal paired effects compare G2C with G1. G2A is reported as an append-only ablation." ]
+}

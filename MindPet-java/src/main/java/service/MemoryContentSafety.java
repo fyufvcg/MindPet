@@ -16,17 +16,21 @@ public final class MemoryContentSafety {
     private static final Pattern LONG_CARD_NUMBER = Pattern.compile("(?<!\\d)(?:\\d[ -]?){15,18}\\d(?!\\d)");
     private static final Pattern NEGATION_BEFORE_VALUE = Pattern.compile(
         "(?iu)(?:并非|没有|从未|不曾|不再|不是|不|没|未|无|\\b(?:not|never|no longer|do not|don't|does not|doesn't|did not|didn't|is not|isn't|was not|wasn't|cannot|can't)\\b)"
-            + "[^，。！？；,.!?;]{0,18}$"
+            + "[^，。！？；,.!?;]*$"
     );
     private static final Pattern NEGATION_AFTER_VALUE = Pattern.compile(
-        "(?iu)^[^，。！？；,.!?;]{0,18}(?:并非|不是|不再是|不再|不是|\\b(?:is not|isn't|was not|wasn't|no longer)\\b)"
+        "(?iu)^[^，。！？；,.!?;]*(?:并非|不是|不再是|不再|不是|\\b(?:is not|isn't|was not|wasn't|no longer)\\b)"
     );
     private static final Pattern UNCERTAINTY_BEFORE_VALUE = Pattern.compile(
         "(?iu)(?:可能|也许|或许|不一定|不确定|好像|似乎|大概|未必|\\b(?:maybe|perhaps|probably|might|may|unsure|uncertain)\\b)"
-            + "[^，。！？；,.!?;]{0,18}$"
+            + "[^，。！？；,.!?;]*$"
     );
     private static final Pattern UNCERTAINTY_AFTER_VALUE = Pattern.compile(
-        "(?iu)^[^，。！？；,.!?;]{0,18}(?:可能|也许|或许|不一定|不确定|好像|似乎|大概|未必|\\b(?:maybe|perhaps|probably|might|may|unsure|uncertain)\\b)"
+        "(?iu)^[^，。！？；,.!?;]*(?:可能|也许|或许|不一定|不确定|好像|似乎|大概|未必|\\b(?:maybe|perhaps|probably|might|may|unsure|uncertain)\\b)"
+    );
+    private static final Pattern AFFIRMATIVE_UNCHANGED_PREFIX = Pattern.compile(
+        "(?iu)(?:没有(?:发生)?变化|没有改变|没有变|没变化|没变|未发生变化|未改变|未变化|保持不变|unchanged|(?:remains?|stays?)\\s+the\\s+same)"
+            + "(?:了)?\\s*[:：]?\\s*$"
     );
 
     private MemoryContentSafety() {}
@@ -57,6 +61,10 @@ public final class MemoryContentSafety {
      * polarity negative or explicitly uncertain. Negative facts remain non-projectable.
      */
     public static boolean polarityConsistent(String evidence, String value, String assertion) {
+        return polarityConsistent(evidence, value, assertion, "");
+    }
+
+    public static boolean polarityConsistent(String evidence, String value, String assertion, String scope) {
         String text = normalizeEvidence(evidence);
         String normalizedValue = normalizeEvidence(value);
         if (text.isBlank() || normalizedValue.isBlank()) return false;
@@ -64,23 +72,59 @@ public final class MemoryContentSafety {
         boolean negativeAssertion = "negated".equals(normalizedAssertion);
         boolean uncertainAssertion = "possible".equals(normalizedAssertion)
             || "uncertain".equals(normalizedAssertion);
+        boolean found = false;
 
         int from = 0;
         while ((from = text.indexOf(normalizedValue, from)) >= 0) {
+            found = true;
             int end = from + normalizedValue.length();
             String before = clauseBefore(text, from);
             String after = clauseAfter(text, end);
-            if (!negativeAssertion && !uncertainAssertion && (NEGATION_BEFORE_VALUE.matcher(before).find()
-                    || NEGATION_AFTER_VALUE.matcher(after).find())) return false;
-            if (!uncertainAssertion && (UNCERTAINTY_BEFORE_VALUE.matcher(before).find()
-                    || UNCERTAINTY_AFTER_VALUE.matcher(after).find())) return false;
+            // These negate a relation between concepts, not the value's existence.
+            after = after.replaceAll("(?:不是|并非)(?:同一概念|同一个概念|一回事|相同概念)", "关系区分");
+            boolean negationDetected = (NEGATION_BEFORE_VALUE.matcher(before).find()
+                    && !AFFIRMATIVE_UNCHANGED_PREFIX.matcher(before).find())
+                || NEGATION_AFTER_VALUE.matcher(after).find();
+            negationDetected |= before.contains("取消") || before.contains("放弃")
+                || after.contains("取消") || after.contains("放弃") || after.contains("不参加")
+                || after.contains("不报名");
+            boolean uncertaintyDetected = UNCERTAINTY_BEFORE_VALUE.matcher(before).find()
+                || UNCERTAINTY_AFTER_VALUE.matcher(after).find() || before.contains("还没决定")
+                || after.contains("还没决定") || after.contains("考虑的选项");
+            uncertaintyDetected |= before.contains("备选") || after.contains("备选")
+                || before.contains("尚未决定") || after.contains("尚未决定")
+                || before.contains("未决定") || after.contains("未决定")
+                || before.contains("迁居选项") || after.contains("迁居选项");
+            boolean currentStateNegated = "historical".equalsIgnoreCase(scope)
+                && hasHistoricalQualifier(text) && hasCurrentQualifier(after);
+            if (!negativeAssertion && !uncertainAssertion && negationDetected && !currentStateNegated) return false;
+            if (negativeAssertion && !negationDetected) return false;
+            if (!uncertainAssertion && uncertaintyDetected) return false;
+            if (uncertainAssertion && !uncertaintyDetected) return false;
+            if (uncertainAssertion && negationDetected && !uncertaintyDetected) return false;
             from = end;
         }
-        return true;
+        return found;
+    }
+
+    private static boolean hasHistoricalQualifier(String text) {
+        String normalized = text.toLowerCase(Locale.ROOT);
+        return normalized.contains("过去") || normalized.contains("以前") || normalized.contains("曾经")
+            || normalized.contains("当时") || normalized.contains("那时") || normalized.contains("曾任") || normalized.contains("做过")
+            || normalized.contains("搬家前") || normalized.contains("搬迁前") || normalized.contains("旧址")
+            || normalized.contains("historical") || normalized.contains("formerly")
+            || normalized.contains("previously") || normalized.contains("past address");
+    }
+
+    private static boolean hasCurrentQualifier(String text) {
+        String normalized = text.toLowerCase(Locale.ROOT);
+        return normalized.contains("现在") || normalized.contains("目前") || normalized.contains("当前")
+            || normalized.contains("现居") || normalized.contains("现住") || normalized.contains("current")
+            || normalized.contains("currently") || normalized.contains("lives in");
     }
 
     private static String clauseBefore(String text, int valueStart) {
-        int start = Math.max(0, valueStart - 24);
+        int start = 0;
         for (int i = start; i < valueStart; i++) {
             if (isClauseBoundary(text.charAt(i))) start = i + 1;
         }
@@ -91,7 +135,7 @@ public final class MemoryContentSafety {
     }
 
     private static String clauseAfter(String text, int valueEnd) {
-        int end = Math.min(text.length(), valueEnd + 24);
+        int end = text.length();
         for (int i = valueEnd; i < end; i++) {
             if (isClauseBoundary(text.charAt(i))) {
                 end = i;

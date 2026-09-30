@@ -43,7 +43,7 @@ public class ProfileProjectionService {
         if (userId == null || userId.isBlank() || !MemoryFactOntology.isProfileSlot(predicate)) return false;
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT mf.predicate,mf.id,mf.value_text,mf.confidence,mf.valid_from,mf.valid_to,mf.status,mf.scope,mf.assertion,"
-                + "mf.time_status,mf.raw_time_expression,mf.event_timezone,mf.observed_at,COALESCE(ct.sequence,0) source_sequence "
+                + "mf.time_status,mf.raw_time_expression,mf.event_timezone,COALESCE(mf.last_observed_at,mf.observed_at) observed_at,COALESCE(ct.sequence,0) source_sequence "
                 + "FROM memory_fact mf LEFT JOIN curator_turns ct ON ct.user_id=mf.user_id AND ct.turn_id=mf.source_turn_id "
                 + "WHERE mf.user_id=? AND mf.predicate=? AND mf.status='active'",
             userId, predicate);

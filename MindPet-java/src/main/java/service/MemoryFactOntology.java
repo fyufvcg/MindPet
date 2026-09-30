@@ -75,8 +75,12 @@ public final class MemoryFactOntology {
         out.append("assertion 只能是：").append(String.join(", ", ASSERTIONS.stream().sorted().toList())).append("。\n")
             .append("planned scope 只能搭配 planned、possible、uncertain 或 negated assertion；")
             .append("planned assertion 只能用于 planned scope。\n")
+            .append("若用户明确表达计划、打算或已安排，使用 planned assertion；若只是可能、尚未决定或备选去向，使用 possible assertion。\n")
             .append("画像仅允许 home_location + stable，以及 current_location、occupation_current、")
             .append("relationship_status_current、current_project + current；计划和历史事实不得覆盖当前画像。\n")
+            .append("城市必须按语义选择：长期的家或老家用 home_location + stable；当前居住地、搬迁前住址和未来拟搬城市都用 current_location，分别搭配 current、historical、planned scope。\n")
+            .append("不要把临时居住城市记成 home_location；不要把搬家目的地写成 plan predicate。current_location 的 value 只写城市名，不要写“可能搬去某地”等整句。\n")
+            .append("过去职业用 occupation_current + historical；当前职业用 occupation_current + current，value 只写职位名。\n")
             .append("不要发明 predicate。若语义不能准确映射到本体，返回空 facts。\n");
         return out.toString();
     }

@@ -1,0 +1,30 @@
+{
+  "seed": 20260929,
+  "profile": "normal",
+  "sha256": "bcd50e44e77ccc44a52438e03a41928f49294823bc8331db3a0411a1c0c968fb",
+  "oracle": {
+    "raw_input_tokens": 594,
+    "minimum_input_tokens": 566,
+    "raw_input_upper_rate": 0.047138047138047146,
+    "serving_upper_rate": null,
+    "durable_input_upper_rate": 0.07253886010362698,
+    "note": "Input upper estimate only; runner recomputes serving upper after actual G1 extraction, including unchanged KG."
+  },
+  "statistics": {
+    "literal_duplicate_rate": 0.0,
+    "noise_turns": 26,
+    "protected_residual_turns": 5,
+    "mean_message_tokens": 14.85,
+    "fact_source_counts": {
+      "timeline-901-fact-home": 1,
+      "timeline-901-fact-old-city": 1,
+      "timeline-901-fact-new-city": 3,
+      "timeline-901-fact-job": 6,
+      "timeline-901-fact-preference": 1,
+      "timeline-901-fact-possible": 1,
+      "timeline-901-fact-planned": 1,
+      "timeline-901-fact-cancelled": 1
+    }
+  },
+  "annotated_durable_turns": 14
+}

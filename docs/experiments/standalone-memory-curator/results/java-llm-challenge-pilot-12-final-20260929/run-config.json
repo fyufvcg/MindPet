@@ -1,0 +1,86 @@
+{
+  "provider" : "real_llm_only",
+  "dataset" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\data\\memory-curator-value-300.jsonl",
+  "dataset_sha256" : "074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f",
+  "dataset_version" : "memory-curator-value-v1",
+  "split" : "locked_test",
+  "language_challenge_only" : true,
+  "sample_ids" : [ "timeline-011", "timeline-036", "timeline-061", "timeline-086", "timeline-111", "timeline-136", "timeline-161", "timeline-186", "timeline-211", "timeline-236", "timeline-261", "timeline-286" ],
+  "timeline_count" : 12,
+  "turn_count" : 480,
+  "query_count" : 120,
+  "answer_query_limit" : 120,
+  "concurrency" : 4,
+  "model" : "deepseek-flash",
+  "llm_configuration_source" : "PowerShell experiment wrapper; apiKey=local experiment-only config; baseUrl=application dynamic config; model=application dynamic config",
+  "api_key_recorded" : false,
+  "application_dynamic_llm_config_read" : false,
+  "application_database_access" : false,
+  "experiment_database" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-challenge-pilot-12-final-20260929\\memory-curator-value-experiment.sqlite",
+  "output_directory" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-challenge-pilot-12-final-20260929",
+  "embedding_provider" : "Ollama/bge-m3",
+  "embedding_model" : "bge-m3",
+  "embedding_dimension" : 1024,
+  "vector_search" : "production SqliteMemoryService hybrid retriever; Java exact-cosine fallback when sqlite-vec is unavailable",
+  "memory_unit_token_estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1, whitespace=0",
+  "as_of" : "2026-09-29 23:59:00",
+  "model_calls_at_finish" : {
+    "total_tokens_reported" : 901478,
+    "prompt_tokens_reported" : 356287,
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 480,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 8854,
+          "mean_ms" : 2564.3125,
+          "p50_ms" : 2143,
+          "p95_ms" : 5445,
+          "count" : 480
+        },
+        "prompt_tokens_reported" : 226002,
+        "completion_tokens_reported" : 260655,
+        "total_tokens_reported" : 486657,
+        "calls_with_token_usage" : 480
+      },
+      "curator" : {
+        "calls" : 42,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 55558,
+          "mean_ms" : 26322.571428571428,
+          "p50_ms" : 21078,
+          "p95_ms" : 50935,
+          "count" : 42
+        },
+        "prompt_tokens_reported" : 67613,
+        "completion_tokens_reported" : 259400,
+        "total_tokens_reported" : 327013,
+        "calls_with_token_usage" : 42
+      },
+      "answer" : {
+        "calls" : 240,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 3492,
+          "mean_ms" : 995.2166666666667,
+          "p50_ms" : 885,
+          "p95_ms" : 1474,
+          "count" : 240
+        },
+        "prompt_tokens_reported" : 62672,
+        "completion_tokens_reported" : 25136,
+        "total_tokens_reported" : 87808,
+        "calls_with_token_usage" : 240
+      }
+    },
+    "completion_tokens_reported" : 545191,
+    "calls" : 762,
+    "calls_with_token_usage" : 762
+  },
+  "estimated_call_plan" : {
+    "baseline_extraction" : 480,
+    "answer_calls_upper_bound" : 240,
+    "curator_checkpoints_upper_bound" : 36
+  }
+}

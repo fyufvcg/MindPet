@@ -1,0 +1,1779 @@
+# Memory Curator LLM experiment
+
+Dataset: `normal.jsonl` (SHA-256 `a87ef16b7fdace3fbac85ca2b3c10969c1941c9de7f709309b2a80fc027b202b`)
+
+This report is generated from real calls to the production Java KnowledgeGraphService, MemoryCuratorService, MemoryCorpusCompactionService, and SqliteMemoryService. Fixture output is not used as experiment data. Primary effects compare compacted G2C with G1; append-only G2A is an ablation built from the same accepted curator output.
+
+Sample: **1 timelines, 40 memory-input turns, 12 retrieval questions**.
+
+Acceptance profile: **relaxed screening** — **NOT PASSED**. The 30% full-corpus compression target is reported separately and is not implied by a relaxed screening pass. The sample is a screening evaluation, not the complete locked-test cohort.
+
+## Failed answer cases
+
+No failed scored answers. Unmeasured answers remain unmeasured.
+
+```json
+{
+  "dataset_version" : [ "memory-curator-ablation-v4" ],
+  "selected_timelines" : 1,
+  "selected_turns" : 40,
+  "selected_queries" : 12,
+  "curator_repair_calls" : 4,
+  "answer_queries" : 12,
+  "answer_calls_expected" : 36,
+  "fact_quality" : {
+    "true_positive" : 4,
+    "false_positive" : 24,
+    "false_negative" : 24,
+    "precision" : 0.14285714285714285,
+    "recall" : 0.14285714285714285,
+    "f1" : 0.14285714285714285,
+    "stored_fact_rows" : 28,
+    "exact_match_duplicate_rows" : 0,
+    "exact_match_duplicate_rate" : 0.0,
+    "semantic_duplicate_rows" : 0,
+    "semantic_duplicate_rate" : 0.0,
+    "distinct_state_interval_rows" : 0,
+    "redundant_semantic_rows" : 0,
+    "redundant_semantic_rate" : 0.0,
+    "semantic_unique_fact_quality" : {
+      "false_negative" : 24,
+      "semantic_duplicate_rate" : 0.0,
+      "precision" : 0.14285714285714285,
+      "matching_policy" : "predicate/value/scope/assertion; temporal fields are evaluated separately",
+      "semantic_duplicate_rows" : 0,
+      "f1" : 0.14285714285714285,
+      "recall" : 0.14285714285714285,
+      "false_positive" : 24,
+      "true_positive" : 4
+    },
+    "strict_row_matching_policy" : "predicate/value/scope/assertion plus expected time status and resolved start date; non-overlapping state intervals are valid repeated rows; recall uses unique matched gold; unmatched rows are not necessarily hallucinations",
+    "semantic_repetition_policy" : "semantic_duplicate_rows counts repeated meanings including legitimate state returns; distinct_state_interval_rows and redundant_semantic_rows separate them; intervals lacking provable non-overlap remain redundant",
+    "by_timeline" : [ {
+      "primary_scenario" : "memory_ablation",
+      "timeline_id" : "timeline-001",
+      "expected" : 28,
+      "stored" : 28,
+      "true_positive" : 4,
+      "duplicate_rows" : 0,
+      "semantic_true_positive" : 4,
+      "semantic_duplicate_rows" : 0,
+      "distinct_state_interval_rows" : 0,
+      "redundant_semantic_rows" : 0
+    } ]
+  },
+  "g1_kg_fact_quality" : {
+    "precision" : 0.06060606060606061,
+    "recall" : 0.07142857142857142,
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-001",
+      "unmatched_kg_relations" : 31,
+      "duplicate_relations" : 0,
+      "matched_gold" : 2
+    } ],
+    "method" : "Conservative KG relation projection by visible text; unsupported relations remain unmatched. No source-turn label inheritance."
+  },
+  "profile_quality" : {
+    "precision" : 1.0,
+    "recall" : 0.25,
+    "expected_entries_correct" : 1,
+    "fully_correct_timelines" : 0,
+    "by_timeline" : [ {
+      "expected" : {
+        "home_location" : "苏州",
+        "current_location" : "广州",
+        "occupation_current" : "产品经理",
+        "current_project" : "校园服务平台"
+      },
+      "correct" : 1,
+      "actual" : {
+        "current_project" : "校园服务平台"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-001"
+    } ],
+    "expected_entries" : 4,
+    "written_entries" : 1
+  },
+  "retention" : {
+    "retention_at_1" : 0.21428571428571427,
+    "retention_at_3" : 0.21428571428571427,
+    "retention_at_5" : null,
+    "eligible_facts_at_1" : 14,
+    "eligible_facts_at_3" : 14,
+    "reason_at_5" : "40 turns with production 15-turn triggers produce at most three commits per timeline"
+  },
+  "compression" : {
+    "actual_g1_retrieval_corpus" : {
+      "estimated_tokens" : 1170,
+      "unit_count" : 95,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 31,
+        "knowledge_graph_relation" : 34,
+        "ordinary_long_term_memory" : 30
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 519,
+        "knowledge_graph_relation" : 300,
+        "ordinary_long_term_memory" : 351
+      }
+    },
+    "actual_g2a_append_retrieval_corpus" : {
+      "estimated_tokens" : 1528,
+      "unit_count" : 131,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 35,
+        "knowledge_graph_entity" : 31,
+        "knowledge_graph_relation" : 34,
+        "ordinary_long_term_memory" : 30,
+        "working_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 334,
+        "knowledge_graph_entity" : 519,
+        "knowledge_graph_relation" : 300,
+        "ordinary_long_term_memory" : 351,
+        "working_memory" : 24
+      }
+    },
+    "actual_g2c_compacted_retrieval_corpus" : {
+      "estimated_tokens" : 1137,
+      "unit_count" : 96,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 28,
+        "curated_knowledge_graph_entity" : 31,
+        "curated_knowledge_graph_relation" : 34,
+        "curated_residual_memory" : 2,
+        "ordinary_long_term_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 288,
+        "curated_knowledge_graph_entity" : 519,
+        "curated_knowledge_graph_relation" : 300,
+        "curated_residual_memory" : 20,
+        "ordinary_long_term_memory" : 10
+      }
+    },
+    "actual_g2a_token_delta_vs_g1" : 0.305982905982906,
+    "actual_g2c_token_delta_vs_g1" : -0.028205128205128206,
+    "actual_g2c_system_compression_rate" : 0.028205128205128216,
+    "g2c_compression_vs_g2a" : 0.2558900523560209,
+    "common_kg_tokens" : 819,
+    "memory_layer_compression_vs_g2a" : 0.5514809590973202,
+    "memory_layer_compression_vs_g1" : 0.09401709401709402,
+    "actual_g2c_token_delta_vs_g2a" : -0.25589005235602097,
+    "g2c_compaction_action_counts" : {
+      "KEEP" : 30,
+      "MERGE" : 38,
+      "RESIDUAL" : 2,
+      "RESOLVE" : 39
+    },
+    "g2c_logged_net_token_reduction" : 13,
+    "raw_turn_text_tokens_estimated" : 456,
+    "curated_fact_projection_tokens_estimated" : 432,
+    "curated_fact_projection_compression_estimate" : 0.052631578947368474,
+    "raw_turn_text_characters" : 641,
+    "curated_fact_projection_characters" : 1164,
+    "curator_eligible_compression_rate" : 0.09401709401709402,
+    "information_retention_rate" : 0.4583333333333333,
+    "projection_note" : "Serving corpus is the union of default, historical, and planned searchable units. KG is identical across arms. Physical storage and archived evidence are reported separately.",
+    "estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1"
+  },
+  "temporal" : {
+    "exact_time_expected" : 0,
+    "exact_time_correct" : 0,
+    "exact_time_accuracy" : null,
+    "ambiguous_time_expected" : 0,
+    "ambiguous_time_correct" : 0,
+    "ambiguous_time_accuracy" : null
+  },
+  "source_evidence" : {
+    "stored_facts" : 28,
+    "valid_source_turns" : 28,
+    "source_completeness" : 1.0,
+    "verbatim_evidence" : 28,
+    "verbatim_evidence_rate" : 1.0,
+    "active_retrieval_units" : 96,
+    "retrieval_unit_source_traceability" : 96,
+    "retrieval_unit_source_traceability_rate" : 1.0
+  },
+  "integrity" : {
+    "pass" : true,
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-001",
+      "missing_source_retirements" : 0,
+      "insufficient_coverage_retirements" : 0,
+      "active_state_conflict_slots" : 0,
+      "future_source_failures" : 0,
+      "g2c_duplicate_top10_occupancy" : 9,
+      "g2c_mean_duplicate_top10_occupancy" : 0.75,
+      "duplicate_top10_pass" : true,
+      "pass" : true
+    } ]
+  },
+  "physical_storage_by_table" : {
+    "G2" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 15442
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 18330
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 795
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 377
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 8361
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1049
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1919
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1978
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 838
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 9043
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 11077
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 9269
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 92
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3189
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2739
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1125
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1119
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2526
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6922
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 4448
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 38
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1754
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 1048576,
+        "payload_bytes" : 966145
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 210
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 159744,
+        "payload_bytes" : 137445
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 21646
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 5226
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 73728,
+        "payload_bytes" : 62418
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 39
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 16384,
+        "payload_bytes" : 7896
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 57344,
+        "payload_bytes" : 45409
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 573440,
+        "payload_bytes" : 534498
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 13032
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 415
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1033
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1056
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 18
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1599
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 62
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2277
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2377
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 36864,
+        "payload_bytes" : 26809
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 18
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2739
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 18608
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 4962
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2519
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 209
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 34
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 95
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 7275
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 95
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    },
+    "G1" : {
+      "allocated_pages" : [ {
+        "name" : "conversation_memory",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_accepted_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_proposal_item",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_state",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "curator_turns",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "emotion_history",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_conversation_memory_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_proposal_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_pending",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_completed",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_curator_turns_user_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_emotion_history_recent",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_kg_entity_user_importance",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1527
+      }, {
+        "name" : "idx_kg_evidence_user_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3275
+      }, {
+        "name" : "idx_kg_relation_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1903
+      }, {
+        "name" : "idx_kg_relation_user_target",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1903
+      }, {
+        "name" : "idx_llm_growth_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_ltm_user_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3704
+      }, {
+        "name" : "idx_ltm_user_importance",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 4559
+      }, {
+        "name" : "idx_ltm_user_searchable",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3799
+      }, {
+        "name" : "idx_memory_compaction_batch_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_compaction_log_user_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_idempotency",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_predicate_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_fact_user_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_event",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_gallery_user_session_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_source_turn",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_memory_retrieval_user_status",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_profile_current_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_artifacts_run",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_events_run_seq",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_rpa_runs_workflow_created",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "idx_session_messages_order",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1754
+      }, {
+        "name" : "idx_sessions_user_updated",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 199
+      }, {
+        "name" : "kg_entity",
+        "allocated_bytes" : 147456,
+        "payload_bytes" : 133075
+      }, {
+        "name" : "kg_evidence",
+        "allocated_bytes" : 24576,
+        "payload_bytes" : 18246
+      }, {
+        "name" : "kg_relation",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 6558
+      }, {
+        "name" : "kg_turn_ingest",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 5136
+      }, {
+        "name" : "llm_growth",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "local_cache",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "long_term_memory",
+        "allocated_bytes" : 442368,
+        "payload_bytes" : 406129
+      }, {
+        "name" : "memory_compaction_batch",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_blob",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_log",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_plan",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_compaction_snapshot",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_corpus_migration",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_fact",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_gallery",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_source",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "memory_retrieval_unit",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_artifacts",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_run_events",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "rpa_runs",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "schema_version",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 110
+      }, {
+        "name" : "session_messages",
+        "allocated_bytes" : 20480,
+        "payload_bytes" : 13032
+      }, {
+        "name" : "sessions",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 415
+      }, {
+        "name" : "sqlite_autoindex_curator_accepted_event_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_proposal_item_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_state_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_curator_turns_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1279
+      }, {
+        "name" : "sqlite_autoindex_kg_entity_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1280
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_1",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 7391
+      }, {
+        "name" : "sqlite_autoindex_kg_evidence_2",
+        "allocated_bytes" : 12288,
+        "payload_bytes" : 7391
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 1359
+      }, {
+        "name" : "sqlite_autoindex_kg_relation_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 3523
+      }, {
+        "name" : "sqlite_autoindex_kg_turn_ingest_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2759
+      }, {
+        "name" : "sqlite_autoindex_local_cache_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_batch_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_blob_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_plan_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_compaction_snapshot_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_corpus_migration_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_fact_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_gallery_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_source_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_memory_retrieval_unit_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_artifacts_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_run_events_2",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_rpa_runs_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_session_messages_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 2519
+      }, {
+        "name" : "sqlite_autoindex_sessions_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 209
+      }, {
+        "name" : "sqlite_autoindex_user_insight_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_autoindex_user_profile_current_1",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "sqlite_schema",
+        "allocated_bytes" : 28672,
+        "payload_bytes" : 19360
+      }, {
+        "name" : "sqlite_sequence",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 35
+      }, {
+        "name" : "uq_memory_retrieval_active_key",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_insight",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      }, {
+        "name" : "user_profile_current",
+        "allocated_bytes" : 4096,
+        "payload_bytes" : 0
+      } ],
+      "status" : "measured",
+      "note" : "Page allocation includes table/index overhead; whole database plus WAL/SHM is reported separately."
+    }
+  },
+  "sensitive_content" : {
+    "synthetic_sensitive_cases" : 0,
+    "fully_blocked" : 0,
+    "blocking_rate" : null,
+    "by_timeline" : [ ],
+    "scanned_tables" : [ "long_term_memory", "memory_fact", "user_profile_current", "user_insight", "llm_growth", "memory_retrieval_unit", "memory_retrieval_source", "kg_entity", "kg_relation", "kg_evidence" ]
+  },
+  "retrieval" : {
+    "query_count" : 12,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.65,
+        "recall_at_10" : 0.9,
+        "precision_at_5" : 0.11666666666666668,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.5991666666666667,
+        "ndcg_at_10" : 0.6276932307946457,
+        "recall_at_256_estimated_tokens" : 0.9,
+        "recall_at_512_estimated_tokens" : 0.9,
+        "recall_at_1024_estimated_tokens" : 0.9,
+        "mean_query_context_tokens" : 124.0,
+        "mean_duplicate_top10_occupancy" : 3.8333333333333335
+      },
+      "G2A" : {
+        "recall_at_5" : 0.8,
+        "recall_at_10" : 0.9,
+        "precision_at_5" : 0.15,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.6566666666666666,
+        "ndcg_at_10" : 0.6593404899877319,
+        "recall_at_256_estimated_tokens" : 0.9,
+        "recall_at_512_estimated_tokens" : 0.9,
+        "recall_at_1024_estimated_tokens" : 0.9,
+        "mean_query_context_tokens" : 119.83333333333333,
+        "mean_duplicate_top10_occupancy" : 3.4166666666666665
+      },
+      "G2C" : {
+        "recall_at_5" : 0.8,
+        "recall_at_10" : 0.85,
+        "precision_at_5" : 0.15,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.5833333333333333,
+        "ndcg_at_10" : 0.6437503349954187,
+        "recall_at_256_estimated_tokens" : 0.85,
+        "recall_at_512_estimated_tokens" : 0.85,
+        "recall_at_1024_estimated_tokens" : 0.85,
+        "mean_query_context_tokens" : 116.0,
+        "mean_duplicate_top10_occupancy" : 0.75
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.15000000000000002,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_10_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.15000000000000002,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.0,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.0,
+      "g2c_minus_g2a_recall_at_5" : 0.0,
+      "g2c_minus_g2a_recall_at_10" : -0.050000000000000044,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    }
+  },
+  "shared_ranker_retrieval" : {
+    "query_count" : 12,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.9,
+        "recall_at_10" : 0.9,
+        "precision_at_5" : 0.18333333333333335,
+        "precision_at_10" : 0.09166666666666667,
+        "mrr" : 0.8,
+        "ndcg_at_10" : 0.8139074822480964,
+        "recall_at_256_estimated_tokens" : 0.9,
+        "recall_at_512_estimated_tokens" : 0.9,
+        "recall_at_1024_estimated_tokens" : 0.9,
+        "mean_query_context_tokens" : 115.0,
+        "mean_duplicate_top10_occupancy" : 3.3333333333333335
+      },
+      "G2A" : {
+        "recall_at_5" : 0.95,
+        "recall_at_10" : 1.0,
+        "precision_at_5" : 0.18333333333333335,
+        "precision_at_10" : 0.10000000000000002,
+        "mrr" : 0.9,
+        "ndcg_at_10" : 0.9130929753571457,
+        "recall_at_256_estimated_tokens" : 1.0,
+        "recall_at_512_estimated_tokens" : 1.0,
+        "recall_at_1024_estimated_tokens" : 1.0,
+        "mean_query_context_tokens" : 108.08333333333333,
+        "mean_duplicate_top10_occupancy" : 2.8333333333333335
+      },
+      "G2C" : {
+        "recall_at_5" : 0.8,
+        "recall_at_10" : 0.85,
+        "precision_at_5" : 0.15,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.7333333333333333,
+        "ndcg_at_10" : 0.7508931853968297,
+        "recall_at_256_estimated_tokens" : 0.85,
+        "recall_at_512_estimated_tokens" : 0.85,
+        "recall_at_1024_estimated_tokens" : 0.85,
+        "mean_query_context_tokens" : 102.83333333333333,
+        "mean_duplicate_top10_occupancy" : 0.6666666666666666
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : -0.09999999999999998,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_10_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.04999999999999993,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.09999999999999998,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.09999999999999998,
+      "g2c_minus_g2a_recall_at_5" : -0.1499999999999999,
+      "g2c_minus_g2a_recall_at_10" : -0.15000000000000002,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    }
+  },
+  "production_retrieval" : {
+    "query_count" : 12,
+    "by_group" : {
+      "G1" : {
+        "recall_at_5" : 0.65,
+        "recall_at_10" : 0.9,
+        "precision_at_5" : 0.11666666666666668,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.5991666666666667,
+        "ndcg_at_10" : 0.6276932307946457,
+        "recall_at_256_estimated_tokens" : 0.9,
+        "recall_at_512_estimated_tokens" : 0.9,
+        "recall_at_1024_estimated_tokens" : 0.9,
+        "mean_query_context_tokens" : 124.0,
+        "mean_duplicate_top10_occupancy" : 3.8333333333333335
+      },
+      "G2A" : {
+        "recall_at_5" : 0.8,
+        "recall_at_10" : 0.9,
+        "precision_at_5" : 0.15,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.6566666666666666,
+        "ndcg_at_10" : 0.6593404899877319,
+        "recall_at_256_estimated_tokens" : 0.9,
+        "recall_at_512_estimated_tokens" : 0.9,
+        "recall_at_1024_estimated_tokens" : 0.9,
+        "mean_query_context_tokens" : 119.83333333333333,
+        "mean_duplicate_top10_occupancy" : 3.4166666666666665
+      },
+      "G2C" : {
+        "recall_at_5" : 0.8,
+        "recall_at_10" : 0.85,
+        "precision_at_5" : 0.15,
+        "precision_at_10" : 0.08333333333333333,
+        "mrr" : 0.5833333333333333,
+        "ndcg_at_10" : 0.6437503349954187,
+        "recall_at_256_estimated_tokens" : 0.85,
+        "recall_at_512_estimated_tokens" : 0.85,
+        "recall_at_1024_estimated_tokens" : 0.85,
+        "mean_query_context_tokens" : 116.0,
+        "mean_duplicate_top10_occupancy" : 0.75
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : 0.15000000000000002,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_10_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_10_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : -0.050000000000000044,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "lower" : null,
+        "upper" : null,
+        "resamples" : 0,
+        "cluster_count" : 1,
+        "reason" : "At least two independent timelines are required; light single-timeline runs are diagnostic."
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.15000000000000002,
+      "g2a_ablation_delta_recall_at_10_vs_g1" : 0.0,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.0,
+      "g2c_minus_g2a_recall_at_5" : 0.0,
+      "g2c_minus_g2a_recall_at_10" : -0.050000000000000044,
+      "primary_metrics" : [ "Delta Recall@5", "Delta Recall@10", "Delta recall at estimated 512 tokens" ]
+    }
+  },
+  "acceptance_profile" : "relaxed",
+  "end_to_end" : {
+    "by_query_type" : {
+      "current_state" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 3
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 3
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 3
+        }
+      },
+      "preference" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        }
+      },
+      "historical" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        }
+      },
+      "plan_vs_reality" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        }
+      },
+      "cancelled_or_completed" : {
+        "G1" : {
+          "judge_score" : 0.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2A" : {
+          "judge_score" : 0.0,
+          "core_score" : 1.0,
+          "total" : 1
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 1
+        }
+      },
+      "multi_fact" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        }
+      },
+      "unsupported_abstention" : {
+        "G1" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2A" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        },
+        "G2C" : {
+          "judge_score" : 1.0,
+          "core_score" : 1.0,
+          "total" : 2
+        }
+      }
+    },
+    "answers" : 36,
+    "all_paired_comparisons" : {
+      "G2A_minus_G1" : {
+        "delta_judge_score" : 0.0,
+        "judge_score_complete_pairs" : 12,
+        "delta_core_answer_score" : 0.0,
+        "core_answer_score_complete_pairs" : 12
+      },
+      "G2C_minus_G1" : {
+        "delta_judge_score" : 0.08333333333333333,
+        "judge_score_complete_pairs" : 12,
+        "delta_core_answer_score" : 0.0,
+        "core_answer_score_complete_pairs" : 12
+      },
+      "G2C_minus_G2A" : {
+        "delta_judge_score" : 0.08333333333333333,
+        "judge_score_complete_pairs" : 12,
+        "delta_core_answer_score" : 0.0,
+        "core_answer_score_complete_pairs" : 12
+      }
+    },
+    "paired" : {
+      "primary_comparison" : "G2C minus G1",
+      "g2c_minus_g1_accuracy" : 0.0,
+      "g1_only_approximate_correct" : 0,
+      "g2c_only_approximate_correct" : 0,
+      "g2c_minus_g1_approximate_accuracy" : 0.0,
+      "mcnemar_g1_only_correct" : 0,
+      "mcnemar_g2_only_correct" : 0,
+      "mcnemar_p_value_approx" : null,
+      "inference_status" : "unavailable_single_timeline_sample"
+    },
+    "by_group" : {
+      "G1" : {
+        "correct" : 12,
+        "total" : 12,
+        "accuracy" : 1.0,
+        "core_full_accuracy" : 1.0,
+        "mean_core_answer_score" : 1.0,
+        "judge_scored_answers" : 12,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.9166666666666666,
+        "judge_mean_score" : 0.9166666666666666,
+        "approximate_correct" : 12,
+        "approximate_accuracy" : 1.0,
+        "mean_core_fact_coverage_rate" : 1.0,
+        "abstention_correct" : 2,
+        "abstention_total" : 2,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 295,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9166666666666666,
+        "mean_prompt_tokens_reported" : 381.3333333333333,
+        "mean_latency_ms" : 3564
+      },
+      "G2A" : {
+        "correct" : 12,
+        "total" : 12,
+        "accuracy" : 1.0,
+        "core_full_accuracy" : 1.0,
+        "mean_core_answer_score" : 1.0,
+        "judge_scored_answers" : 12,
+        "judge_failures" : 0,
+        "judge_accuracy" : 0.9166666666666666,
+        "judge_mean_score" : 0.9166666666666666,
+        "approximate_correct" : 12,
+        "approximate_accuracy" : 1.0,
+        "mean_core_fact_coverage_rate" : 1.0,
+        "abstention_correct" : 2,
+        "abstention_total" : 2,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 292,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.9166666666666666,
+        "mean_prompt_tokens_reported" : 378.25,
+        "mean_latency_ms" : 2438
+      },
+      "G2C" : {
+        "correct" : 12,
+        "total" : 12,
+        "accuracy" : 1.0,
+        "core_full_accuracy" : 1.0,
+        "mean_core_answer_score" : 1.0,
+        "judge_scored_answers" : 12,
+        "judge_failures" : 0,
+        "judge_accuracy" : 1.0,
+        "judge_mean_score" : 1.0,
+        "approximate_correct" : 12,
+        "approximate_accuracy" : 1.0,
+        "mean_core_fact_coverage_rate" : 1.0,
+        "abstention_correct" : 2,
+        "abstention_total" : 2,
+        "abstention_accuracy" : 1.0,
+        "mean_context_token_estimate" : 293,
+        "state_confusion_rate" : 0.0,
+        "evidence_support_rate" : 0.8333333333333334,
+        "mean_prompt_tokens_reported" : 379.25,
+        "mean_latency_ms" : 2875
+      }
+    }
+  },
+  "answer_failure_cases" : [ ],
+  "compaction_acceptance" : {
+    "by_timeline" : [ {
+      "timeline_id" : "timeline-001",
+      "sample_profile" : "normal",
+      "system_compression_rate" : 0.028205128205128216,
+      "oracle_upper_rate" : 0.03931623931623929,
+      "oracle_efficiency" : 0.7173913043478268,
+      "curator_eligible_compression_rate" : 0.09401709401709402,
+      "curator_eligible_oracle_upper_rate" : 0.1310541310541311,
+      "curator_eligible_oracle_efficiency" : 0.7173913043478258,
+      "information_retention_rate" : 0.4583333333333333,
+      "g1_answer_accuracy" : 1.0,
+      "g2c_answer_accuracy" : 1.0,
+      "g1_approximate_answer_accuracy" : 1.0,
+      "g2c_approximate_answer_accuracy" : 1.0,
+      "compression_30_percent_target_met" : false,
+      "query_context_compression_rate" : 0.06451612903225812,
+      "compression_pass" : true,
+      "answer_pass" : true,
+      "information_retention_pass" : false,
+      "query_context_pass" : true,
+      "recall_pass" : true,
+      "duplicate_top10_pass" : true,
+      "status" : "measured",
+      "gate_profile" : "relaxed",
+      "performance_gates_pass" : false
+    } ],
+    "strict_30_percent_compression_target" : "Always reported independently as compression_30_percent_target_met; relaxed screening permits up to 10% corpus growth.",
+    "gate_profile" : "relaxed",
+    "oracle_method" : "Conservative feasible corpus estimate using covered clauses, preserving unmatched raw and identical KG; not an exact minimum-cover upper bound or deletion target."
+  },
+  "model_calls" : {
+    "total_tokens_reported" : 99359,
+    "prompt_tokens_reported" : 68868,
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 40,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p99_ms" : 12622,
+          "mean_ms" : 2875.85,
+          "p50_ms" : 2152,
+          "p95_ms" : 7562,
+          "count" : 40
+        },
+        "prompt_tokens_reported" : 17496,
+        "completion_tokens_reported" : 10330,
+        "total_tokens_reported" : 27826,
+        "calls_with_token_usage" : 40
+      },
+      "curator" : {
+        "calls" : 7,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p99_ms" : 20612,
+          "mean_ms" : 14926.0,
+          "p50_ms" : 16041,
+          "p95_ms" : 20612,
+          "count" : 7
+        },
+        "prompt_tokens_reported" : 32712,
+        "completion_tokens_reported" : 17918,
+        "total_tokens_reported" : 50630,
+        "calls_with_token_usage" : 7
+      },
+      "answer" : {
+        "calls" : 36,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p99_ms" : 10625,
+          "mean_ms" : 2959.6388888888887,
+          "p50_ms" : 1981,
+          "p95_ms" : 9183,
+          "count" : 36
+        },
+        "prompt_tokens_reported" : 13666,
+        "completion_tokens_reported" : 958,
+        "total_tokens_reported" : 14624,
+        "calls_with_token_usage" : 36
+      },
+      "judge" : {
+        "calls" : 12,
+        "failures" : 0,
+        "failure_rate" : 0.0,
+        "latency_ms" : {
+          "p99_ms" : 5288,
+          "mean_ms" : 1953.0,
+          "p50_ms" : 1521,
+          "p95_ms" : 5288,
+          "count" : 12
+        },
+        "prompt_tokens_reported" : 4994,
+        "completion_tokens_reported" : 1285,
+        "total_tokens_reported" : 6279,
+        "calls_with_token_usage" : 12
+      }
+    },
+    "completion_tokens_reported" : 30491,
+    "calls" : 95,
+    "calls_with_token_usage" : 95
+  },
+  "system_performance" : {
+    "experiment_wall_ms" : 418367,
+    "timeline_count" : 1,
+    "baseline_ingestion_per_timeline_ms" : {
+      "p99_ms" : 119090,
+      "mean_ms" : 119090.0,
+      "p50_ms" : 119090,
+      "p95_ms" : 119090,
+      "count" : 1
+    },
+    "curator_ingestion_per_timeline_ms" : {
+      "p99_ms" : 156244,
+      "mean_ms" : 156244.0,
+      "p50_ms" : 156244,
+      "p95_ms" : 156244,
+      "count" : 1
+    },
+    "retrieval_and_answer_per_timeline_ms" : {
+      "p99_ms" : 132139,
+      "mean_ms" : 132139.0,
+      "p50_ms" : 132139,
+      "p95_ms" : 132139,
+      "count" : 1
+    },
+    "query_embedding_latency_ms" : {
+      "p99_ms" : 68,
+      "mean_ms" : 51.0,
+      "p50_ms" : 48,
+      "p95_ms" : 68,
+      "count" : 12
+    },
+    "g1_production_retrieval_search_latency_ms" : {
+      "p99_ms" : 22,
+      "mean_ms" : 5.583333333333333,
+      "p50_ms" : 4,
+      "p95_ms" : 22,
+      "count" : 12
+    },
+    "g2a_append_retrieval_search_latency_ms" : {
+      "p99_ms" : 24,
+      "mean_ms" : 6.5,
+      "p50_ms" : 5,
+      "p95_ms" : 24,
+      "count" : 12
+    },
+    "g2c_compaction_retrieval_search_latency_ms" : {
+      "p99_ms" : 120,
+      "mean_ms" : 71.08333333333333,
+      "p50_ms" : 63,
+      "p95_ms" : 120,
+      "count" : 12
+    },
+    "g1_indexed_corpus" : {
+      "estimated_tokens" : 1170,
+      "unit_count" : 95,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 31,
+        "knowledge_graph_relation" : 34,
+        "ordinary_long_term_memory" : 30
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 519,
+        "knowledge_graph_relation" : 300,
+        "ordinary_long_term_memory" : 351
+      }
+    },
+    "g2a_indexed_corpus" : {
+      "estimated_tokens" : 1528,
+      "unit_count" : 131,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 35,
+        "knowledge_graph_entity" : 31,
+        "knowledge_graph_relation" : 34,
+        "ordinary_long_term_memory" : 30,
+        "working_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 334,
+        "knowledge_graph_entity" : 519,
+        "knowledge_graph_relation" : 300,
+        "ordinary_long_term_memory" : 351,
+        "working_memory" : 24
+      }
+    },
+    "g2c_indexed_corpus" : {
+      "estimated_tokens" : 1137,
+      "unit_count" : 96,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 28,
+        "curated_knowledge_graph_entity" : 31,
+        "curated_knowledge_graph_relation" : 34,
+        "curated_residual_memory" : 2,
+        "ordinary_long_term_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 288,
+        "curated_knowledge_graph_entity" : 519,
+        "curated_knowledge_graph_relation" : 300,
+        "curated_residual_memory" : 20,
+        "ordinary_long_term_memory" : 10
+      }
+    },
+    "g1_sqlite_footprint_bytes" : {
+      "total_observed_bytes" : 5213808,
+      "wal_bytes" : 4144752,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 1036288
+    },
+    "g2_sqlite_footprint_bytes" : {
+      "total_observed_bytes" : 6725136,
+      "wal_bytes" : 4128272,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 2564096
+    },
+    "llm_calls_by_stage" : {
+      "total_tokens_reported" : 99359,
+      "prompt_tokens_reported" : 68868,
+      "by_stage" : {
+        "baseline_memory" : {
+          "calls" : 40,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p99_ms" : 12622,
+            "mean_ms" : 2875.85,
+            "p50_ms" : 2152,
+            "p95_ms" : 7562,
+            "count" : 40
+          },
+          "prompt_tokens_reported" : 17496,
+          "completion_tokens_reported" : 10330,
+          "total_tokens_reported" : 27826,
+          "calls_with_token_usage" : 40
+        },
+        "curator" : {
+          "calls" : 7,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p99_ms" : 20612,
+            "mean_ms" : 14926.0,
+            "p50_ms" : 16041,
+            "p95_ms" : 20612,
+            "count" : 7
+          },
+          "prompt_tokens_reported" : 32712,
+          "completion_tokens_reported" : 17918,
+          "total_tokens_reported" : 50630,
+          "calls_with_token_usage" : 7
+        },
+        "answer" : {
+          "calls" : 36,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p99_ms" : 10625,
+            "mean_ms" : 2959.6388888888887,
+            "p50_ms" : 1981,
+            "p95_ms" : 9183,
+            "count" : 36
+          },
+          "prompt_tokens_reported" : 13666,
+          "completion_tokens_reported" : 958,
+          "total_tokens_reported" : 14624,
+          "calls_with_token_usage" : 36
+        },
+        "judge" : {
+          "calls" : 12,
+          "failures" : 0,
+          "failure_rate" : 0.0,
+          "latency_ms" : {
+            "p99_ms" : 5288,
+            "mean_ms" : 1953.0,
+            "p50_ms" : 1521,
+            "p95_ms" : 5288,
+            "count" : 12
+          },
+          "prompt_tokens_reported" : 4994,
+          "completion_tokens_reported" : 1285,
+          "total_tokens_reported" : 6279,
+          "calls_with_token_usage" : 12
+        }
+      },
+      "completion_tokens_reported" : 30491,
+      "calls" : 95,
+      "calls_with_token_usage" : 95
+    },
+    "baseline_turns_per_second_sum_timeline_time" : 0.33588042656814177
+  },
+  "failures" : {
+    "by_reason" : { },
+    "count" : 0
+  },
+  "acceptance_pass" : false,
+  "acceptance_gate_details" : {
+    "semantic_unique_recall_minimum" : 0.5,
+    "semantic_unique_fact_quality_pass" : false,
+    "runtime_failures_empty" : true,
+    "provenance_pass" : true,
+    "semantic_unique_precision_minimum" : 0.4,
+    "profile" : "relaxed",
+    "integrity_pass" : true
+  },
+  "evaluation_notes" : [ "G1 is the actual per-turn KnowledgeGraphService plus long_term_memory baseline. G2A and G2C reuse the same accepted real MemoryCuratorService output so the ablation isolates append-only versus compacted serving behavior.", "G1, G2A, and G2C all retain the same traceable KG entities and relations for retrieval; the G2C KG sidecar is unchanged by compaction and counted in its serving tokens.", "G1 and G2A use the production SqliteMemoryService hybrid retriever. G2C merges relevant unmapped raw candidates with production corpus ranking, with an explicit threshold and semantic de-duplication. A frozen shared text ranker provides corpus-only retrieval diagnostics.", "Retrieval reports Recall@5 and Recall@10; Recall@1 and Recall@3 are not reported.", "Memory-unit token budgets use a documented deterministic Unicode estimate; answer prompt token counts use model-reported usage when returned.", "All three answer arms receive their own production-retriever context. Frozen exact and relaxed anchor/core-fact rules score answers; one blinded LLM-judge call per question independently scores all three answers.", "The relaxed gate profile is a screening pass only. The 30% full-corpus compression target is reported independently and remains an explicit target metric.", "The proposal's 40-turn timeline and production 15-turn trigger yield three curator checkpoints; retention at 5 is not estimable in this run.", "Formal paired effects compare G2C with G1. G2A is reported as an append-only ablation." ]
+}
+```

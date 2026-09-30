@@ -87,7 +87,7 @@ class FactMergeServiceTest {
         profiles.projectFact("u", negative.id());
 
         assertThat(jdbc.queryForObject("SELECT status FROM memory_fact WHERE id=?", String.class, positive.id()))
-            .isEqualTo("inactive");
+            .isEqualTo("superseded");
         assertThat(profiles.list("u")).isEmpty();
     }
 

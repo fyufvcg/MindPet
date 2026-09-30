@@ -1,0 +1,471 @@
+# Memory Curator LLM experiment
+
+Dataset: `memory-curator-value-300.jsonl` (SHA-256 `074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f`)
+
+This report is generated from real calls to the production Java KnowledgeGraphService, MemoryCuratorService, MemoryCorpusCompactionService, and SqliteMemoryService. Fixture output is not used as experiment data. Primary effects compare compacted G2C with G1; append-only G2A is an ablation built from the same accepted curator output.
+
+```json
+{
+  "dataset_version" : "memory-curator-value-v1",
+  "selected_timelines" : 1,
+  "selected_turns" : 40,
+  "selected_queries" : 10,
+  "answer_queries" : 0,
+  "answer_calls_expected" : 0,
+  "fact_quality" : {
+    "true_positive" : 6,
+    "false_positive" : 2,
+    "false_negative" : 2,
+    "precision" : 0.75,
+    "recall" : 0.75,
+    "f1" : 0.75,
+    "stored_fact_rows" : 8,
+    "semantic_duplicate_rows" : 0,
+    "duplicate_rate" : 0.0,
+    "by_timeline" : [ {
+      "primary_scenario" : "stable_preferences",
+      "timeline_id" : "timeline-001",
+      "expected" : 8,
+      "stored" : 8,
+      "true_positive" : 6,
+      "duplicate_rows" : 0
+    } ]
+  },
+  "profile_quality" : {
+    "precision" : 1.0,
+    "recall" : 1.0,
+    "expected_entries_correct" : 4,
+    "fully_correct_timelines" : 1,
+    "by_timeline" : [ {
+      "correct" : 4,
+      "actual" : {
+        "home_location" : "苏州",
+        "current_location" : "合肥",
+        "occupation_current" : "交互设计师",
+        "current_project" : "校园服务平台"
+      },
+      "expected_count" : 4,
+      "timeline_id" : "timeline-001",
+      "expected" : {
+        "home_location" : "苏州",
+        "current_location" : "合肥",
+        "occupation_current" : "交互设计师",
+        "current_project" : "校园服务平台"
+      }
+    } ],
+    "expected_entries" : 4,
+    "written_entries" : 4
+  },
+  "retention" : {
+    "retention_at_1" : 0.75,
+    "retention_at_3" : 0.75,
+    "retention_at_5" : null,
+    "eligible_facts_at_1" : 8,
+    "eligible_facts_at_3" : 8,
+    "reason_at_5" : "40 turns with production 15-turn triggers produce at most three commits per timeline"
+  },
+  "compression" : {
+    "actual_g1_retrieval_corpus" : {
+      "estimated_tokens" : 1677,
+      "unit_count" : 93,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 36
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 534,
+        "knowledge_graph_relation" : 369,
+        "ordinary_long_term_memory" : 774
+      }
+    },
+    "actual_g2a_append_retrieval_corpus" : {
+      "estimated_tokens" : 2335,
+      "unit_count" : 111,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 8,
+        "curated_insight" : 2,
+        "current_profile" : 4,
+        "growth" : 3,
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 36,
+        "working_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 168,
+        "curated_insight" : 161,
+        "current_profile" : 55,
+        "growth" : 227,
+        "knowledge_graph_entity" : 534,
+        "knowledge_graph_relation" : 369,
+        "ordinary_long_term_memory" : 774,
+        "working_memory" : 47
+      }
+    },
+    "actual_g2c_compacted_retrieval_corpus" : {
+      "estimated_tokens" : 1763,
+      "unit_count" : 93,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 5,
+        "curated_growth" : 3,
+        "curated_insight" : 2,
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 26
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 58,
+        "curated_growth" : 164,
+        "curated_insight" : 120,
+        "knowledge_graph_entity" : 507,
+        "knowledge_graph_relation" : 363,
+        "ordinary_long_term_memory" : 551
+      }
+    },
+    "actual_g2a_token_delta_vs_g1" : 0.3923673225998807,
+    "actual_g2c_token_delta_vs_g1" : 0.05128205128205128,
+    "actual_g2c_system_compression_rate" : -0.05128205128205132,
+    "actual_g2c_token_delta_vs_g2a" : -0.2449678800856531,
+    "g2c_compaction_action_counts" : {
+      "KEEP" : 106,
+      "RETIRE" : 10
+    },
+    "g2c_logged_net_token_reduction" : -1680,
+    "raw_turn_text_tokens_estimated" : 868,
+    "curated_fact_projection_tokens_estimated" : 144,
+    "curated_fact_projection_compression_estimate" : 0.8341013824884793,
+    "raw_turn_text_characters" : 868,
+    "curated_fact_projection_characters" : 309,
+    "projection_note" : "G2A is the append-only ablation. G2C counts active, searchable, default-scope memory_retrieval_unit rows once; original long_term_memory rows remain stored but stop consuming serving tokens after compaction.",
+    "estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1"
+  },
+  "temporal" : {
+    "exact_time_expected" : 0,
+    "exact_time_correct" : 0,
+    "exact_time_accuracy" : null,
+    "ambiguous_time_expected" : 0,
+    "ambiguous_time_correct" : 0,
+    "ambiguous_time_accuracy" : null
+  },
+  "source_evidence" : {
+    "stored_facts" : 8,
+    "valid_source_turns" : 8,
+    "source_completeness" : 1.0,
+    "verbatim_evidence" : 8,
+    "verbatim_evidence_rate" : 1.0,
+    "active_retrieval_units" : 96,
+    "retrieval_unit_source_traceability" : 21,
+    "retrieval_unit_source_traceability_rate" : 0.21875
+  },
+  "sensitive_content" : {
+    "synthetic_sensitive_cases" : 0,
+    "fully_blocked" : 0,
+    "blocking_rate" : null,
+    "by_timeline" : [ ],
+    "scanned_tables" : [ "long_term_memory", "memory_fact", "user_profile_current", "user_insight", "llm_growth", "memory_retrieval_unit", "memory_retrieval_source", "kg_entity", "kg_relation", "kg_evidence" ]
+  },
+  "retrieval" : {
+    "query_count" : 10,
+    "by_group" : {
+      "G1" : {
+        "recall_at_1" : 0.3888888888888889,
+        "recall_at_3" : 0.6111111111111112,
+        "recall_at_5" : 0.7222222222222222,
+        "recall_at_10" : 0.8888888888888888,
+        "mrr" : 0.595679012345679,
+        "ndcg_at_10" : 0.6541797045010805,
+        "recall_at_256_estimated_tokens" : 0.8888888888888888,
+        "recall_at_512_estimated_tokens" : 0.8888888888888888,
+        "recall_at_1024_estimated_tokens" : 0.8888888888888888
+      },
+      "G2A" : {
+        "recall_at_1" : 0.3888888888888889,
+        "recall_at_3" : 0.6111111111111112,
+        "recall_at_5" : 0.7222222222222222,
+        "recall_at_10" : 0.8888888888888888,
+        "mrr" : 0.595679012345679,
+        "ndcg_at_10" : 0.6541797045010805,
+        "recall_at_256_estimated_tokens" : 0.8888888888888888,
+        "recall_at_512_estimated_tokens" : 0.8888888888888888,
+        "recall_at_1024_estimated_tokens" : 0.8888888888888888
+      },
+      "G2C" : {
+        "recall_at_1" : 0.3333333333333333,
+        "recall_at_3" : 0.5,
+        "recall_at_5" : 0.6666666666666666,
+        "recall_at_10" : 0.7222222222222222,
+        "mrr" : 0.49444444444444446,
+        "ndcg_at_10" : 0.5448960298296502,
+        "recall_at_256_estimated_tokens" : 0.7222222222222222,
+        "recall_at_512_estimated_tokens" : 0.7222222222222222,
+        "recall_at_1024_estimated_tokens" : 0.7222222222222222
+      }
+    },
+    "token_budget_method" : "estimated; see run-config.json",
+    "paired_effects" : {
+      "primary_comparison" : "G2C minus G1",
+      "delta_recall_at_5_g2c_minus_g1" : -0.05555555555555558,
+      "delta_recall_at_5_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 1,
+        "upper" : -0.05555555555555558,
+        "lower" : -0.05555555555555558
+      },
+      "delta_recall_at_512_estimated_tokens_g2c_minus_g1" : -0.16666666666666663,
+      "delta_recall_at_512_user_cluster_bootstrap_95_ci" : {
+        "resamples" : 10000,
+        "cluster_count" : 1,
+        "upper" : -0.16666666666666663,
+        "lower" : -0.16666666666666663
+      },
+      "g2a_ablation_delta_recall_at_5_vs_g1" : 0.0,
+      "g2a_ablation_delta_recall_at_512_vs_g1" : 0.0,
+      "primary_metrics" : [ "Delta Recall@5", "Delta recall at estimated 512 tokens" ]
+    }
+  },
+  "end_to_end" : {
+    "by_group" : {
+      "G1" : {
+        "correct" : 0,
+        "total" : 0,
+        "accuracy" : null,
+        "abstention_correct" : 0,
+        "abstention_total" : 0,
+        "abstention_accuracy" : null,
+        "mean_context_token_estimate" : 0,
+        "mean_prompt_tokens_reported" : null,
+        "mean_latency_ms" : 0
+      },
+      "G2C" : {
+        "correct" : 0,
+        "total" : 0,
+        "accuracy" : null,
+        "abstention_correct" : 0,
+        "abstention_total" : 0,
+        "abstention_accuracy" : null,
+        "mean_context_token_estimate" : 0,
+        "mean_prompt_tokens_reported" : null,
+        "mean_latency_ms" : 0
+      }
+    },
+    "answers" : 0,
+    "paired" : {
+      "primary_comparison" : "G2C minus G1",
+      "g2c_minus_g1_accuracy" : null,
+      "mcnemar_g1_only_correct" : 0,
+      "mcnemar_g2_only_correct" : 0,
+      "mcnemar_p_value_approx" : 1.0
+    }
+  },
+  "model_calls" : {
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 40,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 10251,
+          "mean_ms" : 2888.75,
+          "p50_ms" : 2640,
+          "p95_ms" : 5047,
+          "count" : 40
+        },
+        "prompt_tokens_reported" : 18814,
+        "completion_tokens_reported" : 22087,
+        "total_tokens_reported" : 40901,
+        "calls_with_token_usage" : 40
+      },
+      "curator" : {
+        "calls" : 4,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 40570,
+          "mean_ms" : 25332.5,
+          "p50_ms" : 17457,
+          "p95_ms" : 40570,
+          "count" : 4
+        },
+        "prompt_tokens_reported" : 8089,
+        "completion_tokens_reported" : 22566,
+        "total_tokens_reported" : 30655,
+        "calls_with_token_usage" : 4
+      }
+    },
+    "completion_tokens_reported" : 44653,
+    "calls" : 44,
+    "calls_with_token_usage" : 44,
+    "total_tokens_reported" : 71556,
+    "prompt_tokens_reported" : 26903
+  },
+  "system_performance" : {
+    "experiment_wall_ms" : 238426,
+    "timeline_count" : 1,
+    "baseline_ingestion_per_timeline_ms" : {
+      "p99_ms" : 121721,
+      "mean_ms" : 121721.0,
+      "p50_ms" : 121721,
+      "p95_ms" : 121721,
+      "count" : 1
+    },
+    "curator_ingestion_per_timeline_ms" : {
+      "p99_ms" : 104749,
+      "mean_ms" : 104749.0,
+      "p50_ms" : 104749,
+      "p95_ms" : 104749,
+      "count" : 1
+    },
+    "retrieval_and_answer_per_timeline_ms" : {
+      "p99_ms" : 939,
+      "mean_ms" : 939.0,
+      "p50_ms" : 939,
+      "p95_ms" : 939,
+      "count" : 1
+    },
+    "query_embedding_latency_ms" : {
+      "p99_ms" : 72,
+      "mean_ms" : 63.3,
+      "p50_ms" : 63,
+      "p95_ms" : 72,
+      "count" : 10
+    },
+    "g1_production_retrieval_search_latency_ms" : {
+      "p99_ms" : 37,
+      "mean_ms" : 8.4,
+      "p50_ms" : 5,
+      "p95_ms" : 37,
+      "count" : 10
+    },
+    "g2a_append_retrieval_search_latency_ms" : {
+      "p99_ms" : 16,
+      "mean_ms" : 7.8,
+      "p50_ms" : 6,
+      "p95_ms" : 16,
+      "count" : 10
+    },
+    "g2c_compaction_retrieval_search_latency_ms" : {
+      "p99_ms" : 27,
+      "mean_ms" : 11.7,
+      "p50_ms" : 10,
+      "p95_ms" : 27,
+      "count" : 10
+    },
+    "g1_indexed_corpus" : {
+      "estimated_tokens" : 1677,
+      "unit_count" : 93,
+      "unit_count_by_memory_type" : {
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 36
+      },
+      "estimated_tokens_by_memory_type" : {
+        "knowledge_graph_entity" : 534,
+        "knowledge_graph_relation" : 369,
+        "ordinary_long_term_memory" : 774
+      }
+    },
+    "g2a_indexed_corpus" : {
+      "estimated_tokens" : 2335,
+      "unit_count" : 111,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 8,
+        "curated_insight" : 2,
+        "current_profile" : 4,
+        "growth" : 3,
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 36,
+        "working_memory" : 1
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 168,
+        "curated_insight" : 161,
+        "current_profile" : 55,
+        "growth" : 227,
+        "knowledge_graph_entity" : 534,
+        "knowledge_graph_relation" : 369,
+        "ordinary_long_term_memory" : 774,
+        "working_memory" : 47
+      }
+    },
+    "g2c_indexed_corpus" : {
+      "estimated_tokens" : 1763,
+      "unit_count" : 93,
+      "unit_count_by_memory_type" : {
+        "curated_fact" : 5,
+        "curated_growth" : 3,
+        "curated_insight" : 2,
+        "knowledge_graph_entity" : 22,
+        "knowledge_graph_relation" : 35,
+        "ordinary_long_term_memory" : 26
+      },
+      "estimated_tokens_by_memory_type" : {
+        "curated_fact" : 58,
+        "curated_growth" : 164,
+        "curated_insight" : 120,
+        "knowledge_graph_entity" : 507,
+        "knowledge_graph_relation" : 363,
+        "ordinary_long_term_memory" : 551
+      }
+    },
+    "g1_sqlite_footprint_bytes" : {
+      "wal_bytes" : 4140632,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 737280,
+      "total_observed_bytes" : 4910680
+    },
+    "g2_sqlite_footprint_bytes" : {
+      "wal_bytes" : 4140632,
+      "shm_bytes" : 32768,
+      "measurement_note" : "Measured while the experiment connections are open; main DB plus WAL and shared-memory sidecars.",
+      "main_db_bytes" : 1716224,
+      "total_observed_bytes" : 5889624
+    },
+    "llm_calls_by_stage" : {
+      "by_stage" : {
+        "baseline_memory" : {
+          "calls" : 40,
+          "failures" : 0,
+          "latency_ms" : {
+            "p99_ms" : 10251,
+            "mean_ms" : 2888.75,
+            "p50_ms" : 2640,
+            "p95_ms" : 5047,
+            "count" : 40
+          },
+          "prompt_tokens_reported" : 18814,
+          "completion_tokens_reported" : 22087,
+          "total_tokens_reported" : 40901,
+          "calls_with_token_usage" : 40
+        },
+        "curator" : {
+          "calls" : 4,
+          "failures" : 0,
+          "latency_ms" : {
+            "p99_ms" : 40570,
+            "mean_ms" : 25332.5,
+            "p50_ms" : 17457,
+            "p95_ms" : 40570,
+            "count" : 4
+          },
+          "prompt_tokens_reported" : 8089,
+          "completion_tokens_reported" : 22566,
+          "total_tokens_reported" : 30655,
+          "calls_with_token_usage" : 4
+        }
+      },
+      "completion_tokens_reported" : 44653,
+      "calls" : 44,
+      "calls_with_token_usage" : 44,
+      "total_tokens_reported" : 71556,
+      "prompt_tokens_reported" : 26903
+    },
+    "baseline_turns_per_second_sum_timeline_time" : 0.3286203695336055
+  },
+  "failures" : {
+    "count" : 0,
+    "by_reason" : { }
+  },
+  "evaluation_notes" : [ "G1 is the actual per-turn KnowledgeGraphService plus long_term_memory baseline. G2A and G2C reuse the same accepted real MemoryCuratorService output so the ablation isolates append-only versus compacted serving behavior.", "G1 and G2A use the production SqliteMemoryService hybrid retriever. G2C uses production memory_retrieval_unit ranking and consults the legacy long_term_memory retriever only when the compacted corpus returns no candidate.", "Memory-unit token budgets use a documented deterministic Unicode estimate; answer prompt token counts use model-reported usage when returned.", "Answer correctness is determined by frozen, per-query string and abstention rules; no model-generated gold labels are used.", "The proposal's 40-turn timeline and production 15-turn trigger yield three curator checkpoints; retention at 5 is not estimable in this run.", "Formal paired effects compare G2C with G1. G2A is reported as an append-only ablation." ]
+}
+```

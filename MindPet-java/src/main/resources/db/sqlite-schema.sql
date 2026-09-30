@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS long_term_memory (
   embedding BLOB,
   importance REAL NOT NULL DEFAULT 0.5,
   confidence REAL NOT NULL DEFAULT 1.0,
+  searchable INTEGER NOT NULL DEFAULT 1,
   layer INTEGER NOT NULL DEFAULT 3,
   emotion TEXT,
   event_date TEXT,
@@ -164,6 +165,8 @@ CREATE TABLE IF NOT EXISTS memory_fact (
   valid_from TEXT,
   valid_to TEXT,
   observed_at TEXT,
+  last_observed_at TEXT,
+  evidence_count INTEGER NOT NULL DEFAULT 1,
   event_timezone TEXT,
   raw_time_expression TEXT NOT NULL DEFAULT '',
   normalized_start TEXT,
@@ -176,7 +179,7 @@ CREATE TABLE IF NOT EXISTS memory_fact (
   supersedes_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, source_turn_id, predicate, value_text, normalized_start),
+  UNIQUE(user_id, source_turn_id, predicate, value_text, scope, assertion, normalized_start),
   FOREIGN KEY(supersedes_id) REFERENCES memory_fact(id)
 );
 CREATE INDEX IF NOT EXISTS idx_memory_fact_user_predicate_status
@@ -198,6 +201,128 @@ CREATE TABLE IF NOT EXISTS user_profile_current (
 );
 CREATE INDEX IF NOT EXISTS idx_profile_current_user_updated
   ON user_profile_current(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_retrieval_unit (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  canonical_key TEXT NOT NULL,
+  unit_type TEXT NOT NULL,
+  predicate TEXT NOT NULL DEFAULT '',
+  scope TEXT NOT NULL DEFAULT 'stable',
+  status TEXT NOT NULL DEFAULT 'active',
+  searchable INTEGER NOT NULL DEFAULT 1,
+  content TEXT NOT NULL,
+  embedding BLOB,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  valid_from TEXT,
+  valid_to TEXT,
+  fact_id INTEGER,
+  supersedes_unit_id TEXT,
+  compaction_version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_retrieval_active_key
+  ON memory_retrieval_unit(user_id, canonical_key) WHERE searchable=1 AND status='active';
+CREATE INDEX IF NOT EXISTS idx_memory_retrieval_user_status
+  ON memory_retrieval_unit(user_id, status, searchable, scope);
+CREATE INDEX IF NOT EXISTS idx_memory_retrieval_fact
+  ON memory_retrieval_unit(user_id, fact_id);
+
+CREATE TABLE IF NOT EXISTS memory_retrieval_source (
+  unit_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_turn_id TEXT,
+  evidence_text TEXT,
+  surface_value TEXT NOT NULL DEFAULT '',
+  value_start INTEGER NOT NULL DEFAULT -1,
+  value_end INTEGER NOT NULL DEFAULT -1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(unit_id, source_type, source_id),
+  FOREIGN KEY(unit_id) REFERENCES memory_retrieval_unit(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_retrieval_source_turn
+  ON memory_retrieval_source(source_turn_id);
+
+CREATE TABLE IF NOT EXISTS curator_proposal_item (
+  user_id TEXT NOT NULL,
+  item_key TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL,
+  section TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  diagnostics_json TEXT NOT NULL DEFAULT '[]',
+  attempts INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id,item_key)
+);
+CREATE INDEX IF NOT EXISTS idx_curator_proposal_pending ON curator_proposal_item(user_id,status,batch_sequence);
+CREATE TABLE IF NOT EXISTS curator_accepted_event (
+  user_id TEXT NOT NULL,
+  event_key TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id,event_key)
+);
+
+CREATE TABLE IF NOT EXISTS memory_compaction_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL DEFAULT 0,
+  action TEXT NOT NULL,
+  unit_id TEXT,
+  source_id TEXT NOT NULL DEFAULT '',
+  tokens_before INTEGER NOT NULL DEFAULT 0,
+  tokens_after INTEGER NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_memory_compaction_log_user_batch
+  ON memory_compaction_log(user_id, batch_sequence, id);
+
+CREATE TABLE IF NOT EXISTS memory_compaction_batch (
+  user_id TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'applying',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT,
+  rolled_back_at TEXT,
+  PRIMARY KEY(user_id, batch_sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_compaction_batch_user_status
+  ON memory_compaction_batch(user_id, status, batch_sequence DESC);
+
+CREATE TABLE IF NOT EXISTS memory_compaction_snapshot (
+  user_id TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL,
+  entity_type TEXT NOT NULL,
+  record_key TEXT NOT NULL,
+  existed_before INTEGER NOT NULL DEFAULT 0,
+  state_json TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(user_id, batch_sequence, entity_type, record_key)
+);
+
+CREATE TABLE IF NOT EXISTS memory_corpus_migration (
+  user_id TEXT PRIMARY KEY,
+  migration_version INTEGER NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS memory_compaction_plan (
+  user_id TEXT NOT NULL,
+  batch_sequence INTEGER NOT NULL,
+  raw_unit_id TEXT NOT NULL,
+  resolved_action TEXT NOT NULL,
+  target_unit_ids TEXT NOT NULL DEFAULT '[]',
+  reason TEXT NOT NULL,
+  applied_action TEXT NOT NULL DEFAULT 'PENDING',
+  PRIMARY KEY(user_id,batch_sequence,raw_unit_id)
+);
+CREATE TABLE IF NOT EXISTS memory_compaction_blob (
+  hash TEXT PRIMARY KEY,
+  value BLOB NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS memory_gallery (
   id TEXT PRIMARY KEY,

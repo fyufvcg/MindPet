@@ -1,0 +1,152 @@
+{
+  "version": "memory-curator-ablation-v4",
+  "profile": "normal",
+  "development_timelines": 4,
+  "formal_timelines": 16,
+  "formal_inputs": 640,
+  "formal_questions": 192,
+  "sha256": "a87ef16b7fdace3fbac85ca2b3c10969c1941c9de7f709309b2a80fc027b202b",
+  "seed": 20260930,
+  "sample_notes": [
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    },
+    {
+      "independent_fact_count": 28,
+      "repeated_input_rate": 0.225,
+      "exact_duplicate_input_rate": 0.0,
+      "comparison_scope": "Matched core facts, transitions and questions; normal has additional independent experiences.",
+      "other_subject_detail": "Friend address at turn 13 is outside user fact ontology and must remain in raw/residual corpus."
+    }
+  ]
+}

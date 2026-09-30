@@ -60,7 +60,13 @@ public class CuratorTurnStore {
                 (rs, row) -> rs.getLong(1), userId, turnId);
             jdbc.update("DELETE FROM curator_turns WHERE user_id=? AND consolidation_status='success' "
                     + "AND sequence NOT IN (SELECT sequence FROM curator_turns WHERE user_id=? "
-                    + "AND consolidation_status='success' ORDER BY sequence DESC LIMIT ?)",
+                    + "AND consolidation_status='success' ORDER BY sequence DESC LIMIT ?) "
+                    + "AND NOT EXISTS (SELECT 1 FROM memory_retrieval_source s JOIN memory_retrieval_unit u ON u.id=s.unit_id "
+                    + "WHERE u.user_id=curator_turns.user_id AND s.source_turn_id=curator_turns.turn_id) "
+                    + "AND NOT EXISTS (SELECT 1 FROM memory_fact f WHERE f.user_id=curator_turns.user_id "
+                    + "AND f.source_turn_id=curator_turns.turn_id AND f.status<>'rolled_back') "
+                    + "AND NOT EXISTS (SELECT 1 FROM memory_compaction_snapshot s WHERE s.user_id=curator_turns.user_id "
+                    + "AND s.entity_type='curator_turn' AND s.record_key=curator_turns.turn_id)",
                 userId, userId, MAX_STORED_TURNS);
             Long sequence = sequences.isEmpty() ? null : sequences.get(0);
             return sequence == null ? 0 : sequence;
@@ -73,7 +79,7 @@ public class CuratorTurnStore {
     }
 
     public long pendingCount(String userId) {
-        Long value = jdbc.queryForObject("SELECT COUNT(*) FROM curator_turns WHERE user_id=? AND consolidation_status <> 'success'", Long.class, userId);
+        Long value = jdbc.queryForObject("SELECT COUNT(*) FROM curator_turns WHERE user_id=? AND consolidation_status NOT IN ('success','partial')", Long.class, userId);
         return value == null ? 0 : value;
     }
 
@@ -104,7 +110,7 @@ public class CuratorTurnStore {
 
     public List<CompletedTurn> recentPending(String userId, int limit) {
         List<CompletedTurn> turns = jdbc.query("SELECT turn_id,session_id,source,user_message,assistant_reply,completed_at,occurred_at,event_timezone FROM curator_turns "
-                + "WHERE user_id=? AND consolidation_status <> 'success' ORDER BY sequence ASC LIMIT ?",
+                + "WHERE user_id=? AND consolidation_status NOT IN ('success','partial') ORDER BY sequence ASC LIMIT ?",
             (rs, row) -> new CompletedTurn(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)), userId, limit);
         return turns;
@@ -135,7 +141,7 @@ public class CuratorTurnStore {
 
     public List<String> idlePendingUsers(Instant completedBefore, int limit) {
         return jdbc.query("SELECT t.user_id FROM curator_turns t LEFT JOIN curator_state s ON s.user_id=t.user_id "
-                + "WHERE t.consolidation_status<>'success' AND julianday(t.completed_at)<=julianday(?) "
+                + "WHERE t.consolidation_status NOT IN ('success','partial') AND julianday(t.completed_at)<=julianday(?) "
                 + "AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) "
                 + "GROUP BY t.user_id ORDER BY MIN(t.completed_at) LIMIT ?",
             (rs, row) -> rs.getString(1), completedBefore.toString(), Instant.now().toString(), limit);
@@ -148,6 +154,88 @@ public class CuratorTurnStore {
             jdbc.update("UPDATE curator_turns SET consolidation_status=?,processed_at=CURRENT_TIMESTAMP WHERE user_id=? AND turn_id=?",
                 safeStatus, userId, turn.turnId());
         }
+    }
+
+    public void recordProposalItems(String userId, long sequence, Map<String,Object> proposal,
+                                    List<Map<String,Object>> diagnostics) {
+        try {
+            for (String section : List.of("facts","insights","growth","retire")) {
+                if (!(proposal.get(section) instanceof List<?> items)) continue;
+                for (int index = 0; index < items.size(); index++) {
+                    final int at = index;
+                    List<Map<String,Object>> problems = diagnostics.stream()
+                        .filter(d -> section.equals(d.get("section")) && ((Number)d.getOrDefault("item_index",-1)).intValue()==at).toList();
+                    String payload = mapper.writeValueAsString(items.get(index));
+                    // Sensitive items retain a reason and hash only; raw turns already retain their source.
+                    if (MemoryContentSafety.looksSensitive(payload)) payload = "{\"redacted\":true}";
+                    String key = items.get(index) instanceof Map<?,?> m && m.get("proposal_item_id") instanceof String id
+                        ? id : section + ":" + sequence + ":" + index;
+                    boolean terminal = !problems.isEmpty() && problems.stream().allMatch(d ->
+                        String.valueOf(d.get("reason_code")).contains("sensitive") || String.valueOf(d.get("reason_code")).contains("oversized"));
+                    jdbc.update("INSERT INTO curator_proposal_item(user_id,item_key,batch_sequence,section,payload_json,status,diagnostics_json) "
+                        + "VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,item_key) DO UPDATE SET payload_json=excluded.payload_json,"
+                        + "status=excluded.status,diagnostics_json=excluded.diagnostics_json,attempts=curator_proposal_item.attempts+1,updated_at=CURRENT_TIMESTAMP",
+                        userId,key,sequence,section,payload,problems.isEmpty()?"accepted":terminal?"rejected":"pending",mapper.writeValueAsString(problems));
+                }
+            }
+        } catch (Exception e) { throw new IllegalStateException("保存馆长条目状态失败",e); }
+    }
+
+    public void recordAcceptedEvent(String userId, long sequence, String key, Map<String,Object> event) {
+        try {
+            Map<String,Object> merged=new java.util.LinkedHashMap<>(event);
+            List<String> previous=jdbc.query("SELECT payload_json FROM curator_accepted_event WHERE user_id=? AND event_key=?",(rs,n)->rs.getString(1),userId,key);
+            if(!previous.isEmpty()) {
+                Map<String,Object> old=parseMap(previous.get(0));
+                List<String> ids=new java.util.ArrayList<>(),quotes=new java.util.ArrayList<>();
+                for(Map<String,Object> row:List.of(old,event)) {
+                    List<?> sources=row.get("source_turn_ids") instanceof List<?> list?list:List.of();
+                    List<?> evidence=row.get("evidence") instanceof List<?> list?list:List.of();
+                    for(int i=0;i<sources.size();i++)if(!ids.contains(String.valueOf(sources.get(i)))) {
+                        ids.add(String.valueOf(sources.get(i)));quotes.add(i<evidence.size()?String.valueOf(evidence.get(i)):"");
+                    }
+                }
+                merged.put("source_turn_ids",ids);merged.put("evidence",quotes);
+            }
+            jdbc.update("INSERT INTO curator_accepted_event(user_id,event_key,batch_sequence,payload_json) VALUES(?,?,?,?) "
+                +"ON CONFLICT(user_id,event_key) DO UPDATE SET payload_json=excluded.payload_json",
+                userId,key,sequence,mapper.writeValueAsString(merged));
+        } catch (Exception e) { throw new IllegalStateException("保存已接受馆长事件失败",e); }
+    }
+
+    public List<Map<String,Object>> acceptedEvents(String userId) {
+        return jdbc.query("SELECT event_key,batch_sequence,payload_json FROM curator_accepted_event WHERE user_id=? ORDER BY batch_sequence,event_key",
+            (rs,row) -> { Map<String,Object> event = new java.util.LinkedHashMap<>(parseMap(rs.getString(3)));
+                event.put("event_key",rs.getString(1)); event.put("batch_sequence",rs.getLong(2)); return event; },userId);
+    }
+
+    public List<Map<String,Object>> proposalItems(String userId) {
+        return jdbc.queryForList("SELECT item_key,batch_sequence,section,status,payload_json,diagnostics_json,attempts "
+            + "FROM curator_proposal_item WHERE user_id=? ORDER BY batch_sequence,item_key",userId);
+    }
+
+    public List<Map<String,Object>> pendingItems(String userId) {
+        return jdbc.queryForList("SELECT item_key,batch_sequence,section,payload_json,diagnostics_json FROM curator_proposal_item "
+            + "WHERE user_id=? AND status='pending' ORDER BY batch_sequence,item_key",userId);
+    }
+
+    public List<String> repairUsers(int limit) {
+        return jdbc.query("SELECT DISTINCT p.user_id FROM curator_proposal_item p LEFT JOIN curator_state s ON s.user_id=p.user_id "
+            + "WHERE p.status='pending' AND p.attempts<3 AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) LIMIT ?",
+            (rs,row)->rs.getString(1),Instant.now().toString(),limit);
+    }
+
+    public List<Map<String,Object>> repairItems(String userId, boolean force) {
+        return jdbc.queryForList("SELECT item_key,batch_sequence,section,payload_json,diagnostics_json,attempts FROM curator_proposal_item "
+            + "WHERE user_id=? AND status='pending'" + (force?"":" AND attempts<3") + " ORDER BY batch_sequence,item_key",userId);
+    }
+
+    public void recordRepairFailure(String userId,long sequence) {
+        jdbc.update("UPDATE curator_proposal_item SET attempts=attempts+1,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND batch_sequence=? AND status='pending'",userId,sequence);
+    }
+
+    public void resetRepairAttempts(String userId) {
+        jdbc.update("UPDATE curator_proposal_item SET attempts=0 WHERE user_id=? AND status='pending'",userId);
     }
 
     public String tryLock(String userId) {

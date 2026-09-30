@@ -1,0 +1,70 @@
+{
+  "provider" : "real_llm_only",
+  "dataset" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\data\\memory-curator-value-300.jsonl",
+  "dataset_sha256" : "074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f",
+  "dataset_version" : "memory-curator-value-v1",
+  "split" : "locked_test",
+  "sample_ids" : [ "timeline-018" ],
+  "timeline_count" : 1,
+  "turn_count" : 40,
+  "query_count" : 10,
+  "answer_query_limit" : 10,
+  "concurrency" : 1,
+  "model" : "deepseek-flash",
+  "llm_configuration_source" : "PowerShell experiment wrapper; apiKey=local experiment-only config; baseUrl=application dynamic config; model=application dynamic config",
+  "api_key_recorded" : false,
+  "application_dynamic_llm_config_read" : false,
+  "application_database_access" : false,
+  "experiment_database" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-pilot-1-20260929\\memory-curator-value-experiment.sqlite",
+  "output_directory" : "D:\\youkeda\\MINDPET\\docs\\experiments\\standalone-memory-curator\\results\\java-llm-pilot-1-20260929",
+  "embedding_provider" : "Ollama/bge-m3",
+  "embedding_model" : "bge-m3",
+  "embedding_dimension" : 1024,
+  "vector_search" : "production SqliteMemoryService hybrid retriever; Java exact-cosine fallback when sqlite-vec is unavailable",
+  "memory_unit_token_estimator" : "CJK code point=1, ASCII alphanumeric runs=ceil(length/4), punctuation=1, whitespace=0",
+  "as_of" : "2026-09-29 23:59:00",
+  "model_calls_at_finish" : {
+    "by_stage" : {
+      "baseline_memory" : {
+        "calls" : 40,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 5669,
+          "mean_ms" : 2580.975,
+          "p50_ms" : 2187,
+          "p95_ms" : 5263,
+          "count" : 40
+        },
+        "prompt_tokens_reported" : 0,
+        "completion_tokens_reported" : 0,
+        "total_tokens_reported" : 0,
+        "calls_with_token_usage" : 0
+      },
+      "curator" : {
+        "calls" : 5,
+        "failures" : 0,
+        "latency_ms" : {
+          "p99_ms" : 31356,
+          "mean_ms" : 17292.2,
+          "p50_ms" : 14509,
+          "p95_ms" : 31356,
+          "count" : 5
+        },
+        "prompt_tokens_reported" : 0,
+        "completion_tokens_reported" : 0,
+        "total_tokens_reported" : 0,
+        "calls_with_token_usage" : 0
+      }
+    },
+    "completion_tokens_reported" : 0,
+    "calls" : 45,
+    "calls_with_token_usage" : 0,
+    "total_tokens_reported" : 0,
+    "prompt_tokens_reported" : 0
+  },
+  "estimated_call_plan" : {
+    "curator_checkpoints_upper_bound" : 3,
+    "baseline_extraction" : 40,
+    "answer_calls_upper_bound" : 0
+  }
+}

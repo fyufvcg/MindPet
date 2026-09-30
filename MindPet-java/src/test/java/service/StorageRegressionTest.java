@@ -63,6 +63,35 @@ class StorageRegressionTest {
         return new JdbcTemplate(dataSource);
     }
 
+    @Test void legacyFactConstraintMigrationPreservesIdsAndAllowsDifferentStates() throws Exception {
+        Path path = tempDir.resolve("legacy-facts.db");
+        JdbcTemplate jdbc = database(path);
+        jdbc.execute("PRAGMA foreign_keys=OFF");
+        jdbc.execute("DROP TABLE memory_fact");
+        String schema;
+        try (var stream = new ClassPathResource("db/sqlite-schema.sql").getInputStream()) {
+            schema = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        String definition = schema.substring(schema.indexOf("CREATE TABLE IF NOT EXISTS memory_fact ("));
+        definition = definition.substring(0, definition.indexOf(';'))
+            .replace("UNIQUE(user_id, source_turn_id, predicate, value_text, scope, assertion, normalized_start)",
+                "UNIQUE(user_id, source_turn_id, predicate, value_text, normalized_start)");
+        jdbc.execute(definition);
+        jdbc.update("INSERT INTO memory_fact(id,user_id,predicate,value_text,scope,assertion,source_turn_id,normalized_start) "
+            + "VALUES(42,'u','plan','摄影课程','planned','possible','turn','2026-09-01')");
+        jdbc.update("INSERT INTO user_profile_current(user_id,slot_key,value,source_fact_id) VALUES('u','test','value',42)");
+        try (var data = (com.zaxxer.hikari.HikariDataSource) new config.SqliteStorageConfig().sqliteDataSource(
+                path.toString(), tempDir.resolve("no-vector-extension").toString())) {
+            JdbcTemplate migrated = new JdbcTemplate(data);
+            migrated.update("INSERT INTO memory_fact(user_id,predicate,value_text,scope,assertion,source_turn_id,normalized_start) "
+                + "VALUES('u','plan','摄影课程','planned','planned','turn','2026-09-01')");
+            assertThat(migrated.queryForObject("SELECT source_fact_id FROM user_profile_current", Long.class)).isEqualTo(42);
+            assertThat(migrated.queryForObject("SELECT COUNT(*) FROM memory_fact", Integer.class)).isEqualTo(2);
+            assertThat(migrated.queryForList("PRAGMA foreign_key_check")).isEmpty();
+            assertThat(migrated.queryForObject("PRAGMA foreign_keys", Integer.class)).isEqualTo(1);
+        }
+    }
+
     private static org.assertj.core.data.Offset<Double> within(double value) {
         return org.assertj.core.data.Offset.offset(value);
     }

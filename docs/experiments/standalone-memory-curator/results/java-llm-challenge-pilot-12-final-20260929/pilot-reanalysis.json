@@ -1,0 +1,303 @@
+{
+  "result_type": "exploratory_real_llm_pilot_reanalysis",
+  "official_locked_test_result": false,
+  "dataset_sha256": "074f57e199a7d271464246dd62e8208a00dcf6c3e069fe670357306b4be28b5f",
+  "model": "deepseek-flash",
+  "temperature": 0.0,
+  "timeline_count": 12,
+  "scenario_count": 12,
+  "turn_count": 480,
+  "query_count": 120,
+  "answer_query_count": 120,
+  "fact_quality": {
+    "micro": {
+      "true_positive": 46,
+      "false_positive": 29,
+      "false_negative": 51,
+      "precision": 0.6133333333333333,
+      "recall": 0.4742268041237113,
+      "f1": 0.5348837209302325
+    },
+    "macro_by_timeline": {
+      "precision": 0.3577020202020202,
+      "recall": 0.4791666666666667,
+      "f1": 0.40921052631578947
+    },
+    "macro_user_cluster_bootstrap_95_ci": {
+      "precision": {
+        "lower": 0.1849747474747475,
+        "upper": 0.530429292929293,
+        "resamples": 10000,
+        "cluster_count": 12
+      },
+      "recall": {
+        "lower": 0.25,
+        "upper": 0.7083333333333334,
+        "resamples": 10000,
+        "cluster_count": 12
+      },
+      "f1": {
+        "lower": 0.21232943469785576,
+        "upper": 0.608869395711501,
+        "resamples": 10000,
+        "cluster_count": 12
+      }
+    },
+    "per_scenario": {
+      "stable_preferences": {
+        "tp": 8,
+        "fp": 2,
+        "fn": 0
+      },
+      "current_state": {
+        "tp": 6,
+        "fp": 4,
+        "fn": 2
+      },
+      "semantic_repetition": {
+        "tp": 7,
+        "fp": 4,
+        "fn": 1
+      },
+      "explicit_correction": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 9
+      },
+      "negation_withdrawal": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8
+      },
+      "history_vs_current": {
+        "tp": 4,
+        "fp": 6,
+        "fn": 4
+      },
+      "plans_vs_reality": {
+        "tp": 7,
+        "fp": 4,
+        "fn": 1
+      },
+      "cross_session_memory": {
+        "tp": 7,
+        "fp": 5,
+        "fn": 1
+      },
+      "explicit_event_time": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8
+      },
+      "ambiguous_event_time": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8
+      },
+      "noise_and_abstention": {
+        "tp": 7,
+        "fp": 4,
+        "fn": 1
+      },
+      "prompt_injection_safety": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8
+      }
+    },
+    "timeline_count": 12
+  },
+  "profile_quality": {
+    "precision": 1.0,
+    "recall": 0.5217391304347826,
+    "expected_entries_correct": 24,
+    "expected_entries": 46,
+    "written_entries": 24,
+    "fully_correct_timelines": 3
+  },
+  "paired_retrieval": {
+    "query_count": 120,
+    "by_group": {
+      "G1": {
+        "recall_at_1": 0.4166666666666667,
+        "recall_at_3": 0.5879629629629629,
+        "recall_at_5": 0.7407407407407407,
+        "recall_at_10": 0.8888888888888888,
+        "mrr": 0.612393445032334,
+        "ndcg_at_10": 0.658144624337219,
+        "recall_at_256_estimated_tokens": 0.8888888888888888,
+        "recall_at_512_estimated_tokens": 0.8888888888888888,
+        "recall_at_1024_estimated_tokens": 0.8888888888888888
+      },
+      "G2": {
+        "recall_at_1": 0.42592592592592593,
+        "recall_at_3": 0.6157407407407407,
+        "recall_at_5": 0.7453703703703703,
+        "recall_at_10": 0.8888888888888888,
+        "mrr": 0.6214469429747208,
+        "ndcg_at_10": 0.6651416531530765,
+        "recall_at_256_estimated_tokens": 0.8888888888888888,
+        "recall_at_512_estimated_tokens": 0.8888888888888888,
+        "recall_at_1024_estimated_tokens": 0.8888888888888888
+      }
+    },
+    "delta_recall_at_5_g2_minus_g1": 0.004629629629629632,
+    "delta_recall_at_5_user_cluster_bootstrap_95_ci": {
+      "lower": 0.0,
+      "upper": 0.013888888888888895,
+      "resamples": 10000,
+      "cluster_count": 12
+    },
+    "delta_recall_at_512_estimated_tokens_g2_minus_g1": 0.0,
+    "delta_recall_at_512_user_cluster_bootstrap_95_ci": {
+      "lower": 0.0,
+      "upper": 0.0,
+      "resamples": 10000,
+      "cluster_count": 12
+    }
+  },
+  "paired_answers": {
+    "scoring": "frozen deterministic string/state/abstention rules; no LLM judge",
+    "by_group": {
+      "G1": {
+        "correct": 94,
+        "total": 120,
+        "accuracy": 0.7833333333333333,
+        "abstention_correct": 12,
+        "abstention_total": 12,
+        "abstention_accuracy": 1.0,
+        "mean_context_token_estimate": 219.15
+      },
+      "G2": {
+        "correct": 93,
+        "total": 120,
+        "accuracy": 0.775,
+        "abstention_correct": 12,
+        "abstention_total": 12,
+        "abstention_accuracy": 1.0,
+        "mean_context_token_estimate": 223.675
+      }
+    },
+    "delta_accuracy_g2_minus_g1": -0.008333333333333331,
+    "delta_accuracy_user_cluster_bootstrap_95_ci": {
+      "lower": -0.04999999999999999,
+      "upper": 0.033333333333333326,
+      "resamples": 10000,
+      "cluster_count": 12
+    }
+  },
+  "search_corpus": {
+    "G1": {
+      "unit_count": 1128,
+      "estimated_tokens": 21395
+    },
+    "G2": {
+      "unit_count": 1282,
+      "estimated_tokens": 26594
+    },
+    "g2_token_delta_fraction_vs_g1": 0.24300070109838745
+  },
+  "safety": {
+    "synthetic_sensitive_cases": 1,
+    "fully_blocked": 1,
+    "blocking_rate": 1.0,
+    "by_timeline": [
+      {
+        "long_term_memory_hits": 0,
+        "timeline_id": "timeline-286"
+      }
+    ],
+    "scanned_tables": [
+      "long_term_memory",
+      "memory_fact",
+      "user_profile_current",
+      "user_insight",
+      "llm_growth",
+      "kg_entity",
+      "kg_relation",
+      "kg_evidence"
+    ]
+  },
+  "source_evidence": {
+    "verbatim_evidence_rate": 1.0,
+    "stored_facts": 75,
+    "source_completeness": 1.0,
+    "valid_source_turns": 75,
+    "verbatim_evidence": 75
+  },
+  "temporal": {
+    "exact_time_expected": 1,
+    "exact_time_correct": 0,
+    "exact_time_accuracy": 0.0,
+    "ambiguous_time_expected": 1,
+    "ambiguous_time_correct": 0,
+    "ambiguous_time_accuracy": 0.0
+  },
+  "model_calls": {
+    "total_tokens_reported": 901478,
+    "prompt_tokens_reported": 356287,
+    "by_stage": {
+      "baseline_memory": {
+        "calls": 480,
+        "failures": 0,
+        "latency_ms": {
+          "p99_ms": 8854,
+          "mean_ms": 2564.3125,
+          "p50_ms": 2143,
+          "p95_ms": 5445,
+          "count": 480
+        },
+        "prompt_tokens_reported": 226002,
+        "completion_tokens_reported": 260655,
+        "total_tokens_reported": 486657,
+        "calls_with_token_usage": 480
+      },
+      "curator": {
+        "calls": 42,
+        "failures": 0,
+        "latency_ms": {
+          "p99_ms": 55558,
+          "mean_ms": 26322.571428571428,
+          "p50_ms": 21078,
+          "p95_ms": 50935,
+          "count": 42
+        },
+        "prompt_tokens_reported": 67613,
+        "completion_tokens_reported": 259400,
+        "total_tokens_reported": 327013,
+        "calls_with_token_usage": 42
+      },
+      "answer": {
+        "calls": 240,
+        "failures": 0,
+        "latency_ms": {
+          "p99_ms": 3492,
+          "mean_ms": 995.2166666666667,
+          "p50_ms": 885,
+          "p95_ms": 1474,
+          "count": 240
+        },
+        "prompt_tokens_reported": 62672,
+        "completion_tokens_reported": 25136,
+        "total_tokens_reported": 87808,
+        "calls_with_token_usage": 240
+      }
+    },
+    "completion_tokens_reported": 545191,
+    "calls": 762,
+    "calls_with_token_usage": 762
+  },
+  "incomplete_curator_timelines": {
+    "count": 5,
+    "by_reason": {
+      "CURATOR_INCOMPLETE": 5
+    }
+  },
+  "limits": [
+    "Only 12 language-challenge timelines were sampled, one per scenario; this is an exploratory pilot, not the locked-test result.",
+    "This run predates the separate-database runner refactor. G1 and G2 used distinct user namespaces in one isolated SQLite file.",
+    "The original metrics.json has a G1/G2 casing bug in retrieval aggregation and treated observed/confirmed plus historical location slot names as exact mismatches; corrected values above are recomputed from the raw retrieval files and database.",
+    "Answer scores use frozen deterministic rules and have no blind human adjudication.",
+    "The subsequent 60-timeline run stopped during baseline ingestion after the provider returned HTTP 402 Insufficient Balance."
+  ]
+}
