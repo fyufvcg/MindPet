@@ -27,7 +27,7 @@ if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
 if ($ModelId -ne 'deepseek-flash') {
     throw 'Experiment 1 formal guard failed: ModelId must be deepseek-flash.'
 }
-if ($Mode -eq 'Smoke' -and ($null -eq $Limit -or $Limit.Value -ne 10)) {
+if ($Mode -eq 'Smoke' -and ($Limit -ne 10)) {
     throw 'Experiment 1 formal guard failed: Smoke requires -Limit 10.'
 }
 if ($Resume -and [string]::IsNullOrWhiteSpace($RunDir)) {
@@ -46,7 +46,7 @@ if (-not [string]::IsNullOrWhiteSpace($DatasetPath)) {
     $arguments += @('--dataset', $DatasetPath)
 }
 if ($null -ne $Limit) {
-    $arguments += @('--limit', [string]$Limit.Value)
+    $arguments += @('--limit', [string]$Limit)
 }
 if ($Resume) {
     $arguments += @('--resume', '--run-dir', $RunDir)
