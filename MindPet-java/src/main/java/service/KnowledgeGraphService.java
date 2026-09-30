@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,6 +31,8 @@ import java.util.concurrent.Executor;
 public class KnowledgeGraphService {
 
     private static final double RETENTION_MIN = 0.1;
+    private static final double LTM_IMPORTANCE_THRESHOLD = 0.35;
+    private static final double LTM_CONFIDENCE_THRESHOLD = 0.45;
 
     private static final Set<String> ENTITY_TYPES = Set.of(
         "person", "project", "technology", "tool", "preference", "goal",
@@ -149,7 +152,7 @@ public class KnowledgeGraphService {
             executor.execute(() -> {
                 try {
                     processCompletedTurn(userId, safeSessionId, turnHash, userMessage,
-                        assistantMessage, emotion, occurredAt);
+                        assistantMessage, emotion, occurredAt, false);
                 } catch (Exception e) {
                     logger.log("WARN", "Knowledge graph extraction failed: " + e.getMessage());
                 } finally {
@@ -195,7 +198,7 @@ public class KnowledgeGraphService {
             executor.execute(() -> {
                 try {
                     completion.complete(processCompletedTurn(userId, safeSessionId, turnHash,
-                        userMessage, assistantMessage, emotion, occurredAt));
+                        userMessage, assistantMessage, emotion, occurredAt, true));
                 } catch (Exception exception) {
                     completion.completeExceptionally(exception);
                 } finally {
@@ -220,13 +223,22 @@ public class KnowledgeGraphService {
 
     private CompletedTurnResult processCompletedTurn(
             String userId, String sessionId, String turnHash,
-            String userMessage, String assistantMessage, String emotion, Instant occurredAt) {
+            String userMessage, String assistantMessage, String emotion, Instant occurredAt,
+            boolean captureObservation) {
+        TemporalDiagnostics temporal = captureObservation
+            ? temporalDiagnostics(userMessage, occurredAt, ZoneId.systemDefault()) : null;
         Extraction extraction;
         try {
             extraction = extract(userMessage, assistantMessage);
         } catch (Exception exception) {
+            ParseDiagnostics failedParse = captureObservation
+                    && exception instanceof ExtractionParseFailure parseFailure
+                ? new ParseDiagnostics(null, null, null, null, null,
+                    true, parseFailure.reason())
+                : null;
             throw new CompletedTurnFailure(
-                "EXTRACTION", "EXTRACTION_FAILED", "Production extraction failed", exception);
+                "EXTRACTION", "EXTRACTION_FAILED", "Production extraction failed", exception,
+                turnHash, failedParse, temporal);
         }
         try {
             persist(userId, sessionId, turnHash, userMessage, assistantMessage, extraction);
@@ -244,8 +256,20 @@ public class KnowledgeGraphService {
                     "LTM_PERSISTENCE", "LTM_APPEND_FAILED", "Long-term memory append failed", exception);
             }
         }
+        DecisionDiagnostics decisionDiagnostics = captureObservation
+            ? new DecisionDiagnostics(
+                extraction.rawWorthRemembering(), extraction.rawMemoryShouldRemember(),
+                extraction.shouldRemember(), extraction.importance(), extraction.confidence(),
+                LTM_IMPORTANCE_THRESHOLD, LTM_CONFIDENCE_THRESHOLD,
+                extraction.importance() >= LTM_IMPORTANCE_THRESHOLD,
+                extraction.confidence() >= LTM_CONFIDENCE_THRESHOLD)
+            : null;
         return new CompletedTurnResult(turnHash, chatClientFactory.effectiveModel(), false, true,
-            extraction.shouldRemember(), extraction.importance(), extraction.confidence(), ltmAttempted);
+            extraction.shouldRemember(), extraction.importance(), extraction.confidence(), ltmAttempted,
+            decisionDiagnostics,
+            captureObservation ? extraction.parseDiagnostics() : null,
+            captureObservation ? extraction.kgFilterDiagnostics() : null,
+            temporal);
     }
 
     public Map<String, Object> getGraph(String userId, String query, int requestedLimit) {
@@ -343,21 +367,44 @@ public class KnowledgeGraphService {
         var spec = chatClientFactory.build().prompt().system(EXTRACTION_PROMPT).user(data);
         spec = chatClientFactory.applyCurrentModel(spec);
         String raw = spec.call().content();
+        return parseExtraction(raw);
+    }
+
+    private Extraction parseExtraction(String raw) throws Exception {
+        try {
         JsonNode root = mapper.readTree(jsonObject(raw));
         boolean worthRemembering = root.path("worthRemembering").asBoolean(false);
         JsonNode memory = root.path("memory");
+        boolean memoryObjectPresent = memory.isObject();
+        JsonNode rawMemoryShouldRememberNode = memory.path("shouldRemember");
+        Boolean rawMemoryShouldRemember = rawMemoryShouldRememberNode.isBoolean()
+            ? rawMemoryShouldRememberNode.asBoolean() : null;
         boolean shouldRemember = memory.path("shouldRemember").asBoolean(worthRemembering);
+        JsonNode importanceNode = memory.path("importance");
+        JsonNode confidenceNode = memory.path("confidence");
+        boolean importanceFallbackUsed = !importanceNode.isNumber();
+        boolean confidenceFallbackUsed = !confidenceNode.isNumber();
+        boolean importanceClamped = importanceNode.isNumber()
+            && Double.compare(importanceNode.asDouble(), clamp(importanceNode.asDouble())) != 0;
+        boolean confidenceClamped = confidenceNode.isNumber()
+            && Double.compare(confidenceNode.asDouble(), clamp(confidenceNode.asDouble())) != 0;
         double importance = parseScore(memory.path("importance"), 0.5);
         double confidence = parseScore(memory.path("confidence"), 0.5);
         String evidence = truncate(memory.path("evidence").asText(""), 500);
 
         List<EntityCandidate> entities = new ArrayList<>();
         JsonNode entityArray = root.path("entities");
+        int rawEntityCount = entityArray.isArray() ? entityArray.size() : 0;
+        int sensitivityRejectedEntityCount = 0;
         if (entityArray.isArray()) {
             for (JsonNode item : entityArray) {
                 if (entities.size() == 8) break;
                 String name = cleanName(item.path("name").asText(""));
-                if (isBlank(name) || looksSensitive(name)) continue;
+                if (isBlank(name)) continue;
+                if (looksSensitive(name)) {
+                    sensitivityRejectedEntityCount++;
+                    continue;
+                }
                 String type = normalizeType(item.path("type").asText("other"));
                 String summary = truncate(item.path("summary").asText(""), 500);
                 entities.add(new EntityCandidate(name, type, summary,
@@ -367,16 +414,25 @@ public class KnowledgeGraphService {
 
         List<RelationCandidate> relations = new ArrayList<>();
         JsonNode relationArray = root.path("relations");
+        int rawRelationCount = relationArray.isArray() ? relationArray.size() : 0;
+        int predicateWhitelistRejectedCount = 0;
+        int relationConfidenceRejectedCount = 0;
         if (relationArray.isArray()) {
             for (JsonNode item : relationArray) {
                 if (relations.size() == 10) break;
                 String source = cleanName(item.path("source").asText(""));
                 String target = cleanName(item.path("target").asText(""));
                 String predicate = item.path("predicate").asText("").trim().toLowerCase(Locale.ROOT);
-                if (isBlank(source) || isBlank(target) || source.equalsIgnoreCase(target)
-                        || !PREDICATES.contains(predicate)) continue;
+                if (isBlank(source) || isBlank(target) || source.equalsIgnoreCase(target)) continue;
+                if (!PREDICATES.contains(predicate)) {
+                    predicateWhitelistRejectedCount++;
+                    continue;
+                }
                 double relationConfidence = clamp(item.path("confidence").asDouble(0.5));
-                if (relationConfidence < 0.6) continue;
+                if (relationConfidence < 0.6) {
+                    relationConfidenceRejectedCount++;
+                    continue;
+                }
                 relations.add(new RelationCandidate(source, target, predicate, relationConfidence,
                     clamp(item.path("importance").asDouble(0.5))));
             }
@@ -385,8 +441,17 @@ public class KnowledgeGraphService {
             importance = candidateImportance(entities, relations);
             confidence = candidateConfidence(entities, relations);
         }
-        return new Extraction(worthRemembering && shouldRemember, importance, confidence,
-            evidence, entities, relations);
+        return new Extraction(worthRemembering, rawMemoryShouldRemember,
+            worthRemembering && shouldRemember, importance, confidence,
+            evidence, entities, relations,
+            new ParseDiagnostics(memoryObjectPresent, importanceFallbackUsed,
+                confidenceFallbackUsed, importanceClamped, confidenceClamped, false, null),
+            new KgFilterDiagnostics(rawEntityCount, rawRelationCount, entities.size(), relations.size(),
+                sensitivityRejectedEntityCount, predicateWhitelistRejectedCount,
+                relationConfidenceRejectedCount));
+        } catch (Exception exception) {
+            throw new ExtractionParseFailure("INVALID_EXTRACTION_RESPONSE", exception);
+        }
     }
 
     private double parseScore(JsonNode value, double fallback) {
@@ -793,17 +858,71 @@ public class KnowledgeGraphService {
                                      double confidence, double importance) {}
     private record EntityRef(String id, String name) {}
     private record EntityVector(String id, float[] vector) {}
-    private record Extraction(boolean shouldRemember, double importance, double confidence,
+    private record Extraction(boolean rawWorthRemembering, Boolean rawMemoryShouldRemember,
+                              boolean shouldRemember, double importance, double confidence,
                               String evidence, List<EntityCandidate> entities,
-                              List<RelationCandidate> relations) {
+                              List<RelationCandidate> relations,
+                              ParseDiagnostics parseDiagnostics,
+                              KgFilterDiagnostics kgFilterDiagnostics) {
         static Extraction empty() {
-            return new Extraction(false, 0.0, 0.0, "", List.of(), List.of());
+            return new Extraction(false, null, false, 0.0, 0.0, "", List.of(), List.of(),
+                new ParseDiagnostics(false, true, true, false, false, false, null),
+                new KgFilterDiagnostics(0, 0, 0, 0, 0, 0, 0));
         }
 
         boolean shouldPersistMemory() {
             return shouldRemember && importance >= 0.35 && confidence >= 0.45;
         }
     }
+
+    static TemporalDiagnostics temporalDiagnostics(String content, Instant reference, ZoneId zone) {
+        TemporalMemory.Resolved resolved = TemporalMemory.resolve(content, reference, zone);
+        return new TemporalDiagnostics(
+            resolved.eventDate() == null ? null : resolved.eventDate().toString(),
+            resolved.eventAt() == null ? null : resolved.eventAt().toString(),
+            resolved.timezone(), resolved.precision(), reference.toString(), zone.getId());
+    }
+
+    public record DecisionDiagnostics(
+        boolean rawWorthRemembering,
+        Boolean rawMemoryShouldRemember,
+        boolean combinedShouldRemember,
+        double importance,
+        double confidence,
+        double importanceThreshold,
+        double confidenceThreshold,
+        boolean importanceGatePassed,
+        boolean confidenceGatePassed
+    ) {}
+
+    public record ParseDiagnostics(
+        Boolean memoryObjectPresent,
+        Boolean importanceFallbackUsed,
+        Boolean confidenceFallbackUsed,
+        Boolean importanceClamped,
+        Boolean confidenceClamped,
+        boolean parseFailure,
+        String parseFailureReason
+    ) {}
+
+    public record KgFilterDiagnostics(
+        int rawEntityCount,
+        int rawRelationCount,
+        int normalizedEntityCount,
+        int normalizedRelationCount,
+        int sensitivityRejectedEntityCount,
+        int predicateWhitelistRejectedCount,
+        int relationConfidenceRejectedCount
+    ) {}
+
+    public record TemporalDiagnostics(
+        String eventDate,
+        String eventAt,
+        String eventTimezone,
+        String eventPrecision,
+        String referenceTimestamp,
+        String referenceTimezone
+    ) {}
 
     public record CompletedTurnResult(
         String turnHash,
@@ -813,26 +932,58 @@ public class KnowledgeGraphService {
         Boolean shouldRemember,
         Double importance,
         Double confidence,
-        boolean ltmAttempted
+        boolean ltmAttempted,
+        DecisionDiagnostics decisionDiagnostics,
+        ParseDiagnostics parseDiagnostics,
+        KgFilterDiagnostics kgFilterDiagnostics,
+        TemporalDiagnostics temporalDiagnostics
     ) {
         private static CompletedTurnResult duplicate(String turnHash, String model) {
             return new CompletedTurnResult(
-                turnHash, model, true, false, null, null, null, false);
+                turnHash, model, true, false, null, null, null, false,
+                null, null, null, null);
         }
+    }
+
+    private static final class ExtractionParseFailure extends Exception {
+        private final String reason;
+
+        private ExtractionParseFailure(String reason, Throwable cause) {
+            super(reason, cause);
+            this.reason = reason;
+        }
+
+        private String reason() { return reason; }
     }
 
     public static final class CompletedTurnFailure extends RuntimeException {
         private final String stage;
         private final String type;
+        private final String turnHash;
+        private final ParseDiagnostics parseDiagnostics;
+        private final TemporalDiagnostics temporalDiagnostics;
 
         public CompletedTurnFailure(
                 String stage, String type, String message, Throwable cause) {
+            this(stage, type, message, cause, null, null, null);
+        }
+
+        public CompletedTurnFailure(
+                String stage, String type, String message, Throwable cause,
+                String turnHash, ParseDiagnostics parseDiagnostics,
+                TemporalDiagnostics temporalDiagnostics) {
             super(message, cause);
             this.stage = stage;
             this.type = type;
+            this.turnHash = turnHash;
+            this.parseDiagnostics = parseDiagnostics;
+            this.temporalDiagnostics = temporalDiagnostics;
         }
 
         public String stage() { return stage; }
         public String type() { return type; }
+        public String turnHash() { return turnHash; }
+        public ParseDiagnostics parseDiagnostics() { return parseDiagnostics; }
+        public TemporalDiagnostics temporalDiagnostics() { return temporalDiagnostics; }
     }
 }

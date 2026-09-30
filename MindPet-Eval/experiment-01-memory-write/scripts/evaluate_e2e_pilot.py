@@ -12,6 +12,91 @@ from typing import Any
 from e2e_db import write_json
 
 
+TRACE_FIELDS = {
+    "decision": {
+        "rawWorthRemembering", "rawMemoryShouldRemember", "combinedShouldRemember",
+        "importance", "confidence", "importanceThreshold", "confidenceThreshold",
+        "importanceGatePassed", "confidenceGatePassed", "ltmAttempted",
+        "ltmPersisted", "ltmFailureReason",
+    },
+    "parse": {
+        "memoryObjectPresent", "importanceFallbackUsed", "confidenceFallbackUsed",
+        "importanceClamped", "confidenceClamped", "parseFailure", "parseFailureReason",
+    },
+    "kgFilter": {
+        "rawEntityCount", "rawRelationCount", "normalizedEntityCount",
+        "normalizedRelationCount", "sensitivityRejectedEntityCount",
+        "predicateWhitelistRejectedCount", "relationConfidenceRejectedCount",
+        "persistedEntityCount", "persistedRelationCount", "evidenceCount",
+    },
+    "temporal": {
+        "eventDate", "eventAt", "eventTimezone", "eventPrecision",
+        "referenceTimestamp", "referenceTimezone",
+    },
+    "provenance": {
+        "sampleId", "turnHash", "sessionId", "sourceUserMessageId",
+        "sourceAssistantMessageId", "kgEntityRowIds", "kgRelationRowIds",
+        "kgEvidenceRowIds", "longTermMemoryRowIds",
+    },
+}
+
+
+def require_write_trace(response: dict[str, Any], sample_id: str) -> dict[str, Any]:
+    trace = response.get("writeTrace")
+    if not isinstance(trace, dict):
+        raise ValueError(f"{sample_id}: evaluation contract failure: writeTrace missing")
+    for section, required in TRACE_FIELDS.items():
+        value = trace.get(section)
+        if not isinstance(value, dict):
+            raise ValueError(f"{sample_id}: evaluation contract failure: writeTrace.{section} missing")
+        missing = sorted(required - value.keys())
+        if missing:
+            raise ValueError(
+                f"{sample_id}: evaluation contract failure: writeTrace.{section} missing {missing}"
+            )
+
+    decision = trace["decision"]
+    kg_filter = trace["kgFilter"]
+    provenance = trace["provenance"]
+    expected = {
+        "combinedShouldRemember": response.get("shouldRemember"),
+        "importance": response.get("importance"),
+        "confidence": response.get("confidence"),
+        "ltmAttempted": response.get("ltmAttempted"),
+        "ltmPersisted": response.get("ltmPersisted"),
+    }
+    for field, value in expected.items():
+        if decision[field] != value:
+            raise ValueError(f"{sample_id}: evaluation contract failure: decision.{field} mismatch")
+    count_fields = {
+        "persistedEntityCount": response.get("entityRowsCreatedOrUpdated"),
+        "persistedRelationCount": response.get("relationRowsCreatedOrUpdated"),
+        "evidenceCount": response.get("evidenceRowsCreated"),
+    }
+    for field, value in count_fields.items():
+        if kg_filter[field] != value:
+            raise ValueError(f"{sample_id}: evaluation contract failure: kgFilter.{field} mismatch")
+    if (provenance["sampleId"] != sample_id
+            or provenance["turnHash"] != response.get("turnHash")
+            or provenance["sessionId"] != response.get("sessionId")):
+        raise ValueError(f"{sample_id}: evaluation contract failure: provenance mismatch")
+    rows = response.get("rows")
+    if not isinstance(rows, dict):
+        raise ValueError(f"{sample_id}: evaluation contract failure: rows missing")
+    row_mappings = {
+        "kgEntityRowIds": "entityIds",
+        "kgRelationRowIds": "relationIds",
+        "kgEvidenceRowIds": "evidenceIds",
+        "longTermMemoryRowIds": "longTermMemoryIds",
+    }
+    for trace_field, response_field in row_mappings.items():
+        if provenance[trace_field] != rows.get(response_field):
+            raise ValueError(
+                f"{sample_id}: evaluation contract failure: provenance.{trace_field} mismatch"
+            )
+    return trace
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
@@ -133,6 +218,10 @@ def main() -> int:
         raise ValueError("raw result order does not match Ground Truth")
 
     responses = [row["response"] for row in records]
+    traces = [
+        require_write_trace(response, sample["sample_id"])
+        for sample, response in zip(samples, responses)
+    ]
     mapping_by_id = {row["sample_id"]: row for row in mappings}
     should_metrics = classification(
         [row["human_should_remember"] for row in samples],
@@ -172,15 +261,12 @@ def main() -> int:
     evidence_covered = sum(responses[index].get("evidenceRowsCreated", 0) > 0 for index in kg_positive)
     statuses = Counter(response.get("status", "FAILED") for response in responses)
     diagnostics = {
-        "parse_failure": sum(
-            response.get("errorStage") == "EXTRACTION" or "PARSE" in (response.get("errorType") or "")
-            for response in responses
-        ),
-        "memory_object_missing": sum(not response.get("parse", {}).get("memoryObjectPresent", False) for response in responses),
-        "importance_fallback": sum(response.get("parse", {}).get("importanceFallbackUsed", False) for response in responses),
-        "confidence_fallback": sum(response.get("parse", {}).get("confidenceFallbackUsed", False) for response in responses),
-        "importance_clamp": sum(response.get("parse", {}).get("importanceClamped", False) for response in responses),
-        "confidence_clamp": sum(response.get("parse", {}).get("confidenceClamped", False) for response in responses),
+        "parse_failure": sum(trace["parse"]["parseFailure"] for trace in traces),
+        "memory_object_missing": sum(not trace["parse"]["memoryObjectPresent"] for trace in traces),
+        "importance_fallback": sum(trace["parse"]["importanceFallbackUsed"] for trace in traces),
+        "confidence_fallback": sum(trace["parse"]["confidenceFallbackUsed"] for trace in traces),
+        "importance_clamp": sum(trace["parse"]["importanceClamped"] for trace in traces),
+        "confidence_clamp": sum(trace["parse"]["confidenceClamped"] for trace in traces),
         "ltm_failure": sum(response.get("status") == "KG_ONLY_PARTIAL_SUCCESS" or response.get("errorStage") == "LTM_PERSISTENCE" for response in responses),
         "kg_failure": sum(response.get("status") == "FAILED" and response.get("errorStage") in {"KG_PERSISTENCE", "COMPLETION"} for response in responses),
         "duplicate": sum(response.get("duplicate", False) for response in responses),

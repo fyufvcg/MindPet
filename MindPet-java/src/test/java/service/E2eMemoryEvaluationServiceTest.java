@@ -170,13 +170,107 @@ class E2eMemoryEvaluationServiceTest {
             "INSERT INTO kg_turn_ingest(turn_hash,user_id,session_id,entity_count,relation_count) VALUES(?,?,?,?,?)",
             turnHash, E2eMemoryEvaluationService.EVAL_USER, "e2e:pilot01:p001", 0, 0);
         completion.complete(new KnowledgeGraphService.CompletedTurnResult(
-            turnHash, "test-model", false, true, false, 0.2, 0.9, false));
+            turnHash, "test-model", false, true, false, 0.2, 0.9, false,
+            new KnowledgeGraphService.DecisionDiagnostics(
+                false, false, false, 0.2, 0.9, 0.35, 0.45, false, true),
+            new KnowledgeGraphService.ParseDiagnostics(
+                true, false, false, false, false, false, null),
+            new KnowledgeGraphService.KgFilterDiagnostics(0, 0, 0, 0, 0, 0, 0),
+            new KnowledgeGraphService.TemporalDiagnostics(
+                null, null, "UTC", "none", "2026-10-01T00:00:00Z", "UTC")));
         worker.join(2_000);
 
         assertThat(result.get()).isNotNull();
         assertThat(result.get().status()).isEqualTo("NO_PERSIST");
         assertThat(result.get().userId()).isEqualTo(E2eMemoryEvaluationService.EVAL_USER);
         assertThat(result.get().turnIngestRecorded()).isTrue();
+        assertThat(result.get().writeTrace().parse().memoryObjectPresent()).isTrue();
+        assertThat(result.get().writeTrace().decision().importanceGatePassed()).isFalse();
+        assertThat(result.get().writeTrace().provenance().sourceUserMessageId()).isNull();
+    }
+
+    @Test
+    void writeTraceUsesObservedPersistenceRowsAndDecisionGates() {
+        String turnHash = "trace-turn-hash";
+        String sessionId = "e2e:pilot01:p002";
+        when(knowledgeGraph.onCompletedTurnForEvaluation(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+            .thenAnswer(invocation -> {
+                jdbc.update(
+                    "INSERT INTO long_term_memory(user_id,session_id,content,role) VALUES(?,?,?,?)",
+                    E2eMemoryEvaluationService.EVAL_USER, sessionId, "明天下午3点开会", "user");
+                jdbc.update(
+                    "INSERT INTO kg_entity(id,user_id,normalized_name,display_name,entity_type) VALUES(?,?,?,?,?)",
+                    "entity-1", E2eMemoryEvaluationService.EVAL_USER, "meeting", "Meeting", "event");
+                jdbc.update(
+                    "INSERT INTO kg_entity(id,user_id,normalized_name,display_name,entity_type) VALUES(?,?,?,?,?)",
+                    "entity-user", E2eMemoryEvaluationService.EVAL_USER, "user", "User", "person");
+                jdbc.update(
+                    "INSERT INTO kg_relation(id,user_id,source_entity_id,target_entity_id,predicate) VALUES(?,?,?,?,?)",
+                    "relation-1", E2eMemoryEvaluationService.EVAL_USER,
+                    "entity-user", "entity-1", "plans");
+                jdbc.update(
+                    "INSERT INTO kg_evidence(user_id,turn_hash,entity_id,session_id,user_message) VALUES(?,?,?,?,?)",
+                    E2eMemoryEvaluationService.EVAL_USER, turnHash, "entity-1", sessionId, "message");
+                jdbc.update(
+                    "INSERT INTO kg_evidence(user_id,turn_hash,relation_id,session_id,user_message) VALUES(?,?,?,?,?)",
+                    E2eMemoryEvaluationService.EVAL_USER, turnHash, "relation-1", sessionId, "message");
+                jdbc.update(
+                    "INSERT INTO kg_turn_ingest(turn_hash,user_id,session_id,entity_count,relation_count) VALUES(?,?,?,?,?)",
+                    turnHash, E2eMemoryEvaluationService.EVAL_USER, sessionId, 1, 1);
+                return CompletableFuture.completedFuture(new KnowledgeGraphService.CompletedTurnResult(
+                    turnHash, "test-model", false, true, true, 0.8, 0.9, true,
+                    new KnowledgeGraphService.DecisionDiagnostics(
+                        true, true, true, 0.8, 0.9, 0.35, 0.45, true, true),
+                    new KnowledgeGraphService.ParseDiagnostics(
+                        true, false, false, false, false, false, null),
+                    new KnowledgeGraphService.KgFilterDiagnostics(1, 1, 1, 1, 0, 0, 0),
+                    new KnowledgeGraphService.TemporalDiagnostics(
+                        "2026-10-02", "2026-10-02T15:00", "UTC", "minute",
+                        "2026-10-01T00:00:00Z", "UTC")));
+            });
+
+        E2eMemoryIngestResult result = service.ingest(
+            "p002", "pilot01", "明天下午3点开会", "context", "neutral",
+            Instant.parse("2026-10-01T00:00:00Z"));
+
+        assertThat(result.ltmPersisted()).isTrue();
+        assertThat(result.writeTrace().decision().ltmPersisted()).isTrue();
+        assertThat(result.writeTrace().decision().ltmFailureReason()).isNull();
+        assertThat(result.writeTrace().kgFilter().persistedEntityCount()).isEqualTo(1);
+        assertThat(result.writeTrace().kgFilter().persistedRelationCount()).isEqualTo(1);
+        assertThat(result.writeTrace().kgFilter().evidenceCount()).isEqualTo(2);
+        assertThat(result.writeTrace().provenance().kgEntityRowIds()).containsExactly("entity-1");
+        assertThat(result.writeTrace().provenance().kgRelationRowIds()).containsExactly("relation-1");
+        assertThat(result.writeTrace().provenance().kgEvidenceRowIds()).hasSize(2);
+        assertThat(result.writeTrace().provenance().longTermMemoryRowIds()).hasSize(1);
+    }
+
+    @Test
+    void parseFailurePropagatesAReasonCodeInTheEvaluationTrace() {
+        KnowledgeGraphService.CompletedTurnFailure pipelineFailure =
+            new KnowledgeGraphService.CompletedTurnFailure(
+                "EXTRACTION", "EXTRACTION_FAILED", "Production extraction failed", null,
+                "failed-turn-hash",
+                new KnowledgeGraphService.ParseDiagnostics(
+                    null, null, null, null, null, true, "INVALID_EXTRACTION_RESPONSE"),
+                new KnowledgeGraphService.TemporalDiagnostics(
+                    null, null, "UTC", "none", "2026-10-01T00:00:00Z", "UTC"));
+        when(knowledgeGraph.onCompletedTurnForEvaluation(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+            .thenReturn(CompletableFuture.failedFuture(pipelineFailure));
+
+        E2eMemoryEvaluationService.EvaluationFailure failure = assertThrows(
+            E2eMemoryEvaluationService.EvaluationFailure.class,
+            () -> service.ingest(
+                "p003", "pilot01", "message", "context", "neutral",
+                Instant.parse("2026-10-01T00:00:00Z")));
+
+        assertThat(failure.writeTrace()).isNotNull();
+        assertThat(failure.writeTrace().parse().parseFailure()).isTrue();
+        assertThat(failure.writeTrace().parse().parseFailureReason())
+            .isEqualTo("INVALID_EXTRACTION_RESPONSE");
+        assertThat(failure.writeTrace().provenance().sampleId()).isEqualTo("p003");
     }
 
     private E2eMemoryEvaluationService service(

@@ -135,7 +135,8 @@ public class EvalE2eMemoryController {
                 HttpStatus.BAD_REQUEST;
             default -> HttpStatus.BAD_GATEWAY;
         };
-        return failed(status, sampleId, failure.stage(), failure.type(), failure.getMessage());
+        return ResponseEntity.status(status).body(new E2eMemoryIngestResult.Failure(
+            "FAILED", sampleId, failure.stage(), failure.type(), failure.getMessage(), failure.writeTrace()));
     }
 
     private static String text(JsonNode body, String field) {
@@ -157,6 +158,6 @@ public class EvalE2eMemoryController {
     private static ResponseEntity<E2eMemoryIngestResult.Failure> failed(
             HttpStatus status, String sampleId, String stage, String type, String message) {
         return ResponseEntity.status(status).body(
-            new E2eMemoryIngestResult.Failure("FAILED", sampleId, stage, type, message));
+            new E2eMemoryIngestResult.Failure("FAILED", sampleId, stage, type, message, null));
     }
 }

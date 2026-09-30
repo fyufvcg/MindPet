@@ -2,6 +2,7 @@ package service;
 
 import config.EvaluationSqlitePathGuard;
 import model.E2eMemoryIngestResult;
+import model.EvaluationWriteTrace;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -84,7 +85,8 @@ public class E2eMemoryEvaluationService {
         } catch (ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof KnowledgeGraphService.CompletedTurnFailure pipelineFailure) {
-                throw failure(pipelineFailure.stage(), pipelineFailure.type(), pipelineFailure.getMessage(), pipelineFailure);
+                throw failure(pipelineFailure.stage(), pipelineFailure.type(), pipelineFailure.getMessage(),
+                    pipelineFailure, failedWriteTrace(sampleId, sessionId, pipelineFailure));
             }
             throw failure("COMPLETION", "COMPLETION_FAILED", "Completed-turn evaluation failed", cause);
         }
@@ -128,6 +130,9 @@ public class E2eMemoryEvaluationService {
         int entityCount = completed.duplicate() ? 0 : entities.size();
         int relationCount = completed.duplicate() ? 0 : relations.size();
         int evidenceCount = completed.duplicate() ? 0 : evidenceIds.size();
+        EvaluationWriteTrace writeTrace = writeTrace(
+            sampleId, sessionId, completed, ltmPersisted, ltmCreated,
+            entityIds, relationIds, evidenceIds, entityCount, relationCount, evidenceCount);
         return new E2eMemoryIngestResult(
             status, sampleId, runId, EVAL_USER, sessionId, completed.turnHash(), completed.model(),
             completed.duplicate(), true, completed.extractionCompleted(), completed.shouldRemember(),
@@ -135,7 +140,53 @@ public class E2eMemoryEvaluationService {
             entityCount, relationCount, evidenceCount, turnIngestRecorded,
             ltmBefore.size(), ltmAfter.size(), pruneOccurred, pruneDeletedEstimate,
             new E2eMemoryIngestResult.RowMapping(ltmCreated, entityIds, relationIds, evidenceIds),
-            entities, relations, errorStage, errorType, errorMessage);
+            entities, relations, writeTrace, errorStage, errorType, errorMessage);
+    }
+
+    private EvaluationWriteTrace writeTrace(
+            String sampleId,
+            String sessionId,
+            KnowledgeGraphService.CompletedTurnResult completed,
+            boolean ltmPersisted,
+            List<String> ltmIds,
+            List<String> entityIds,
+            List<String> relationIds,
+            List<String> evidenceIds,
+            int persistedEntityCount,
+            int persistedRelationCount,
+            int evidenceCount) {
+        KnowledgeGraphService.DecisionDiagnostics decision = completed.decisionDiagnostics();
+        KnowledgeGraphService.ParseDiagnostics parse = completed.parseDiagnostics();
+        KnowledgeGraphService.KgFilterDiagnostics kg = completed.kgFilterDiagnostics();
+        KnowledgeGraphService.TemporalDiagnostics temporal = completed.temporalDiagnostics();
+        if (decision == null || parse == null || kg == null || temporal == null) return null;
+
+        String ltmFailureReason = completed.ltmAttempted() && !ltmPersisted
+            ? "EXPECTED_ROW_NOT_FOUND" : null;
+        return new EvaluationWriteTrace(
+            new EvaluationWriteTrace.DecisionTrace(
+                decision.rawWorthRemembering(), decision.rawMemoryShouldRemember(),
+                decision.combinedShouldRemember(), decision.importance(), decision.confidence(),
+                decision.importanceThreshold(), decision.confidenceThreshold(),
+                decision.importanceGatePassed(), decision.confidenceGatePassed(),
+                completed.ltmAttempted(), ltmPersisted, ltmFailureReason),
+            new EvaluationWriteTrace.ParseDiagnostics(
+                parse.memoryObjectPresent(), parse.importanceFallbackUsed(),
+                parse.confidenceFallbackUsed(), parse.importanceClamped(),
+                parse.confidenceClamped(), parse.parseFailure(), parse.parseFailureReason()),
+            new EvaluationWriteTrace.KgFilterTrace(
+                kg.rawEntityCount(), kg.rawRelationCount(),
+                kg.normalizedEntityCount(), kg.normalizedRelationCount(),
+                kg.sensitivityRejectedEntityCount(), kg.predicateWhitelistRejectedCount(),
+                kg.relationConfidenceRejectedCount(), persistedEntityCount,
+                persistedRelationCount, evidenceCount),
+            new EvaluationWriteTrace.TemporalTrace(
+                temporal.eventDate(), temporal.eventAt(), temporal.eventTimezone(),
+                temporal.eventPrecision(), temporal.referenceTimestamp(),
+                temporal.referenceTimezone()),
+            new EvaluationWriteTrace.ProvenanceTrace(
+                sampleId, completed.turnHash(), sessionId, null, null,
+                entityIds, relationIds, evidenceIds, ltmIds));
     }
 
     public E2eMemoryIngestResult.Snapshot snapshot() {
@@ -260,20 +311,54 @@ public class E2eMemoryEvaluationService {
     }
 
     private EvaluationFailure failure(String stage, String type, String message, Throwable cause) {
-        return new EvaluationFailure(stage, type, message, cause);
+        return failure(stage, type, message, cause, null);
+    }
+
+    private EvaluationFailure failure(String stage, String type, String message, Throwable cause,
+                                      EvaluationWriteTrace writeTrace) {
+        return new EvaluationFailure(stage, type, message, cause, writeTrace);
+    }
+
+    private EvaluationWriteTrace failedWriteTrace(
+            String sampleId, String sessionId,
+            KnowledgeGraphService.CompletedTurnFailure failure) {
+        KnowledgeGraphService.ParseDiagnostics parse = failure.parseDiagnostics();
+        KnowledgeGraphService.TemporalDiagnostics temporal = failure.temporalDiagnostics();
+        if (parse == null || temporal == null) return null;
+        return new EvaluationWriteTrace(
+            new EvaluationWriteTrace.DecisionTrace(
+                null, null, null, null, null, 0.35, 0.45,
+                null, null, false, false, null),
+            new EvaluationWriteTrace.ParseDiagnostics(
+                parse.memoryObjectPresent(), parse.importanceFallbackUsed(),
+                parse.confidenceFallbackUsed(), parse.importanceClamped(),
+                parse.confidenceClamped(), parse.parseFailure(), parse.parseFailureReason()),
+            new EvaluationWriteTrace.KgFilterTrace(
+                null, null, null, null, null, null, null, 0, 0, 0),
+            new EvaluationWriteTrace.TemporalTrace(
+                temporal.eventDate(), temporal.eventAt(), temporal.eventTimezone(),
+                temporal.eventPrecision(), temporal.referenceTimestamp(),
+                temporal.referenceTimezone()),
+            new EvaluationWriteTrace.ProvenanceTrace(
+                sampleId, failure.turnHash(), sessionId, null, null,
+                List.of(), List.of(), List.of(), List.of()));
     }
 
     public static final class EvaluationFailure extends RuntimeException {
         private final String stage;
         private final String type;
+        private final EvaluationWriteTrace writeTrace;
 
-        public EvaluationFailure(String stage, String type, String message, Throwable cause) {
+        public EvaluationFailure(String stage, String type, String message, Throwable cause,
+                                 EvaluationWriteTrace writeTrace) {
             super(message, cause);
             this.stage = stage;
             this.type = type;
+            this.writeTrace = writeTrace;
         }
 
         public String stage() { return stage; }
         public String type() { return type; }
+        public EvaluationWriteTrace writeTrace() { return writeTrace; }
     }
 }

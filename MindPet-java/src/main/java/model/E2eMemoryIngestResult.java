@@ -31,6 +31,7 @@ public record E2eMemoryIngestResult(
     RowMapping rows,
     List<EntityRow> entities,
     List<RelationRow> relations,
+    EvaluationWriteTrace writeTrace,
     String errorStage,
     String errorType,
     String errorMessage
@@ -85,6 +86,7 @@ public record E2eMemoryIngestResult(
         String sampleId,
         String errorStage,
         String errorType,
-        String errorMessage
+        String errorMessage,
+        EvaluationWriteTrace writeTrace
     ) {}
 }

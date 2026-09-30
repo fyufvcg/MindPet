@@ -1,6 +1,7 @@
 package controller;
 
 import model.E2eMemoryIngestResult;
+import model.EvaluationWriteTrace;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -67,7 +68,8 @@ class EvalE2eMemoryControllerTest {
             .thenReturn(success());
 
         mvc.perform(request(BODY)).andExpect(status().isOk())
-            .andExpect(jsonPath("$.userId").value(E2eMemoryEvaluationService.EVAL_USER));
+            .andExpect(jsonPath("$.userId").value(E2eMemoryEvaluationService.EVAL_USER))
+            .andExpect(jsonPath("$.writeTrace.parse.memoryObjectPresent").value(true));
 
         verify(service).ingest(
             "p001", "pilot01", "hello", "context", "neutral",
@@ -121,7 +123,19 @@ class EvalE2eMemoryControllerTest {
             false, .2, .9, false, false, 0, 0, 0, true,
             0, 0, false, 0,
             new E2eMemoryIngestResult.RowMapping(List.of(), List.of(), List.of(), List.of()),
-            List.of(), List.of(), null, null, null);
+            List.of(), List.of(), new EvaluationWriteTrace(
+                new EvaluationWriteTrace.DecisionTrace(
+                    false, false, false, .2, .9, .35, .45,
+                    false, true, false, false, null),
+                new EvaluationWriteTrace.ParseDiagnostics(
+                    true, false, false, false, false, false, null),
+                new EvaluationWriteTrace.KgFilterTrace(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                new EvaluationWriteTrace.TemporalTrace(
+                    null, null, "UTC", "none", "2026-10-01T00:00:00Z", "UTC"),
+                new EvaluationWriteTrace.ProvenanceTrace(
+                    "p001", "hash", "e2e:pilot01:p001", null, null,
+                    List.of(), List.of(), List.of(), List.of())),
+            null, null, null);
     }
 
     @Configuration(proxyBeanMethods = false)

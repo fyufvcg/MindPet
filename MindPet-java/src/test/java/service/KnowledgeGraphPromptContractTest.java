@@ -14,11 +14,12 @@ class KnowledgeGraphPromptContractTest {
     private static final String PROMPT = extractionPrompt();
     private static final String V1_SHA256 = "a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9";
     private static final String V2_SHA256 = "cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e";
+    private static final String V21_SHA256 = "1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649";
     private static final String PROMPT_SHA256 = sha256(PROMPT);
 
     @Test
     void recognizedPromptHashHasMatchingVersionContract() {
-        assertThat(PROMPT_SHA256).isIn(V1_SHA256, V2_SHA256);
+        assertThat(PROMPT_SHA256).isIn(V1_SHA256, V2_SHA256, V21_SHA256);
         if (V1_SHA256.equals(PROMPT_SHA256)) {
             assertThat(PROMPT)
                 .contains("durable knowledge graph")
@@ -88,7 +89,7 @@ class KnowledgeGraphPromptContractTest {
             .contains("\"relations\": [")
             .contains("project|technology|tool|preference|goal|person|topic|organization|place|event|other")
             .contains("prefers|dislikes|uses|learns|builds|works_on|plans|knows|experienced|belongs_to|related_to");
-        if (V2_SHA256.equals(PROMPT_SHA256)) {
+        if (isV2Family()) {
             assertThat(PROMPT)
                 .contains("Use related_to only when no more specific allowed predicate applies");
         }
@@ -105,7 +106,11 @@ class KnowledgeGraphPromptContractTest {
     }
 
     private static void assumeV2() {
-        assumeTrue(V2_SHA256.equals(PROMPT_SHA256), "V2-specific contract assertions");
+        assumeTrue(isV2Family(), "V2-family contract assertions");
+    }
+
+    private static boolean isV2Family() {
+        return V2_SHA256.equals(PROMPT_SHA256) || V21_SHA256.equals(PROMPT_SHA256);
     }
 
     private static String sha256(String value) {
