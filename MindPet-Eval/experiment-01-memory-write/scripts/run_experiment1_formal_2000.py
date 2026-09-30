@@ -507,7 +507,7 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     if not args.skip_build:
         completed = subprocess.run(
-            ["mvn", "-q", "-DskipTests", "package", "-f", str(java_root / "pom.xml")],
+            ["mvn.cmd", "-q", "-DskipTests", "package", "-f", str(java_root / "pom.xml")],
             cwd=repository, check=False,
         )
         if completed.returncode:
