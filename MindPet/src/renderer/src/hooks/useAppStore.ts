@@ -1140,7 +1140,7 @@ export function useAppStore() {
                 ? m.toolSteps.filter((step: any) => step?.type !== 'clarification')
                 : m.toolSteps
               if (m.isThinking && !isLlmActive) {
-                const cleanedMsg = { ...m, isThinking: false, text: m.text || '⚠️ 应用异常退出，对话生成被中断。' }
+                const cleanedMsg = { ...m, isThinking: false, completedAt: m.completedAt || Date.now(), text: m.text || '⚠️ 应用异常退出，对话生成被中断。' }
                 cleanedMsg.toolSteps = toolSteps
                 cleanedMessagesToSave.push({ msg: cleanedMsg, sessionId: s.id })
                 return cleanedMsg
@@ -1219,6 +1219,8 @@ export function useAppStore() {
                     ...lm,
                     text: pm.text || lm.text,
                     isThinking: pm.isThinking,
+                    startedAt: pm.startedAt ?? lm.startedAt,
+                    completedAt: pm.completedAt ?? lm.completedAt,
                     isError: pm.isError,
                     toolSteps: pm.toolSteps,
                     reasoningText: pm.reasoningText ?? lm.reasoningText,
@@ -1233,6 +1235,8 @@ export function useAppStore() {
                     ...lm,
                     text: pm.text,
                     isThinking: false,
+                    startedAt: pm.startedAt ?? lm.startedAt,
+                    completedAt: pm.completedAt ?? lm.completedAt,
                     isError: pm.isError,
                     toolSteps: pm.toolSteps || lm.toolSteps,
                     reasoningText: pm.reasoningText ?? lm.reasoningText,

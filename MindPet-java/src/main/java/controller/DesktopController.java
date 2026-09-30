@@ -12,6 +12,7 @@ import tool.ToolUserContext;
 import util.Logger;
 
 import java.io.OutputStream;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -111,6 +112,22 @@ public class DesktopController {
                 + (hasImages ? ", 图片: " + images.size() + "张" : ""));
 
             final OutputStream streamOut = out;
+            final Object streamWriteLock = new Object();
+            final AtomicInteger toolEventSequence = new AtomicInteger();
+            ToolUserContext.setToolEventEmitter(toolEvent -> {
+                synchronized (streamWriteLock) {
+                    Map<String, Object> event = new java.util.LinkedHashMap<>(toolEvent);
+                    event.put("sessionId", sessionId);
+                    event.put("messageId", requestId);
+                    event.put("sequence", toolEventSequence.incrementAndGet());
+                    try {
+                        writeNdjson(streamOut, event);
+                        streamOut.flush();
+                    } catch (Exception writeError) {
+                        throw new IllegalStateException("写入工具进度失败", writeError);
+                    }
+                }
+            });
             boolean thinkingSupported = chatClientFactory.supportsDeepSeekThinking();
             boolean thinkingEnabled = thinkingRequested && thinkingSupported && !"summary".equals(mode);
             StringBuilder reasoningContent = new StringBuilder();
@@ -124,20 +141,24 @@ public class DesktopController {
                 streamOut.flush();
             }
             java.util.function.Consumer<String> onDelta = delta -> {
-                try {
-                    writeNdjson(streamOut, "text_delta", delta, null);
-                    streamOut.flush();
-                } catch (Exception writeError) {
-                    throw new IllegalStateException("写入流式响应失败", writeError);
+                synchronized (streamWriteLock) {
+                    try {
+                        writeNdjson(streamOut, "text_delta", delta, null);
+                        streamOut.flush();
+                    } catch (Exception writeError) {
+                        throw new IllegalStateException("写入流式响应失败", writeError);
+                    }
                 }
             };
             java.util.function.Consumer<String> onReasoningDelta = delta -> {
-                try {
-                    reasoningContent.append(delta);
-                    writeNdjson(streamOut, "reasoning_delta", delta, null);
-                    streamOut.flush();
-                } catch (Exception writeError) {
-                    throw new IllegalStateException("写入推理流失败", writeError);
+                synchronized (streamWriteLock) {
+                    try {
+                        reasoningContent.append(delta);
+                        writeNdjson(streamOut, "reasoning_delta", delta, null);
+                        streamOut.flush();
+                    } catch (Exception writeError) {
+                        throw new IllegalStateException("写入推理流失败", writeError);
+                    }
                 }
             };
 
@@ -639,6 +660,11 @@ public class DesktopController {
         event.put("type", type);
         if (content != null) event.put("content", content);
         if (message != null) event.put("message", message);
+        String json = mapper.writeValueAsString(event) + "\n";
+        out.write(json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void writeNdjson(OutputStream out, Map<String, Object> event) throws Exception {
         String json = mapper.writeValueAsString(event) + "\n";
         out.write(json.getBytes(StandardCharsets.UTF_8));
     }

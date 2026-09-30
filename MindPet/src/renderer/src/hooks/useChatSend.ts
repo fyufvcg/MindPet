@@ -172,6 +172,8 @@ export function useChatSend({
       sender: 'agent',
       text: '',
       isThinking: true,
+      startedAt: Date.now(),
+      completedAt: undefined,
       reasoningText: thinkingEnabled ? '' : undefined,
       toolSteps: [],
       time
@@ -192,6 +194,7 @@ export function useChatSend({
           const cleaned = {
             ...message,
             isThinking: false,
+            completedAt: Date.now(),
             isSuperseded: isSteering,
             text: message.text || (isSteering ? '↳ 已根据后续指引调整方向。' : '⚠️ 对话生成被中断。'),
             toolSteps: Array.isArray(message.toolSteps)

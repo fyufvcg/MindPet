@@ -4309,7 +4309,7 @@ app.whenReady().then(async () => {
     messages: any[],
     _workspacePath?: string,
     event?: Electron.IpcMainInvokeEvent,
-    _onToolEvent?: (evt: { type: string; name: string; args?: any; result?: string; files?: any[]; contextTokens?: number; detail?: string; sources?: any[]; status?: string; beforeTokens?: number; afterTokens?: number; activeToolContextTokens?: number; archivePath?: string; removedMessages?: number }) => void
+    _onToolEvent?: (evt: { type: string; name: string; args?: any; result?: string; files?: any[]; contextTokens?: number; detail?: string; sources?: any[]; status?: string; beforeTokens?: number; afterTokens?: number; activeToolContextTokens?: number; archivePath?: string; removedMessages?: number; callId?: string; durationMs?: number; startedAt?: number; sequence?: number }) => void
   ): Promise<string> {
     let thisController: AbortController
     if (!config.sessionId) config.sessionId = 'desktop:' + Date.now()
@@ -4415,6 +4415,22 @@ app.whenReady().then(async () => {
             }
             _onToolEvent?.(generatedEvent)
             if (event) event.sender.send('api:llm-tool-event', generatedEvent)
+          } else if (step.type === 'tool_started' || step.type === 'tool_finished') {
+            const toolEvent = {
+              type: step.type,
+              name: step.name || 'unknown_tool',
+              callId: step.callId,
+              detail: step.detail || '',
+              status: step.status,
+              durationMs: step.durationMs,
+              startedAt: step.startedAt,
+              sequence: step.sequence,
+              timestamp: Date.now(),
+              sessionId: config.sessionId,
+              messageId: config.messageId
+            }
+            _onToolEvent?.(toolEvent)
+            if (event) event.sender.send('api:llm-tool-event', toolEvent)
           } else if (step.type === 'error') {
             throw new Error(step.message || 'Unknown backend error')
           }

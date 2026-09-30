@@ -28,6 +28,14 @@ interface BackendEvent {
   model?: string
   provider?: string
   files?: BackendGeneratedFile[]
+  name?: string
+  callId?: string
+  detail?: string
+  durationMs?: number
+  startedAt?: number
+  sequence?: number
+  sessionId?: string
+  messageId?: number | string
 }
 
 export interface BackendGeneratedFile {
@@ -49,6 +57,15 @@ export interface BackendStep {
   model?: string
   provider?: string
   files?: BackendGeneratedFile[]
+  name?: string
+  callId?: string
+  detail?: string
+  status?: string
+  durationMs?: number
+  startedAt?: number
+  sequence?: number
+  sessionId?: string
+  messageId?: number | string
 }
 
 /** LLM 调用配置 */
@@ -286,7 +303,16 @@ export async function* callJavaBackend(
             totalTokens: event.totalTokens,
             model: event.model,
             provider: event.provider,
-            files: event.files
+            files: event.files,
+            name: event.name,
+            callId: event.callId,
+            detail: event.detail,
+            status: event.status,
+            durationMs: event.durationMs,
+            startedAt: event.startedAt,
+            sequence: event.sequence,
+            sessionId: event.sessionId,
+            messageId: event.messageId
           }
         } catch {
           // NDJSON 每行必须是有效 JSON
@@ -308,7 +334,16 @@ export async function* callJavaBackend(
           totalTokens: event.totalTokens,
           model: event.model,
           provider: event.provider,
-          files: event.files
+          files: event.files,
+          name: event.name,
+          callId: event.callId,
+          detail: event.detail,
+          status: event.status,
+          durationMs: event.durationMs,
+          startedAt: event.startedAt,
+          sequence: event.sequence,
+          sessionId: event.sessionId,
+          messageId: event.messageId
         }
       } catch {
         // ignore incomplete last line

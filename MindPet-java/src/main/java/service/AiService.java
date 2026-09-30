@@ -385,6 +385,7 @@ public class AiService {
         String requestSessionId = tool.ToolUserContext.getSessionId();
         String requestId = tool.ToolUserContext.getRequestId();
         byte[] requestImageData = tool.ToolUserContext.getImageData();
+        Consumer<Map<String, Object>> requestToolEventEmitter = tool.ToolUserContext.getToolEventEmitter();
         Map<String, AtomicInteger> streamedToolCounts = streamedToolsUsed == null
             ? null : new ConcurrentHashMap<>();
         List<ToolCallback> allCallbacks = new ArrayList<>();
@@ -453,10 +454,13 @@ public class AiService {
                         tool.ToolUserContext.set(requestUserId, requestSessionId);
                         tool.ToolUserContext.setRequestId(requestId);
                         if (requestImageData != null) tool.ToolUserContext.setImageData(requestImageData);
+                        if (requestToolEventEmitter != null) tool.ToolUserContext.setToolEventEmitter(requestToolEventEmitter);
                     }
+                    String toolName = tc.getToolDefinition().name();
+                    String callId = UUID.randomUUID().toString();
+                    long startedAt = System.currentTimeMillis();
                     try {
                         tool.ToolUserContext.markToolsUsed();
-                        String toolName = tc.getToolDefinition().name();
                         if (streamedToolsUsed != null) {
                             streamedToolsUsed.set(true);
                             int invocation = streamedToolCounts
@@ -464,16 +468,23 @@ public class AiService {
                                 .incrementAndGet();
                             if (invocation > 2) {
                                 AiService.this.logger.log("WARN", "  [限流] " + toolName + " 已达到本次请求最多2次调用");
+                                emitToolLifecycleEvent("tool_started", toolName, callId, startedAt, summarizeToolTarget(request), null);
+                                emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), "skipped");
                                 return "该工具已达到本次请求最多2次调用限制，请使用已有结果回答。";
                             }
                         }
                         AiService.this.logger.log("INFO", "  -> 调用工具: " + toolName);
+                        emitToolLifecycleEvent("tool_started", toolName, callId, startedAt, summarizeToolTarget(request), null);
                         String result = tc.call(request);
                         String preview = result == null ? "null"
                             : result.replace("\r", " ").replace("\n", " ");
                         if (preview.length() > 200) preview = preview.substring(0, 200) + "...";
                         AiService.this.logger.log("INFO", "  <- 工具结果: " + preview);
+                        emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), toolResultStatus(result));
                         return result;
+                    } catch (RuntimeException | Error toolError) {
+                        emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), "failed");
+                        throw toolError;
                     } finally {
                         if (installContext) tool.ToolUserContext.clear();
                     }
@@ -497,6 +508,58 @@ public class AiService {
     private boolean matchesToolName(String actual, String expected) {
         return actual != null && expected != null
             && (actual.equals(expected) || actual.endsWith("_" + expected));
+    }
+
+    private void emitToolLifecycleEvent(String type, String name, String callId, long startedAt,
+                                        String detail, String status) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", type);
+        event.put("name", name);
+        event.put("callId", callId);
+        event.put("timestamp", System.currentTimeMillis());
+        event.put("startedAt", startedAt);
+        event.put("durationMs", Math.max(0, System.currentTimeMillis() - startedAt));
+        if (detail != null && !detail.isBlank()) event.put("detail", detail);
+        if (status != null) event.put("status", status);
+        tool.ToolUserContext.emitToolEvent(event);
+    }
+
+    /** Expose only common file or page targets; tool arguments can contain credentials or private content. */
+    private String summarizeToolTarget(String request) {
+        if (request == null || request.isBlank()) return "";
+        try {
+            JsonNode root = new ObjectMapper().readTree(request);
+            for (String key : List.of("path", "filePath", "file_path", "fileName", "filename",
+                "file_name", "targetPath", "directory", "directoryPath", "dir", "command", "cmd",
+                "url", "query", "searchQuery")) {
+                JsonNode value = root.get(key);
+                if (value == null || !value.isTextual() || value.asText().isBlank()) continue;
+                String target = value.asText().trim();
+                if (target.length() > 180) target = "…" + target.substring(target.length() - 177);
+                return target;
+            }
+        } catch (Exception ignored) {
+            // Keep the action label even when an MCP argument payload is not JSON.
+        }
+        return "";
+    }
+
+    /** Trust structured failure flags from tools; ordinary result prose may mention errors without failing. */
+    private String toolResultStatus(String result) {
+        if (result == null || result.isBlank()) return "completed";
+        try {
+            JsonNode root = new ObjectMapper().readTree(result);
+            if ((root.has("success") && root.get("success").isBoolean() && !root.get("success").asBoolean())
+                || (root.has("ok") && root.get("ok").isBoolean() && !root.get("ok").asBoolean())
+                || (root.has("isError") && root.get("isError").asBoolean(false))) {
+                return "failed";
+            }
+            String status = root.path("status").asText("");
+            if ("failed".equalsIgnoreCase(status) || "error".equalsIgnoreCase(status)) return "failed";
+        } catch (Exception ignored) {
+            // Non-JSON tool output has no structured failure flag.
+        }
+        return "completed";
     }
 
     private boolean isPassiveWebTool(String name) {

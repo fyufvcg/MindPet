@@ -3,6 +3,8 @@ package tool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * ThreadLocal — 当前调用者的微信用户 ID + 工具调用标记。
@@ -14,6 +16,7 @@ public final class ToolUserContext {
     private static final ThreadLocal<String> SESSION_ID = new ThreadLocal<>();
     private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
     private static final ThreadLocal<byte[]> IMAGE_DATA = new ThreadLocal<>();
+    private static final ThreadLocal<Consumer<Map<String, Object>>> TOOL_EVENT_EMITTER = new ThreadLocal<>();
     private static final ConcurrentHashMap<String, List<GeneratedFile>> GENERATED_FILES = new ConcurrentHashMap<>();
 
     public static void set(String userId) {
@@ -49,6 +52,7 @@ public final class ToolUserContext {
         TOOLS_USED.remove();
         IMAGE_DATA.remove();
         REQUEST_ID.remove();
+        TOOL_EVENT_EMITTER.remove();
     }
 
     public static void markToolsUsed() { TOOLS_USED.set(true); }
@@ -65,6 +69,23 @@ public final class ToolUserContext {
     }
 
     public static String getRequestId() { return REQUEST_ID.get(); }
+
+    public static void setToolEventEmitter(Consumer<Map<String, Object>> emitter) {
+        if (emitter == null) TOOL_EVENT_EMITTER.remove();
+        else TOOL_EVENT_EMITTER.set(emitter);
+    }
+
+    public static Consumer<Map<String, Object>> getToolEventEmitter() { return TOOL_EVENT_EMITTER.get(); }
+
+    public static void emitToolEvent(Map<String, Object> event) {
+        Consumer<Map<String, Object>> emitter = TOOL_EVENT_EMITTER.get();
+        if (emitter == null) return;
+        try {
+            emitter.accept(event);
+        } catch (RuntimeException ignored) {
+            // A disconnected client must not fail the underlying tool call.
+        }
+    }
 
     public static void addGeneratedFile(String path, String name, String mimeType, String url) {
         String requestId = getRequestId();

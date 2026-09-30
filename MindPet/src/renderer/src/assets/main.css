@@ -1999,8 +1999,8 @@ body {
 }
 
 .message-bubble {
-  font-size: 13.5px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.7;
   box-sizing: border-box;
   max-width: 85%;
 }
@@ -2010,6 +2010,17 @@ body {
   color: var(--text-bubble-agent);
   max-width: 100%;
   width: 100%;
+}
+
+.message-row.agent .message-header-row,
+.message-row.agent .message-bubble,
+.message-row.agent .message-action-row {
+  width: min(100%, 820px);
+  align-self: center;
+}
+
+.message-row.agent .message-bubble {
+  max-width: 820px;
 }
 
 .message-row.user .message-bubble {
@@ -11755,38 +11766,37 @@ body.session-dragging * {
 }
 
 .message-reasoning {
-  margin: 2px 0 12px;
+  margin: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--color-action-primary) 5%, var(--bg-card));
-  border: 1px solid var(--border-card);
-  border-radius: 8px;
-  font-size: 12px;
+  border: 0;
+  font-size: 13px;
 }
 
 .message-reasoning.streaming {
-  border-color: color-mix(in srgb, var(--color-action-primary) 30%, var(--border-card));
+  border-color: transparent;
 }
 
 .message-reasoning summary {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 0 2px;
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  list-style: none;
   user-select: none;
 }
 
-.message-reasoning summary::marker {
-  color: var(--color-action-primary);
+.message-reasoning summary::-webkit-details-marker {
+  display: none;
 }
 
 .message-reasoning[open] summary {
-  border-bottom: 1px solid var(--border-card);
+  color: var(--text-secondary);
 }
 
 .message-reasoning-live {
@@ -11797,14 +11807,53 @@ body.session-dragging * {
 }
 
 .message-reasoning-text {
-  max-height: 42vh;
-  padding: 9px 11px;
+  max-height: min(320px, 35vh);
+  padding: 4px 10px 8px;
   overflow: auto;
   color: var(--text-secondary);
+  line-height: 1.7;
+  user-select: text;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.message-reasoning-toolbar {
+  position: sticky;
+  top: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 8px;
+  background: var(--bg-content);
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.message-reasoning-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.message-reasoning-toolbar button:hover {
+  color: var(--color-action-primary);
+  background: var(--bg-menu-hover);
+}
+
+.message-reasoning-original {
+  max-width: 78ch;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.55;
-  user-select: text;
+  word-break: normal;
+  line-height: 1.72;
 }
 
 .message-reasoning-placeholder,
@@ -11816,6 +11865,192 @@ body.session-dragging * {
 
 .message-reasoning-notice {
   color: var(--color-status-warning);
+}
+
+.message-process {
+  width: 100%;
+  margin: 14px 0 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-card);
+  box-sizing: border-box;
+}
+
+.message-process-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  color: var(--text-muted);
+  text-align: left;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.message-process-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-menu-hover);
+}
+
+.message-process-toggle:focus-visible,
+.message-reasoning-toolbar button:focus-visible,
+.message-reasoning summary:focus-visible {
+  outline: 2px solid var(--color-action-primary);
+  outline-offset: 2px;
+}
+
+.message-process-status,
+.activity-step-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-card);
+  border-radius: 5px;
+  background: var(--bg-card);
+}
+
+.message-process-status.running,
+.activity-step-icon.running {
+  color: var(--color-action-primary);
+}
+
+.message-process-status.complete,
+.activity-step-icon.complete {
+  color: var(--color-status-success);
+}
+
+.message-process-status.failed,
+.activity-step-icon.failed {
+  color: var(--color-status-danger);
+}
+
+.message-process-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-process-action {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.message-process-status.cancelled {
+  color: var(--text-muted);
+}
+
+.message-process-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 5px 0 0 8px;
+  padding: 3px 0 2px 13px;
+  border-left: 1px solid var(--border-card);
+}
+
+.message-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  padding: 0 2px 2px;
+}
+
+.message-activity-heading {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.activity-step-toggle {
+  display: flex !important;
+  width: 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px !important;
+  min-width: 0;
+  padding: 2px 0;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.activity-step-toggle:hover {
+  color: var(--text-primary) !important;
+}
+
+.activity-step-toggle:focus-visible,
+.activity-step-request-toggle:focus-visible {
+  outline: 2px solid var(--color-action-primary);
+  outline-offset: 2px;
+}
+
+.activity-step-label {
+  min-width: 0;
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+
+.activity-step-tool,
+.activity-step-duration {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.activity-step-tool {
+  margin-left: auto;
+  font-family: var(--font-technical, Consolas, monospace);
+}
+
+.activity-step-row > div:nth-child(2) {
+  padding-left: 25px !important;
+}
+
+.activity-step-request-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 0;
+  color: var(--text-muted);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .message-process-content {
+    margin-left: 5px;
+    padding-left: 10px;
+  }
+
+  .message-reasoning-text {
+    max-height: 40vh;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .activity-step-tool {
+    margin-left: 25px;
+  }
 }
 
 /* Sidebar navigation groups expand inline while hovered or keyboard-focused. */

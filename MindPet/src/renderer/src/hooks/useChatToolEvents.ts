@@ -12,12 +12,48 @@ interface UseChatToolEventsOptions {
 
 function appendToolSteps(existingSteps: any[] | undefined, events: any[]): any[] {
   const toolSteps = existingSteps ? [...existingSteps] : []
-  for (const { type, name, args, result, contextTokens, detail, progress, sources, files, requestId, questions, request, status, beforeTokens, afterTokens, activeToolContextTokens, archivePath, removedMessages, timestamp: eventTimestamp } of events) {
+  for (const { type, name, args, result, contextTokens, detail, progress, sources, files, requestId, questions, request, status, beforeTokens, afterTokens, activeToolContextTokens, archivePath, removedMessages, callId, startedAt, durationMs, timestamp: eventTimestamp } of events) {
     const timestamp = Number(eventTimestamp) || Date.now()
     const id = `step-${timestamp}-${Math.random()}`
     const sequence = toolSteps.length + 1
-    if (type === 'tool_call') toolSteps.push({ id, sequence, timestamp, type: 'call', name, detail: args })
-    else if (type === 'tool_result') toolSteps.push({ id, sequence, timestamp, type: 'result', name, detail: result, contextTokens })
+    if (type === 'tool_started') {
+      const existing = toolSteps.findIndex(step => callId && step.callId === callId)
+      const startedStep = {
+        ...(existing >= 0 ? toolSteps[existing] : {}),
+        id: existing >= 0 ? toolSteps[existing].id : id,
+        sequence: existing >= 0 ? toolSteps[existing].sequence : sequence,
+        timestamp: Number(startedAt) || timestamp,
+        startedAt: Number(startedAt) || timestamp,
+        type: 'call',
+        name,
+        callId,
+        detail: detail || '',
+        status: 'running'
+      }
+      if (existing >= 0) toolSteps[existing] = startedStep
+      else toolSteps.push(startedStep)
+    }
+    else if (type === 'tool_finished') {
+      const existing = toolSteps.findIndex(step => callId && step.callId === callId)
+      const finishedStep = {
+        ...(existing >= 0 ? toolSteps[existing] : {}),
+        id: existing >= 0 ? toolSteps[existing].id : id,
+        sequence: existing >= 0 ? toolSteps[existing].sequence : sequence,
+        timestamp,
+        finishedAt: timestamp,
+        startedAt: Number(startedAt) || (existing >= 0 ? toolSteps[existing].startedAt : undefined),
+        type: 'call',
+        name,
+        callId,
+        detail: detail || (existing >= 0 ? toolSteps[existing].detail : ''),
+        durationMs: Number(durationMs) || (existing >= 0 ? Math.max(0, timestamp - Number(toolSteps[existing].startedAt || timestamp)) : 0),
+        status: status === 'completed' ? 'completed' : status === 'skipped' ? 'skipped' : 'failed'
+      }
+      if (existing >= 0) toolSteps[existing] = finishedStep
+      else toolSteps.push(finishedStep)
+    }
+    else if (type === 'tool_call') toolSteps.push({ id, sequence, timestamp, startedAt: timestamp, type: 'call', callId, name, detail: args, status: 'running' })
+    else if (type === 'tool_result') toolSteps.push({ id, sequence, timestamp, finishedAt: timestamp, type: 'result', callId, name, detail: result, contextTokens, status: /失败|错误|error|failed/i.test(String(result || '')) ? 'failed' : 'completed' })
     else if (type === 'think') toolSteps.push({ id, sequence, timestamp, type: 'think', name, detail })
     else if (type === 'context_compaction') {
       const existing = toolSteps.findIndex(step => step.type === 'compaction')
@@ -46,13 +82,15 @@ function appendToolSteps(existingSteps: any[] | undefined, events: any[]): any[]
     else if (type === 'tool_progress') {
       const progressDetail = detail || `${Number(progress) || 0}%`
       const isTerminalOutput = name === 'run_terminal_command' || name === 'run_command'
-      const existing = isTerminalOutput
+      let existing = isTerminalOutput
         ? toolSteps.findLastIndex(step => step.type === 'call' && step.name === name)
         : -1
       if (existing >= 0) {
         toolSteps[existing] = { ...toolSteps[existing], liveDetail: progressDetail, timestamp }
       } else {
-        toolSteps.push({ id, sequence, timestamp, type: 'think', name, detail: progressDetail })
+        existing = toolSteps.findLastIndex(step => step.type === 'think' && step.isToolProgress && step.name === name)
+        if (existing >= 0) toolSteps[existing] = { ...toolSteps[existing], timestamp, detail: progressDetail }
+        else toolSteps.push({ id, sequence, timestamp, type: 'think', name, detail: progressDetail, isToolProgress: true })
       }
     }
     else if (type === 'web_sources' && Array.isArray(sources)) toolSteps.push({ id, sequence, timestamp, type: 'sources', detail: sources })
@@ -143,23 +181,31 @@ export function useChatToolEvents({
       const events = pendingEvents
       pendingEvents = []
 
-      const normalBySession = new Map<string, any[]>()
+      const normalByMessage = new Map<string, { sessionId: string; messageId: any; events: any[] }>()
       const cronBySession = new Map<string, any[]>()
       for (const event of events) {
         const sessionId = event.sessionId || activeSessionIdRef.current
-        const target = sessionId.startsWith('cron:') ? cronBySession : normalBySession
-        const group = target.get(sessionId)
-        if (group) group.push(event)
-        else target.set(sessionId, [event])
+        if (sessionId.startsWith('cron:')) {
+          const group = cronBySession.get(sessionId)
+          if (group) group.push(event)
+          else cronBySession.set(sessionId, [event])
+          continue
+        }
+
+        const messageId = event.messageId ?? null
+        const groupKey = JSON.stringify([sessionId, messageId == null ? null : String(messageId)])
+        const group = normalByMessage.get(groupKey)
+        if (group) group.events.push(event)
+        else normalByMessage.set(groupKey, { sessionId, messageId, events: [event] })
       }
 
-      if (normalBySession.size > 0) {
-        for (const [sessionId, sessionEvents] of normalBySession) {
+      if (normalByMessage.size > 0) {
+        for (const { sessionId, messageId, events: sessionEvents } of normalByMessage.values()) {
           let savedMessage: any = null
           updateSessionMessages(sessionId, previous => {
-            const eventMessageId = sessionEvents.findLast((event: any) => event.messageId != null)?.messageId
+            const eventMessageId = messageId ?? sessionEvents.findLast((event: any) => event.messageId != null)?.messageId
             const index = eventMessageId != null
-              ? previous.findIndex((message: any) => message.id === eventMessageId)
+              ? previous.findIndex((message: any) => String(message.id) === String(eventMessageId))
               : previous.findLastIndex((message: any) => message.sender === 'agent')
             if (index < 0) return previous
             const messages = [...previous]

@@ -672,9 +672,11 @@ export function ToolCallItem({ step, isThinking, isWaiting }: { step: any; isThi
     : String(step.detail)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+    <div className="activity-step-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <button
+        type="button"
+        className="activity-step-toggle"
+        aria-expanded={!isItemCollapsed}
         onClick={() => setIsItemCollapsed(!isItemCollapsed)}
         title="点击展开/收起详情"
       >
@@ -685,7 +687,7 @@ export function ToolCallItem({ step, isThinking, isWaiting }: { step: any; isThi
         </span>
         <span>调用系统工具: {step.name}</span>
         <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
-      </div>
+      </button>
       {!isItemCollapsed && (
         <div style={{ paddingLeft: '28px' }}>
           <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', border: '1px solid var(--ds-color-7267626128313238)' }}>
@@ -707,17 +709,19 @@ export function ToolThinkItem({ step, isThinking }: { step: any; isThinking: boo
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+      <button
+        type="button"
+        className="activity-step-toggle"
+        aria-expanded={!isItemCollapsed}
         onClick={() => setIsItemCollapsed(!isItemCollapsed)}
         title="点击展开/收起思考详情"
       >
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}>
           <Brain size={13} strokeWidth={2} aria-hidden="true" />
         </span>
-        <span>已深度思考</span>
+        <span>{step.name ? `${isThinking ? '正在' : '已'}${translateToolName(step.name).replace(/了(?=[^，,]*$)/, '')}` : (isThinking ? '正在处理上下文' : '上下文处理已完成')}</span>
         <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
-      </div>
+      </button>
       {!isItemCollapsed && (
         <div style={{ paddingLeft: '28px' }}>
           <div style={{ padding: '8px 12px', background: 'rgba(128,128,128,0.04)', borderLeft: '1px solid var(--ds-color-7267626128313238)', fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
@@ -765,16 +769,18 @@ export function ToolResultItem({ step, isThinking }: { step: any; isThinking: bo
     : JSON.stringify(step.detail, null, 2)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+    <div className="activity-step-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <button
+        type="button"
+        className="activity-step-toggle"
+        aria-expanded={!isItemCollapsed}
         onClick={() => setIsItemCollapsed(!isItemCollapsed)}
         title="点击展开/收起详情"
       >
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
         <span>工具返回结果: {step.name}</span>
         <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
-      </div>
+      </button>
       {!isItemCollapsed && (
         <div style={{ paddingLeft: '28px' }}>
           <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ds-color-7267626128313238)' }}>
@@ -978,23 +984,30 @@ function translateToolName(name: string): string {
     'multi_replace_file_content': '批量修改了文件',
   }
 
-  if (map[name]) return map[name]
+  const normalizedName = String(name || '').split('__').pop() || String(name || '')
+  const mappedName = Object.keys(map).find(key => normalizedName === key || normalizedName.endsWith(`_${key}`))
+  if (mappedName) return map[mappedName]
 
-  const cleanName = name.replace(/[_-]/g, ' ')
-  if (name.startsWith('get_') || name.startsWith('get-')) {
+  const cleanName = normalizedName.replace(/[_-]/g, ' ')
+  if (normalizedName.startsWith('get_') || normalizedName.startsWith('get-')) {
     return `获取了${cleanName.substring(4)}`
   }
-  if (name.startsWith('list_') || name.startsWith('list-')) {
+  if (normalizedName.startsWith('list_') || normalizedName.startsWith('list-')) {
     return `列出了${cleanName.substring(5)}`
   }
-  if (name.startsWith('run_') || name.startsWith('run-')) {
+  if (normalizedName.startsWith('run_') || normalizedName.startsWith('run-')) {
     return `运行了${cleanName.substring(4)}`
   }
-  if (name.startsWith('search_') || name.startsWith('search-')) {
+  if (normalizedName.startsWith('search_') || normalizedName.startsWith('search-')) {
     return `搜索了${cleanName.substring(7)}`
   }
 
-  return `启用了工具 ${name}`
+  if (normalizedName.startsWith('read_') || normalizedName.startsWith('read-')) return `读取了${cleanName.substring(5)}`
+  if (normalizedName.startsWith('write_') || normalizedName.startsWith('write-')) return `写入了${cleanName.substring(6)}`
+  if (normalizedName.startsWith('create_') || normalizedName.startsWith('create-')) return `创建了${cleanName.substring(7)}`
+  if (normalizedName.startsWith('modify_') || normalizedName.startsWith('modify-')) return `修改了${cleanName.substring(7)}`
+  if (normalizedName.startsWith('delete_') || normalizedName.startsWith('delete-')) return `删除了${cleanName.substring(7)}`
+  return `调用 ${normalizedName}`
 }
 
 function combineToolSteps(toolSteps: any[], isThinking: boolean): any[] {
@@ -1013,18 +1026,24 @@ function combineToolSteps(toolSteps: any[], isThinking: boolean): any[] {
     } else if (step.type === 'call') {
       combined.push({
         id: step.id,
+        callId: step.callId,
         type: 'tool',
         name: step.name,
         callDetail: step.detail,
         liveDetail: step.liveDetail,
-        isWaiting: false
+        resultDetail: step.resultDetail,
+        status: step.status,
+        durationMs: step.durationMs,
+        isWaiting: step.status ? step.status === 'running' : false
       })
     } else if (step.type === 'result') {
       let matched = false
       for (let i = combined.length - 1; i >= 0; i--) {
         const item = combined[i]
-        if (item.type === 'tool' && item.name === step.name && !item.resultDetail) {
+        if (item.type === 'tool' && ((step.callId && item.callId === step.callId) || item.name === step.name) && item.status !== 'completed' && item.status !== 'failed') {
           item.resultDetail = step.detail
+          item.status = step.status || 'completed'
+          item.durationMs = step.durationMs
           matched = true
           break
         }
@@ -1035,6 +1054,8 @@ function combineToolSteps(toolSteps: any[], isThinking: boolean): any[] {
           type: 'tool',
           name: step.name,
           resultDetail: step.detail,
+          status: step.status || 'completed',
+          durationMs: step.durationMs,
           isWaiting: false
         })
       }
@@ -1042,9 +1063,7 @@ function combineToolSteps(toolSteps: any[], isThinking: boolean): any[] {
   })
 
   combined.forEach((item) => {
-    if (item.type === 'tool' && !item.resultDetail && isThinking) {
-      item.isWaiting = true
-    }
+    if (item.type === 'tool' && !item.status && !item.resultDetail && isThinking) item.isWaiting = true
   })
 
   return combined
@@ -1066,6 +1085,14 @@ export function ToolStepItem({ step, isThinking }: { step: any; isThinking: bool
   }, [isThinking, step.liveDetail])
 
   const toolDisplayName = translateToolName(step.name || '')
+  const cleanToolDisplayName = toolDisplayName.replace(/了(?=[^，,]*$)/, '')
+  const rowLabel = step.isWaiting
+    ? `正在${cleanToolDisplayName}`
+    : step.status === 'failed'
+      ? `${cleanToolDisplayName}失败`
+      : step.status === 'skipped'
+        ? `${cleanToolDisplayName}已跳过`
+        : `${cleanToolDisplayName}已完成`
 
   const displayCmd = typeof step.callDetail === 'object' && step.callDetail !== null
     ? (step.callDetail.command || JSON.stringify(step.callDetail, null, 2))
@@ -1076,33 +1103,39 @@ export function ToolStepItem({ step, isThinking }: { step: any; isThinking: bool
     : JSON.stringify(step.resultDetail, null, 2)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12.5px', userSelect: 'none' }}
+    <div className="activity-step-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <button
+        type="button"
+        className="activity-step-toggle"
+        aria-expanded={!isItemCollapsed}
         onClick={() => setIsItemCollapsed(!isItemCollapsed)}
         title="点击展开/收起详情"
       >
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: step.isWaiting ? 'var(--ds-color-23363061356661)' : '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}>
+        <span className={`activity-step-icon ${step.status === 'failed' ? 'failed' : step.isWaiting ? 'running' : 'complete'}`}>
           {step.isWaiting ? (
             <LoaderCircle size={12} strokeWidth={2.5} className="icon-spin" aria-hidden="true" />
-          ) : <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
+          ) : step.status === 'failed' ? <span aria-hidden="true">!</span> : <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
         </span>
-        <span>调用 {toolDisplayName} 工具</span>
+        <span className="activity-step-label">{rowLabel}{typeof step.callDetail === 'string' && step.callDetail ? ` · ${step.callDetail}` : ''}</span>
+        <span className="activity-step-tool">{step.name}</span>
+        {Number(step.durationMs) > 0 && <span className="activity-step-duration">{(Number(step.durationMs) / 1000).toFixed(1)}秒</span>}
         <span style={{ fontSize: '10px', opacity: 0.7 }}>{isItemCollapsed ? <ChevronRight size={13} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />}</span>
-      </div>
+      </button>
       {!isItemCollapsed && (
-        <div style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="activity-step-details" style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {step.callDetail && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, userSelect: 'none' }}
+              <button
+                type="button"
+                className="activity-step-request-toggle"
+                aria-expanded={!isReqCollapsed}
                 onClick={() => setIsReqCollapsed(!isReqCollapsed)}
                 title="点击展开/折叠参数"
               >
                 <ArrowDownToLine size={13} strokeWidth={2} aria-hidden="true" />
                 <span>请求参数 / 命令:</span>
                 <span style={{ fontSize: ' 11px', opacity: 0.7 }}>{isReqCollapsed ? <ChevronRight size={12} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />}</span>
-              </div>
+              </button>
               {!isReqCollapsed && (
                 <div style={{ padding: '8px 12px', background: 'var(--ds-color-7267626128313238)', borderRadius: '6px', fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', border: '1px solid var(--ds-color-7267626128313238)' }}>
                   {displayCmd}
@@ -1177,6 +1210,9 @@ function buildToolTrace(msg: any, requestMessage: any): any {
       sequence: step.sequence || index + 1,
       type: step.type,
       name: step.name || null,
+      callId: step.callId || null,
+      status: step.status || null,
+      durationMs: Number.isFinite(Number(step.durationMs)) ? Number(step.durationMs) : null,
       timestamp,
       time: timestamp ? new Date(timestamp).toISOString() : null,
       detail: step.detail ?? null
@@ -1186,11 +1222,13 @@ function buildToolTrace(msg: any, requestMessage: any): any {
       const call = {
         sequence: normalized.sequence,
         tool: step.name || 'unknown',
-        startedAt: normalized.time,
+        callId: step.callId || null,
+        status: step.status || 'running',
+        startedAt: Number(step.startedAt) ? new Date(Number(step.startedAt)).toISOString() : normalized.time,
         arguments: step.detail ?? null,
-        result: null,
-        finishedAt: null,
-        durationMs: null
+        result: step.resultDetail ?? null,
+        finishedAt: Number(step.finishedAt) ? new Date(Number(step.finishedAt)).toISOString() : null,
+        durationMs: Number.isFinite(Number(step.durationMs)) ? Number(step.durationMs) : null
       }
       calls.push(call)
       const queue = pendingByName.get(call.tool) || []
@@ -1202,6 +1240,7 @@ function buildToolTrace(msg: any, requestMessage: any): any {
       if (call) {
         call.result = step.detail ?? null
         call.finishedAt = normalized.time
+        call.status = step.status || 'completed'
         if (timestamp && call.startedAt) call.durationMs = Math.max(0, timestamp - Date.parse(call.startedAt))
       } else {
         calls.push({
@@ -1245,9 +1284,10 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
   }
 
   // 使用 userCollapsed 状态，绝对且强制在思考状态变化时更新折叠展示
-  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null)
+  const [userCollapsed, setUserCollapsed] = useState(!msg.isThinking)
   const [reasoningExpanded, setReasoningExpanded] = useState(Boolean(msg.isThinking && msg.reasoningText !== undefined))
   const [copied, setCopied] = useState(false)
+  const [currentTime, setCurrentTime] = useState(Date.now())
   const [traceExportState, setTraceExportState] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
   // 缓存消息文本渲染结果，避免重渲染导致 DOM 替换丢失选区
@@ -1346,19 +1386,23 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
     }
   }
 
+  const wasThinkingRef = useRef(Boolean(msg.isThinking))
   useEffect(() => {
-    if (!msg.isThinking) {
-      setUserCollapsed(true) // 思考结束，强制收拢
-    } else {
-      setUserCollapsed(false) // 正在思考，强制展开
-    }
+    if (wasThinkingRef.current && !msg.isThinking) setUserCollapsed(true)
+    wasThinkingRef.current = Boolean(msg.isThinking)
+  }, [msg.isThinking])
+
+  useEffect(() => {
+    if (!msg.isThinking) return undefined
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000)
+    return () => window.clearInterval(timer)
   }, [msg.isThinking])
 
   useEffect(() => {
     setReasoningExpanded(Boolean(msg.isThinking && msg.reasoningText !== undefined))
-  }, [msg.id, msg.isThinking])
+  }, [msg.id])
 
-  const currentCollapsed = userCollapsed !== null ? userCollapsed : !msg.isThinking
+  const currentCollapsed = userCollapsed
 
   const toolSteps = msg.toolSteps || []
   const clarificationSteps = toolSteps.filter((step: any) => step.type === 'clarification')
@@ -1374,60 +1418,63 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
       .filter((source: any) => source?.id && source?.url && citedSourceIds.has(source.id))
       .map((source: any) => [source.id, source])
   ).values()) as any[]
-  const toolStepsScrollRef = useRef<HTMLDivElement>(null)
-
-  // 当工具调用步骤改变时，自动将步骤框滚动到底部
-  useEffect(() => {
-    if (toolStepsScrollRef.current) {
-      toolStepsScrollRef.current.scrollTop = toolStepsScrollRef.current.scrollHeight
-    }
-  }, [toolSteps.length])
-  const hasThink = toolSteps.some((s: any) => s.type === 'think' && s.detail?.trim())
   const shouldShowToolSteps = toolSteps.some((s: any) => s.type === 'call' || s.type === 'result' || s.type === 'compaction' || (s.type === 'think' && s.detail?.trim()))
-
-  const callSteps = toolSteps.filter((s: any) => s.type === 'call')
-  let summaryText = ''
-  if (callSteps.length > 0) {
-    const names = Array.from(new Set(callSteps.map((s: any) => translateToolName(s.name))))
-    summaryText = names.join(', ')
-  } else if (hasThink) {
-    summaryText = '已深度思考'
-  } else {
-    summaryText = '运行过程'
-  }
-
-  let timeSuffix = ''
-  if (!msg.isThinking) {
-    const timestamps = toolSteps
-      .map((s: any) => {
-        const match = String(s.id || '').match(/step-(\d+)-/)
-        return match ? parseInt(match[1], 10) : null
-      })
-      .filter((t: any) => t !== null) as number[]
-    const lastTime = timestamps.length > 0 ? Math.max(...timestamps) : msg.id
-    const durationMs = lastTime - msg.id
-    const durationSec = Math.max(1, Math.round(durationMs / 1000))
-    if (durationSec > 0) {
-      if (durationSec >= 60) {
-        const mins = Math.floor(durationSec / 60)
-        const secs = durationSec % 60
-        timeSuffix = secs > 0 ? ` ${mins}m ${secs}s` : ` ${mins}m`
-      } else {
-        timeSuffix = ` ${durationSec}s`
-      }
-    }
-  }
-
-  const headerText = `${summaryText}${timeSuffix}`
-  const collapseText = `${summaryText}`
+  const combinedSteps = useMemo(() => combineToolSteps(toolSteps, msg.isThinking), [toolSteps, msg.isThinking])
+  const activeToolStep = [...combinedSteps].reverse().find((step: any) => step.type === 'tool' && step.isWaiting)
+  const completedToolCount = combinedSteps.filter((step: any) => step.type === 'tool' && !step.isWaiting && step.status !== 'failed' && step.status !== 'skipped').length
+  const startTimestamp = Number(msg.startedAt || msg.id)
+  const endTimestamp = msg.isThinking ? currentTime : Number(msg.completedAt)
+  const elapsedSeconds = Number.isFinite(startTimestamp) && startTimestamp > 1_000_000_000_000 && endTimestamp >= startTimestamp
+    ? Math.floor((endTimestamp - startTimestamp) / 1000)
+    : null
+  const elapsedLabel = elapsedSeconds === null
+    ? ''
+    : elapsedSeconds >= 60
+      ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
+      : `${elapsedSeconds}秒`
   const hasReasoning = msg.sender === 'agent' && (msg.reasoningText !== undefined || Boolean(msg.reasoningStatus || msg.reasoningNotice))
+  const isStopped = /手动(中断|终止|停止)/.test(String(msg.text || ''))
   const reasoningSummary = msg.reasoningStatus === 'unsupported'
     ? '深度思考不可用'
     : msg.reasoningStatus === 'unavailable'
       ? '模型未返回推理内容'
-      : msg.isThinking
+    : msg.isThinking && msg.reasoningStatus === 'thinking'
         ? '正在深度思考'
+      : msg.reasoningText
+        ? '深度思考'
         : '深度思考过程'
+
+  const processLabel = msg.isThinking
+    ? clarificationSteps.length > 0
+      ? '等待你的回答'
+      : credentialSteps.length > 0
+        ? '等待填写验证信息'
+        : activeToolStep
+      ? `正在${translateToolName(activeToolStep.name).replace(/了(?=[^，,]*$)/, '')}${typeof activeToolStep.callDetail === 'string' && activeToolStep.callDetail ? ` · ${activeToolStep.callDetail}` : ''}`
+      : msg.reasoningStatus === 'thinking' && !msg.text
+        ? '正在深度思考'
+        : msg.reasoningStatus === 'unsupported'
+          ? '当前模型不支持深度思考'
+          : msg.reasoningStatus === 'unavailable'
+            ? '模型未返回思考内容'
+        : msg.text
+          ? '正在生成回答'
+          : '正在准备回复'
+    : msg.isError
+      ? '本次回复未完成'
+    : isStopped
+        ? '对话已停止'
+        : '已完成'
+  const processSummary = [processLabel, completedToolCount ? `${completedToolCount}项操作` : '', elapsedLabel].filter(Boolean).join(' · ')
+  const hasProcess = msg.sender === 'agent' && (msg.isThinking || hasReasoning || shouldShowToolSteps)
+
+  const copyReasoning = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const text = reasoningTextForRender
+    if (!text) return
+    if (window.api?.copyText) window.api.copyText(text)
+    else await navigator.clipboard.writeText(text)
+  }
 
   const senderName = msg.sender === 'user' ? '我' : currentAvatarName
   console.log('[ChatMsg] sender=', msg.sender, 'text=', (msg.text || '').slice(0, 30), 'isThinking=', msg.isThinking)
@@ -1444,7 +1491,7 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
         <span className="msg-send-time">{msg.time}</span>
       </div>
 
-      <div className="message-bubble" style={{ maxWidth: msg.isThinking ? '100%' : undefined }}>
+      <div className="message-bubble">
         {msg.fileInfo && !msg.fileInfos && (() => {
           const f = msg.fileInfo
           const isImage = f.name && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
@@ -1528,28 +1575,6 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
           </div>
         )}
 
-        {hasReasoning && (
-          <details
-            className={`message-reasoning ${msg.isThinking ? 'streaming' : ''}`}
-            open={reasoningExpanded}
-            onToggle={event => setReasoningExpanded(event.currentTarget.open)}
-          >
-            <summary>
-              <Brain size={14} strokeWidth={2} aria-hidden="true" />
-              <span>{reasoningSummary}</span>
-              {msg.isThinking && reasoningTextForRender.length > 0 && <span className="message-reasoning-live">实时更新</span>}
-            </summary>
-            {msg.reasoningNotice && (msg.reasoningStatus === 'unsupported' || msg.reasoningStatus === 'unavailable') && (
-              <div className="message-reasoning-notice">{msg.reasoningNotice}</div>
-            )}
-            {reasoningTextForRender ? (
-              <div className="message-reasoning-text">{reasoningTextForRender}</div>
-            ) : msg.isThinking && !msg.reasoningNotice ? (
-              <div className="message-reasoning-placeholder">正在等待模型返回推理内容…</div>
-            ) : null}
-          </details>
-        )}
-
         {/* 工具调用流（现代内联样式） */}
         {clarificationSteps.map((step: any) => (
           <ClarificationCard key={step.id} step={step} />
@@ -1566,88 +1591,6 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
                 ? <AudioFilePlayer key={path} file={file} />
                 : <LocalFileButton key={path} path={path} onPreviewFile={onPreviewFile} />
             })}
-          </div>
-        )}
-
-        {shouldShowToolSteps && (
-          <div className="modern-tool-steps-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-            {currentCollapsed ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)',
-                  fontSize: '12.5px',
-                  userSelect: 'none',
-                  backgroundColor: 'rgba(128, 128, 128, 0.05)',
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  width: '100%',
-                  boxSizing: 'border-box'
-                }}
-                onClick={() => setUserCollapsed(false)}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
-                <span style={{ flex: 1 }}>{headerText}</span>
-                <span style={{ fontSize: '10px', opacity: 0.7 }}><ChevronRight size={13} strokeWidth={2} aria-hidden="true" /></span>
-              </div>
-            ) : (
-              <>
-                {!msg.isThinking && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      cursor: 'pointer',
-                      color: 'var(--text-muted)',
-                      fontSize: '12.5px',
-                      userSelect: 'none',
-                      backgroundColor: 'rgba(128, 128, 128, 0.05)',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      marginBottom: '4px'
-                    }}
-                    onClick={() => setUserCollapsed(true)}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', border: '1px solid var(--border-card)', borderRadius: '6px', color: '#10b981', fontSize: '12px', backgroundColor: 'var(--bg-card)' }}><Check size={13} strokeWidth={2.5} aria-hidden="true" /></span>
-                    <span style={{ flex: 1 }}>{collapseText}</span>
-                    <span style={{ fontSize: '10px', opacity: 0.7 }}><ChevronDown size={13} strokeWidth={2} aria-hidden="true" /></span>
-                  </div>
-                )}
-                <div
-                  ref={toolStepsScrollRef}
-                  className="tool-steps-scroll-area"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    maxHeight: '60vh',
-                    overflowY: 'auto',
-                    paddingLeft: '12px',
-                    paddingRight: '6px'
-                  }}
-                >
-                  {combineToolSteps(toolSteps, msg.isThinking).map((step: any) => {
-                    if (step.type === 'tool') {
-                      return (
-                        <ToolStepItem key={step.id} step={step} isThinking={msg.isThinking} />
-                      )
-                    } else if (step.type === 'compaction') {
-                      return <ContextCompactionItem key={step.id} step={step} />
-                    } else {
-                      return (
-                        <ToolThinkItem key={step.id} step={step} isThinking={msg.isThinking} />
-                      )
-                    }
-                  })}
-                </div>
-              </>
-            )}
           </div>
         )}
 
@@ -1675,6 +1618,77 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
           >
             {renderedText}
           </div>
+        )}
+
+        {hasProcess && (
+          <section className={`message-process ${msg.isThinking ? 'running' : msg.isError ? 'failed' : ''}`} aria-label="回复过程">
+            <button
+              type="button"
+              className="message-process-toggle"
+              aria-expanded={!currentCollapsed}
+              onClick={() => setUserCollapsed(collapsed => !collapsed)}
+            >
+              <span className={`message-process-status ${msg.isThinking ? 'running' : msg.isError ? 'failed' : isStopped ? 'cancelled' : 'complete'}`} aria-hidden="true">
+                {msg.isThinking
+                  ? <LoaderCircle size={13} strokeWidth={2.2} className="icon-spin" />
+                  : msg.isError
+                    ? <span>!</span>
+                    : isStopped
+                      ? <span>–</span>
+                      : <Check size={13} strokeWidth={2.2} />}
+              </span>
+              <span className="message-process-summary">{processSummary}{hasReasoning && !msg.isThinking ? ' · 含深度思考' : ''}</span>
+              <span className="message-process-action">{currentCollapsed ? '展开' : '收起'}</span>
+              {currentCollapsed
+                ? <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" />
+                : <ChevronDown size={14} strokeWidth={1.8} aria-hidden="true" />}
+            </button>
+
+            {!currentCollapsed && (
+              <div className="message-process-content">
+                {hasReasoning && (
+                  <details
+                    className={`message-reasoning ${msg.isThinking ? 'streaming' : ''}`}
+                    open={reasoningExpanded}
+                    onToggle={event => setReasoningExpanded(event.currentTarget.open)}
+                  >
+                    <summary>
+                      <Brain size={14} strokeWidth={1.9} aria-hidden="true" />
+                      <span>{reasoningSummary}</span>
+                      {msg.isThinking && reasoningTextForRender.length > 0 && <span className="message-reasoning-live">实时更新</span>}
+                    </summary>
+                    {msg.reasoningNotice && (msg.reasoningStatus === 'unsupported' || msg.reasoningStatus === 'unavailable') && (
+                      <div className="message-reasoning-notice">{msg.reasoningNotice}</div>
+                    )}
+                    {reasoningTextForRender ? (
+                      <div className="message-reasoning-text">
+                        <div className="message-reasoning-toolbar">
+                          <span>模型返回的完整内容</span>
+                          <button type="button" onClick={copyReasoning} title="复制完整思考内容">
+                            <Copy size={12} strokeWidth={1.8} aria-hidden="true" />复制
+                          </button>
+                        </div>
+                        <div className="message-reasoning-original">{reasoningTextForRender}</div>
+                      </div>
+                    ) : msg.isThinking && !msg.reasoningNotice ? (
+                      <div className="message-reasoning-placeholder">正在等待模型返回思考内容…</div>
+                    ) : null}
+                  </details>
+                )}
+
+                {shouldShowToolSteps && (
+                  <div className="message-activity-list" aria-label="行动记录">
+                    <div className="message-activity-heading">行动记录</div>
+                    {combinedSteps.map((step: any) => step.type === 'tool'
+                      ? <ToolStepItem key={step.id} step={step} isThinking={msg.isThinking} />
+                      : step.type === 'compaction'
+                        ? <ContextCompactionItem key={step.id} step={step} />
+                        : <ToolThinkItem key={step.id} step={step} isThinking={msg.isThinking} />)}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
         {webSources.length > 0 && !msg.isThinking && (

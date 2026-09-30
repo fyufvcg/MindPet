@@ -71,7 +71,7 @@ export function useChatReplyRuntime({
             wasAborted = true
             return message
           }
-          return withoutEphemeralInteractionSteps({ ...message, text: fullText, isThinking: false })
+          return withoutEphemeralInteractionSteps({ ...message, text: fullText, isThinking: false, completedAt: Date.now() })
         })
         const target = messages.find((message: any) => message.id === replyId)
         hasAnotherActiveReply = messages.some((message: any) => message.id !== replyId && message.isThinking)
@@ -124,6 +124,7 @@ export function useChatReplyRuntime({
           ...item,
           text: currentText + suffix,
           isThinking: false,
+          completedAt: Date.now(),
           isError: !isAbort
         })
         return savedMessage
@@ -152,7 +153,8 @@ export function useChatReplyRuntime({
           const updated = {
             ...message,
             text: message.text ? `${message.text}\n\n⚠️ 对话生成已被手动中断。` : '⚠️ 对话生成已被手动中断。',
-            isThinking: false
+            isThinking: false,
+            completedAt: Date.now()
           }
           const cleanedUpdated = withoutEphemeralInteractionSteps(updated)
           interrupted.push(cleanedUpdated)
