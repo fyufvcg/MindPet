@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('v1', 'v2', 'v21')]
+    [ValidateSet('v1', 'v2', 'v21', 'arch12')]
     [string]$Variant,
 
     [Parameter(Mandatory = $true)]
@@ -31,11 +31,13 @@ $PromptHashes = @{
     v1 = 'a2f27c59eb39499dc6682bb7e927afc0e19f87013559c0aeacf3c2ef8cb002c9'
     v2 = 'cafa86f6e08703a60f236f4f19b371c3a79df917e74133aacce2377ee06e627e'
     v21 = '1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649'
+    arch12 = '1e02c1b13dbb1edfe0984ade5eaa5a3f96ee7da765b9d853abce71f1ddfeb649'
 }
 $RequiredBranches = @{
     v1 = 'experiment/e1-prompt-v1'
     v2 = 'experiment/mindpet-evaluation'
     v21 = 'experiment/e1-prompt-v2-1'
+    arch12 = 'experiment/e1-formal-observation'
 }
 $EvaluationInfrastructureCommit = 'ea1e5547033a8efcfaa58bb1891b8a489a6acd41'
 $FixedEvalUser = 'e2e_memory_eval_user'
@@ -247,9 +249,20 @@ $javaRoot = Join-Path $repositoryRoot 'MindPet-java'
 $promptSource = Join-Path $javaRoot 'src\main\java\service\KnowledgeGraphService.java'
 $dataset = Join-Path $experimentRoot '02-pilot-v1\datasets\pilot_30.jsonl'
 $resultsRoot = Join-Path $experimentRoot '03-prompt-v2\pilot30-sqlite'
+$expectedSampleCount = 30
+$runPurpose = 'PROMPT_SELECTION_PILOT'
+$flatResultsRoot = $false
+if ($Variant -eq 'arch12') {
+    $dataset = Join-Path $experimentRoot '04-formal-observation-validation\datasets\architecture_validation_12.jsonl'
+    $resultsRoot = Join-Path $experimentRoot '04-formal-observation-validation\runs'
+    $expectedSampleCount = 12
+    $runPurpose = 'ARCHITECTURE_VALIDATION_ONLY'
+    $flatResultsRoot = $true
+}
 $runner = Join-Path $PSScriptRoot 'run_e2e_pilot.py'
 $evaluator = Join-Path $PSScriptRoot 'evaluate_e2e_pilot.py'
 $analyzer = Join-Path $PSScriptRoot 'analyze_e2e_pilot_errors.py'
+$observationValidator = Join-Path $experimentRoot '04-formal-observation-validation\scripts\validate_architecture_observation.py'
 $sqliteSchema = Join-Path $javaRoot 'src\main\resources\db\sqlite-schema.sql'
 $configCanonical = Get-CanonicalPath $ConfigPath
 
@@ -567,23 +580,39 @@ try {
             '--spring-ai-retry-backoff-initial', $SpringAiRetryBackoffInitial,
             '--spring-ai-retry-backoff-max', $SpringAiRetryBackoffMax,
             '--evaluation-infrastructure-commit', $EvaluationInfrastructureCommit,
-            '--timeout', [string]$RunnerTimeoutSeconds
+            '--timeout', [string]$RunnerTimeoutSeconds,
+            '--expected-sample-count', [string]$expectedSampleCount,
+            '--run-purpose', $runPurpose
         )
-        if ($Variant -eq 'v21') {
+        if ($flatResultsRoot) {
+            $runnerArgs += '--flat-results-root'
+        }
+        if ($Variant -in @('v21', 'arch12')) {
             $pythonScriptDirectory = $PSScriptRoot.Replace('\', '\\')
-            $runnerBootstrap = "import sys; sys.path.insert(0, r'$pythonScriptDirectory'); import run_e2e_pilot as runner; runner.PROMPT_HASHES['v21']='$($PromptHashes.v21)'; raise SystemExit(runner.main())"
-            $v21RunnerArgs = $runnerArgs[1..($runnerArgs.Count - 1)]
-            & python -c $runnerBootstrap @v21RunnerArgs
+            $runnerBootstrap = "import sys; sys.path.insert(0, r'$pythonScriptDirectory'); import run_e2e_pilot as runner; runner.PROMPT_HASHES['$Variant']='$($PromptHashes[$Variant])'; raise SystemExit(runner.main())"
+            $injectedRunnerArgs = $runnerArgs[1..($runnerArgs.Count - 1)]
+            & python -c $runnerBootstrap @injectedRunnerArgs
         }
         else {
             & python @runnerArgs
         }
-        if ($LASTEXITCODE -ne 0) { Fail '30-sample runner failed' }
-        $runDirectory = Join-Path (Join-Path $resultsRoot $Variant) $runId
-        & python $evaluator --dataset $dataset --run-dir $runDirectory
-        if ($LASTEXITCODE -ne 0) { Fail 'evaluator failed' }
-        & python $analyzer --dataset $dataset --run-dir $runDirectory
-        if ($LASTEXITCODE -ne 0) { Fail 'error analysis failed' }
+        if ($LASTEXITCODE -ne 0) { Fail 'E2E runner failed' }
+        $runDirectory = if ($flatResultsRoot) {
+            Join-Path $resultsRoot $runId
+        }
+        else {
+            Join-Path (Join-Path $resultsRoot $Variant) $runId
+        }
+        if ($Variant -eq 'arch12') {
+            & python $observationValidator --dataset $dataset --run-dir $runDirectory
+            if ($LASTEXITCODE -ne 0) { Fail 'observation contract validator failed' }
+        }
+        else {
+            & python $evaluator --dataset $dataset --run-dir $runDirectory
+            if ($LASTEXITCODE -ne 0) { Fail 'evaluator failed' }
+            & python $analyzer --dataset $dataset --run-dir $runDirectory
+            if ($LASTEXITCODE -ne 0) { Fail 'error analysis failed' }
+        }
         Write-Host "Execute completed: $runDirectory"
     }
 }

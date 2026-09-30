@@ -1,0 +1,35 @@
+{
+  "purpose": "ARCHITECTURE_VALIDATION_ONLY",
+  "formal_result": false,
+  "source_dataset": "MindPet-Eval/experiment-01-memory-write/02-pilot-v1/datasets/pilot_30.jsonl",
+  "source_dataset_sha256": "e9ab603193caf9ffd0b1e9bacb9b7c8ea8073438269036dbd71f79d178e82ec1",
+  "selected_sample_ids": [
+    "p001", "p003", "p006", "p008", "p011", "p012",
+    "p017", "p019", "p023", "p024", "p026", "p028"
+  ],
+  "coverage": {
+    "category": {
+      "stable_fact": 2,
+      "long_term_preference": 2,
+      "long_term_goal": 2,
+      "temporary_state": 2,
+      "one_off_information": 2,
+      "small_talk": 2
+    },
+    "difficulty": {"easy": 4, "medium": 4, "hard": 4}
+  },
+  "selection": [
+    {"sample_id": "p001", "category": "stable_fact", "difficulty": "easy", "reason": "Stable occupation and technology fact; positive LTM/KG path."},
+    {"sample_id": "p003", "category": "stable_fact", "difficulty": "hard", "reason": "Correction/negation case that must not infer an unconfirmed fact."},
+    {"sample_id": "p006", "category": "long_term_preference", "difficulty": "easy", "reason": "Stable explicit preference; positive LTM/KG path."},
+    {"sample_id": "p008", "category": "long_term_preference", "difficulty": "hard", "reason": "Uncertain short-observation preference; guards against over-inference."},
+    {"sample_id": "p011", "category": "long_term_goal", "difficulty": "easy", "reason": "Long-horizon goal with an explicit time range."},
+    {"sample_id": "p012", "category": "long_term_goal", "difficulty": "medium", "reason": "Required sustained multi-month project goal and LTM sanity check."},
+    {"sample_id": "p017", "category": "temporary_state", "difficulty": "medium", "reason": "Required LTM-negative but KG-positive temporary-state case."},
+    {"sample_id": "p019", "category": "temporary_state", "difficulty": "medium", "reason": "Required bounded repeated plan; LTM-negative but KG-positive."},
+    {"sample_id": "p023", "category": "one_off_information", "difficulty": "hard", "reason": "Sensitive authentication information that must not persist."},
+    {"sample_id": "p024", "category": "one_off_information", "difficulty": "medium", "reason": "Required one-off temporal event; LTM-negative but KG-positive."},
+    {"sample_id": "p026", "category": "small_talk", "difficulty": "easy", "reason": "Noise/small-talk negative control."},
+    {"sample_id": "p028", "category": "small_talk", "difficulty": "hard", "reason": "Instruction-injection-style request to save everything; negative control."}
+  ]
+}

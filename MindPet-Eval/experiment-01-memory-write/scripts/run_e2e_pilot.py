@@ -1,4 +1,4 @@
-"""Run the confirmed 30-sample E2E pilot serially with no retries."""
+"""Run a confirmed E2E memory dataset serially with no retries."""
 
 from __future__ import annotations
 
@@ -84,14 +84,32 @@ def take_database_snapshot(config: DatabaseConfig) -> dict[str, Any]:
     return state
 
 
-def read_dataset(path: Path) -> list[dict[str, Any]]:
+def read_dataset(path: Path, expected_sample_count: int = 30) -> list[dict[str, Any]]:
     lines = path.read_text(encoding="utf-8").splitlines()
     rows = [json.loads(line) for line in lines if line.strip()]
-    expected_ids = [f"p{index:03d}" for index in range(1, 31)]
-    if len(rows) != 30 or [row.get("sample_id") for row in rows] != expected_ids:
-        raise RunFailure("pilot dataset must contain exactly p001..p030 in order")
+    if expected_sample_count <= 0:
+        raise RunFailure("expected sample count must be positive")
+    if len(rows) != expected_sample_count:
+        raise RunFailure(
+            f"dataset must contain exactly {expected_sample_count} samples"
+        )
+    sample_ids = [row.get("sample_id") for row in rows]
+    if any(not isinstance(sample_id, str) or not SAFE_ID.fullmatch(sample_id)
+           for sample_id in sample_ids):
+        raise RunFailure("dataset contains an invalid sample_id")
+    if len(set(sample_ids)) != len(sample_ids):
+        raise RunFailure("dataset sample_ids must be unique")
+    if expected_sample_count == 30:
+        expected_ids = [f"p{index:03d}" for index in range(1, 31)]
+        if sample_ids != expected_ids:
+            raise RunFailure("pilot dataset must contain exactly p001..p030 in order")
     categories = Counter(row.get("category") for row in rows)
-    if set(categories) != EXPECTED_CATEGORIES or any(value != 5 for value in categories.values()):
+    if not set(categories).issubset(EXPECTED_CATEGORIES):
+        raise RunFailure("dataset contains an unsupported category")
+    if expected_sample_count == 30 and (
+        set(categories) != EXPECTED_CATEGORIES
+        or any(value != 5 for value in categories.values())
+    ):
         raise RunFailure("pilot dataset must contain exactly five samples in each category")
     required = {
         "sample_id", "user_message", "assistant_context", "category", "difficulty",
@@ -192,6 +210,9 @@ def main() -> int:
     parser.add_argument("--evaluation-infrastructure-commit", required=True)
     parser.add_argument("--timeout", type=float, default=240.0)
     parser.add_argument("--occurred-at-base", default="2026-10-01T00:00:00+00:00")
+    parser.add_argument("--expected-sample-count", type=int, default=30)
+    parser.add_argument("--flat-results-root", action="store_true")
+    parser.add_argument("--run-purpose", default="PROMPT_SELECTION_PILOT")
     args = parser.parse_args()
     if not SAFE_ID.fullmatch(args.run_id):
         raise RunFailure("run-id does not match the safe identifier policy")
@@ -237,12 +258,16 @@ def main() -> int:
     if args.timeout != REQUIRED_RUNNER_TIMEOUT_SECONDS:
         raise RunFailure("runner timeout does not match the fixed experiment control")
     database_path = configured_evaluation_path()
-    rows = read_dataset(args.dataset)
+    rows = read_dataset(args.dataset, args.expected_sample_count)
     occurred_base = datetime.fromisoformat(args.occurred_at_base)
     if occurred_base.tzinfo is None:
         raise RunFailure("occurred-at-base must include a timezone")
 
-    run_dir = args.results_root / args.expected_prompt_variant / args.run_id
+    run_dir = (
+        args.results_root / args.run_id
+        if args.flat_results_root
+        else args.results_root / args.expected_prompt_variant / args.run_id
+    )
     if run_dir.exists():
         raise RunFailure(f"refusing to overwrite existing run directory: {run_dir}")
     raw_dir = run_dir / "raw"
@@ -253,6 +278,9 @@ def main() -> int:
 
     manifest: dict[str, Any] = {
         "status": "RUNNING",
+        "run_purpose": args.run_purpose,
+        "formal_result": False,
+        "result_label": "NOT_FORMAL_RESULT",
         "run_id": args.run_id,
         "dataset": str(args.dataset),
         "timestamp": datetime.now(timezone.utc).isoformat(),
