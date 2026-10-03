@@ -59,7 +59,7 @@ public class VectorSearchService {
     private List<VectorMatch> search(String table, String userId, float[] query, int limit,
                                      boolean includeHistorical, boolean includePlanned) {
         if (!TABLES.contains(table)) throw new IllegalArgumentException("Unsupported vector table: " + table);
-        if (query == null || query.length == 0 || limit <= 0) return List.of();
+        if (!validVector(query) || limit <= 0) return List.of();
         byte[] queryBlob = encode(query);
         String visibility = switch (table) {
             case "long_term_memory" -> " AND searchable=1";
@@ -68,8 +68,9 @@ public class VectorSearchService {
         };
         if (sqliteVecAvailable) {
             try {
-                return jdbc.query("SELECT CAST(id AS TEXT) AS id, vec_distance_cosine(embedding, ?) AS distance "
-                        + "FROM " + table + " WHERE user_id=? AND embedding IS NOT NULL" + visibility + " ORDER BY distance LIMIT ?",
+                return jdbc.query("SELECT id,distance FROM (SELECT CAST(id AS TEXT) AS id, vec_distance_cosine(embedding, ?) AS distance "
+                        + "FROM " + table + " WHERE user_id=? AND embedding IS NOT NULL AND length(embedding)="
+                        + queryBlob.length + visibility + ") WHERE distance>=0 AND distance<=2 ORDER BY distance,id LIMIT ?",
                     (rs, row) -> new VectorMatch(rs.getString("id"), rs.getDouble("distance")),
                     table.equals("memory_retrieval_unit")
                         ? new Object[] {queryBlob, userId, includeHistorical ? 1 : 0, includePlanned ? 1 : 0,
@@ -85,14 +86,14 @@ public class VectorSearchService {
                 + " WHERE user_id=? AND embedding IS NOT NULL" + visibility,
             rs -> {
                 float[] candidate = decode(rs.getBytes("embedding"));
-                if (candidate.length == query.length) {
-                    matches.add(new VectorMatch(rs.getString("id"), cosineDistance(query, candidate)));
+                if (candidate.length == query.length && validVector(candidate)) {
+                    matches.add(new VectorMatch(rs.getString("id"), retrievalDistance(query, candidate)));
                 }
             }, table.equals("memory_retrieval_unit")
                 ? new Object[] {userId, includeHistorical ? 1 : 0, includePlanned ? 1 : 0,
                     includeHistorical ? 1 : 0}
                 : new Object[] {userId});
-        matches.sort(Comparator.comparingDouble(VectorMatch::distance));
+        matches.sort(Comparator.comparingDouble(VectorMatch::distance).thenComparing(VectorMatch::id));
         return matches.size() <= limit ? matches : new ArrayList<>(matches.subList(0, limit));
     }
 
@@ -119,6 +120,28 @@ public class VectorSearchService {
         }
         if (leftNorm == 0 || rightNorm == 0) return 1.0;
         return 1.0 - dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
+    }
+
+    /** Retrieval uses finite, bounded distances without changing the graph-writing similarity helper. */
+    private static double retrievalDistance(float[] left, float[] right) {
+        double dot = 0, leftNorm = 0, rightNorm = 0;
+        for (int i = 0; i < left.length; i++) {
+            dot += left[i] * (double) right[i];
+            leftNorm += left[i] * (double) left[i];
+            rightNorm += right[i] * (double) right[i];
+        }
+        if (leftNorm == 0 || rightNorm == 0) return 1.0;
+        return Math.max(0, Math.min(2, 1.0 - dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))));
+    }
+
+    private static boolean validVector(float[] vector) {
+        if (vector == null || vector.length == 0) return false;
+        double norm = 0;
+        for (float value : vector) {
+            if (!Float.isFinite(value)) return false;
+            norm += value * (double) value;
+        }
+        return norm > 0;
     }
 
     public record VectorMatch(String id, double distance) {}

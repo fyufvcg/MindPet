@@ -1,6 +1,7 @@
 package service;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -31,6 +32,7 @@ public class MemoryCorpusCompactionService {
     private final JdbcTemplate jdbc;
     private final VectorSearchService vectorSearch;
     private final Logger logger;
+    private final MemoryRetrievalPolicy retrievalPolicy;
     private static final int CORPUS_MIGRATION_VERSION = 3;
     private static final int ROLLBACK_BATCHES = 20;
     private static final double MAX_VECTOR_DISTANCE = 0.65;
@@ -41,11 +43,20 @@ public class MemoryCorpusCompactionService {
                                 List<String> sourceTurnIds, double score) {
         public RetrievalUnit { sourceTurnIds = List.copyOf(sourceTurnIds); }
     }
+    public record RoutedUnit(RetrievalUnit unit, int vectorRank, int keywordRank, double lexical,
+                             double distance, double preference) { }
 
     public MemoryCorpusCompactionService(JdbcTemplate jdbc, VectorSearchService vectorSearch, Logger logger) {
+        this(jdbc, vectorSearch, logger, MemoryRetrievalPolicy.defaults());
+    }
+
+    @Autowired
+    public MemoryCorpusCompactionService(JdbcTemplate jdbc, VectorSearchService vectorSearch, Logger logger,
+                                         MemoryRetrievalPolicy retrievalPolicy) {
         this.jdbc = jdbc;
         this.vectorSearch = vectorSearch;
         this.logger = logger;
+        this.retrievalPolicy = retrievalPolicy;
     }
 
     /** Starts a durable undo journal inside the curator commit transaction. */
@@ -687,27 +698,71 @@ public class MemoryCorpusCompactionService {
     /** Returns production-ranked active units, with history and plans admitted only for matching questions. */
     public List<RetrievalUnit> searchUnits(String userId, String query, float[] embedding,
                                            int limit, int tokenBudget) {
+        List<RetrievalUnit> results = searchUnitCandidates(userId, query, embedding, limit, tokenBudget);
+        recordAccess(userId, results);
+        return results;
+    }
+
+    /** Does not reinforce candidates that may later be discarded by a shared context budget. */
+    public List<RetrievalUnit> searchUnitCandidates(String userId, String query, float[] embedding,
+                                                   int limit, int tokenBudget) {
+        if (limit <= 0) return List.of();
+        List<RetrievalUnit> result = new ArrayList<>();
+        int usedTokens = 0;
+        for (RoutedUnit candidate : searchUnitRoutes(userId, query, embedding)) {
+            RetrievalUnit unit = candidate.unit();
+            if (tokenBudget > 0 && usedTokens + unit.tokenCount() > tokenBudget) continue;
+            result.add(unit);
+            usedTokens += unit.tokenCount();
+            if (result.size() >= limit) break;
+        }
+        return result;
+    }
+
+    /** Actual production routes before final ranking/budget; shared by the context owner and evaluation. */
+    public List<RoutedUnit> searchUnitRoutes(String userId, String query, float[] embedding) {
+        return searchUnitRoutes(userId, query, embedding, true, true);
+    }
+
+    public List<RoutedUnit> searchUnitRoutes(String userId, String query, float[] embedding,
+                                             boolean keyword, boolean vector) {
+        return searchUnitRoutes(userId, query, embedding, keyword, vector, List.of(query));
+    }
+
+    /** Read the eligible corpus once for all focused queries; eligibility follows the original question. */
+    public List<RoutedUnit> searchFocusedUnitRoutes(String userId, String query, List<String> focusedQueries) {
+        return focusedQueries.isEmpty() ? List.of()
+            : searchUnitRoutes(userId, query, null, true, false, focusedQueries);
+    }
+
+    private List<RoutedUnit> searchUnitRoutes(String userId, String query, float[] embedding,
+                                              boolean keyword, boolean vector, List<String> keywordQueries) {
+        if (userId == null || userId.isBlank() || query == null || query.isBlank()) return List.of();
         ensureLegacyIndexed(userId);
-        if (userId == null || userId.isBlank() || query == null || query.isBlank() || limit <= 0) return List.of();
-        boolean historical = containsAny(query, "以前", "之前", "曾经", "过去", "原来", "历史", "当时", "那时", "老家",
-            "搬家前", "搬迁前", "原先", "曾任", "曾住", "旧址", "曾想", "打算过");
-        boolean planned = containsAny(query, "计划", "打算", "准备", "想要", "将来", "以后", "未来",
-            "安排", "考虑", "曾想", "预期", "会不会", "打算过", "下一步", "届时", "尚未", "取消", "决定");
+        boolean historical = MemoryQueryIntent.historical(query);
+        boolean planned = MemoryQueryIntent.planned(query);
         boolean currentState = containsAny(query, "目前", "当前", "现在", "现居", "现职", "现任", "最新",
             "最近确认", "仍住", "仍然住", "现在住", "住在哪", "现在哪");
         Map<String, UnitCandidate> candidates = new LinkedHashMap<>();
-        Map<String, Double> rrfScores = new LinkedHashMap<>();
-        if (embedding != null && vectorSearch != null) {
-            List<VectorSearchService.VectorMatch> matches = vectorSearch.searchMemoryUnits(
-                userId, embedding, 40, historical, planned);
-            for (int i = 0; i < matches.size(); i++) {
-                VectorSearchService.VectorMatch match = matches.get(i);
-                if (!Double.isFinite(match.distance()) || match.distance() > MAX_VECTOR_DISTANCE) continue;
-                UnitCandidate unit = loadCandidate(userId, match.id());
-                if (unit != null) {
-                    candidates.putIfAbsent(unit.id(), unit);
-                    rrfScores.merge(unit.id(), 1.0 / (60.0 + i + 1), Double::sum);
+        Map<String, Integer> vectorRanks = new LinkedHashMap<>();
+        Map<String, Integer> keywordRanks = new LinkedHashMap<>();
+        Map<String, Double> distances = new LinkedHashMap<>();
+        if (vector && embedding != null && vectorSearch != null) {
+            try {
+                List<VectorSearchService.VectorMatch> matches = vectorSearch.searchMemoryUnits(
+                    userId, embedding, 40, historical, planned);
+                for (int i = 0; i < matches.size(); i++) {
+                    VectorSearchService.VectorMatch match = matches.get(i);
+                    if (!Double.isFinite(match.distance()) || match.distance() > MAX_VECTOR_DISTANCE) continue;
+                    UnitCandidate unit = loadCandidate(userId, match.id());
+                    if (unit != null) {
+                        candidates.putIfAbsent(unit.id(), unit);
+                        vectorRanks.put(unit.id(), i + 1);
+                        distances.put(unit.id(), match.distance());
+                    }
                 }
+            } catch (Exception e) {
+                logger.log("WARN", "检索单元向量召回失败，保留关键词召回: " + e.getMessage());
             }
         }
         List<UnitCandidate> keywordCandidates = jdbc.query(
@@ -715,52 +770,63 @@ public class MemoryCorpusCompactionService {
                 + "FROM memory_retrieval_unit WHERE user_id=? AND searchable=1 "
                 + "AND (status='active' OR (?=1 AND status='historical')) AND (?=1 OR scope<>'planned') "
                 + "AND (?=1 OR scope<>'historical') "
-                + "ORDER BY CASE scope WHEN 'current' THEN 0 WHEN 'stable' THEN 1 WHEN 'episodic' THEN 2 ELSE 3 END,updated_at DESC LIMIT 300",
+                + "ORDER BY id",
             (rs, row) -> new UnitCandidate(rs.getString("id"), rs.getString("canonical_key"),
                 rs.getString("unit_type"), rs.getString("predicate"), rs.getString("scope"), rs.getString("status"),
                 rs.getString("content"), rs.getInt("token_count"), rs.getString("valid_from"), rs.getString("valid_to"), 0),
             userId, historical ? 1 : 0, planned ? 1 : 0, historical ? 1 : 0);
-        List<UnitCandidate> lexicalMatches = keywordCandidates.stream()
-            .map(unit -> unit.withScore(matchScore(unit.content(), query)))
-            .filter(unit -> unit.score() >= 0.25)
-            .sorted(Comparator.comparingDouble(UnitCandidate::score).reversed()
-                .thenComparing(UnitCandidate::canonicalKey))
-            .limit(40)
-            .toList();
-        for (int i = 0; i < lexicalMatches.size(); i++) {
-            UnitCandidate unit = lexicalMatches.get(i);
-            candidates.putIfAbsent(unit.id(), unit);
-            rrfScores.merge(unit.id(), 1.0 / (60.0 + i + 1), Double::sum);
+        List<String> contents = keywordCandidates.stream().map(UnitCandidate::content).toList();
+        Map<String, Double> lexicalScores = new LinkedHashMap<>();
+        for (String focused : keywordQueries) {
+            var lexical = MemoryRetrievalRanking.lexicalQuery(focused, contents);
+            List<UnitCandidate> scored = keywordCandidates.stream()
+                .map(unit -> unit.withScore(lexical.score(unit.content()))).toList();
+            for (UnitCandidate unit : scored) lexicalScores.merge(unit.id(), unit.score(), Math::max);
+            if (!keyword) continue;
+            List<UnitCandidate> lexicalMatches = scored.stream()
+                .filter(unit -> unit.score() >= 0.25)
+                .sorted(Comparator.comparingDouble(UnitCandidate::score).reversed()
+                    .thenComparing(UnitCandidate::canonicalKey)).limit(40).toList();
+            for (int i = 0; i < lexicalMatches.size(); i++) {
+                UnitCandidate unit = lexicalMatches.get(i);
+                candidates.putIfAbsent(unit.id(), unit);
+                keywordRanks.merge(unit.id(), i + 1, Math::min);
+            }
         }
         Map<String, UnitCandidate> byMeaning = new LinkedHashMap<>();
+        Map<String, Integer> clusterVectorRanks = new LinkedHashMap<>();
+        Map<String, Integer> clusterKeywordRanks = new LinkedHashMap<>();
+        Map<String, String> meanings = new LinkedHashMap<>();
+        Map<String, Double> clusterDistances = new LinkedHashMap<>();
+        Map<String, Double> clusterLexical = new LinkedHashMap<>();
         for (UnitCandidate candidate : candidates.values()) {
             String key = semanticClusterKey(userId, candidate);
+            meanings.put(candidate.id(), key);
+            if (vectorRanks.containsKey(candidate.id())) clusterVectorRanks.merge(key, vectorRanks.get(candidate.id()), Math::min);
+            if (keywordRanks.containsKey(candidate.id())) clusterKeywordRanks.merge(key, keywordRanks.get(candidate.id()), Math::min);
+            if (distances.containsKey(candidate.id())) clusterDistances.merge(key, distances.get(candidate.id()), Math::min);
+            clusterLexical.merge(key, lexicalScores.getOrDefault(candidate.id(), 0.0), Math::max);
             UnitCandidate previous = byMeaning.get(key);
             if (previous == null || unitPriority(candidate.unitType()) > unitPriority(previous.unitType())) {
                 byMeaning.put(key, candidate);
             }
         }
         List<UnitCandidate> ranked = byMeaning.values().stream()
-            .map(unit -> unit.withScore(rrfScores.getOrDefault(unit.id(), 0.0)
-                + intentBoost(unit, currentState, historical, planned)))
+            .map(unit -> unit.withScore(MemoryRetrievalRanking.retrievalScore(
+                MemoryRetrievalRanking.rrf(clusterVectorRanks.getOrDefault(meanings.get(unit.id()), 0))
+                    + MemoryRetrievalRanking.rrf(clusterKeywordRanks.getOrDefault(meanings.get(unit.id()), 0)), 2,
+                MemoryRetrievalRanking.relevance(clusterLexical.getOrDefault(meanings.get(unit.id()), 0.0),
+                    clusterDistances.getOrDefault(meanings.get(unit.id()), Double.POSITIVE_INFINITY)),
+                intentBoost(unit, currentState, historical, planned) / 0.004)))
             .sorted(Comparator.comparingDouble(UnitCandidate::score).reversed()
                 .thenComparing(UnitCandidate::canonicalKey))
             .toList();
-        List<RetrievalUnit> result = new ArrayList<>();
-        int usedTokens = 0;
-        Set<String> seen = new LinkedHashSet<>();
-        for (UnitCandidate unit : ranked) {
-            if (!seen.add(unit.canonicalKey())) continue;
-            int cost = Math.max(unit.tokenCount(), tokenCount(unit.content()));
-            if (tokenBudget > 0 && usedTokens + cost > tokenBudget) continue;
-            result.add(toRetrievalUnit(unit));
-            usedTokens += cost;
-            if (result.size() >= limit || (tokenBudget > 0 && usedTokens >= tokenBudget)) break;
-        }
-        for (RetrievalUnit unit : result) {
-            if ("raw_memory".equals(unit.unitType())) touchRawMemory(userId, unit.id());
-        }
-        return result;
+        return ranked.stream().map(unit -> new RoutedUnit(toRetrievalUnit(unit),
+            clusterVectorRanks.getOrDefault(meanings.get(unit.id()), 0),
+            clusterKeywordRanks.getOrDefault(meanings.get(unit.id()), 0),
+            clusterLexical.getOrDefault(meanings.get(unit.id()), 0.0),
+            clusterDistances.getOrDefault(meanings.get(unit.id()), Double.POSITIVE_INFINITY),
+            intentBoost(unit, currentState, historical, planned) / 0.004)).toList();
     }
 
     private static int unitPriority(String type) {
@@ -782,6 +848,10 @@ public class MemoryCorpusCompactionService {
         }
         return "text|" + normalize(unit.content());
     }
+    public String retrievalKey(String userId, RetrievalUnit unit) {
+        return unit.id().startsWith("fallback-") ? "text|" + normalize(unit.content())
+            : semanticClusterKey(userId, loadCandidate(userId, unit.id()));
+    }
 
     private String factCluster(RetrievalUnit unit) {
         return "meaning|" + unit.predicate() + "|" + normalize(unit.value()) + "|" + unit.scope() + "|"
@@ -793,12 +863,47 @@ public class MemoryCorpusCompactionService {
     /** Merge relevant fallback candidates even when the curator already has a partial answer. */
     public List<RetrievalUnit> searchWithFallback(String userId, String query, float[] embedding,
                                                   int limit, int tokenBudget, SqliteMemoryService rawStore) {
-        List<RetrievalUnit> curated = searchUnits(userId, query, embedding, Math.max(40, limit), 0);
+        List<RetrievalUnit> selected = searchWithFallbackCandidates(userId, query, embedding, limit, tokenBudget, rawStore);
+        recordAccess(userId, selected);
+        return selected;
+    }
+
+    public List<RetrievalUnit> searchWithFallbackCandidates(String userId, String query, float[] embedding,
+            int limit, int tokenBudget, SqliteMemoryService rawStore) {
+        if (userId == null || userId.isBlank() || query == null || query.isBlank() || limit <= 0) return List.of();
+        List<RetrievalUnit> curated = searchUnitCandidates(userId, query, embedding, Math.max(40, limit), 0);
         Map<String, RetrievalUnit> combined = new LinkedHashMap<>();
         for (RetrievalUnit unit : curated) combined.put(unit.id(), unit);
-        if (rawStore != null && embedding != null) {
-            for (SqliteMemoryService.MemoryResult raw : rawStore.search(userId, query, embedding, 40)) {
-                if (raw.distance() > MAX_VECTOR_DISTANCE && matchScore(raw.content(), query) < 0.25) continue;
+        for (RetrievalUnit unit : fallbackCandidates(userId, query, embedding, rawStore)) combined.putIfAbsent(unit.id(), unit);
+        Set<String> seen = new LinkedHashSet<>();
+        List<RetrievalUnit> selected = new ArrayList<>();
+        int tokens = 0;
+        for (RetrievalUnit unit : combined.values().stream().sorted(Comparator.comparingDouble(RetrievalUnit::score).reversed()
+                .thenComparing(RetrievalUnit::canonicalKey)).toList()) {
+            String key = unit.id().startsWith("fallback-") ? unit.canonicalKey()
+                : semanticClusterKey(userId, loadCandidate(userId, unit.id()));
+            if (seen.contains(key) || tokenBudget > 0 && tokens + unit.tokenCount() > tokenBudget) continue;
+            selected.add(unit); seen.add(key); tokens += unit.tokenCount();
+            if (selected.size() >= limit) break;
+        }
+        return selected;
+    }
+
+    public List<RetrievalUnit> fallbackCandidates(String userId, String query, float[] embedding, SqliteMemoryService rawStore) {
+        return fallbackRoutes(userId, query, embedding, rawStore, true, true).stream().map(RoutedUnit::unit).toList();
+    }
+    public List<RoutedUnit> fallbackRoutes(String userId, String query, float[] embedding, SqliteMemoryService rawStore,
+                                          boolean keyword, boolean vector) {
+        if (rawStore == null || userId == null || userId.isBlank() || query == null || query.isBlank()) return List.of();
+        List<RoutedUnit> result = new ArrayList<>();
+        Boolean hasUnmapped = rawStore == null ? false : jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM long_term_memory m "
+            + "WHERE m.user_id=? AND m.searchable=1 AND NOT EXISTS(SELECT 1 FROM memory_retrieval_source s "
+            + "JOIN memory_retrieval_unit u ON u.id=s.unit_id WHERE u.user_id=m.user_id "
+            + "AND s.source_type='long_term_memory' AND s.source_id=CAST(m.id AS TEXT) "
+            + "AND u.status IN ('active','historical','compacted','inactive')))", Boolean.class, userId);
+        if (rawStore != null && Boolean.TRUE.equals(hasUnmapped)) {
+            for (var route : rawStore.searchRoutes(userId, query, embedding, 40, keyword, vector)) {
+                SqliteMemoryService.MemoryResult raw = route.memory();
                 List<String> mappedIds = jdbc.query("SELECT u.id FROM memory_retrieval_unit u JOIN memory_retrieval_source s "
                     + "ON s.unit_id=u.id WHERE u.user_id=? AND s.source_type='long_term_memory' AND s.source_id=? "
                     + "AND u.status IN ('active','historical','compacted','inactive')",
@@ -809,21 +914,31 @@ public class MemoryCorpusCompactionService {
                     (rs, row) -> rs.getString(1), userId, raw.content());
                 RetrievalUnit unit = new RetrievalUnit("fallback-" + raw.id(), "text|" + normalize(raw.content()),
                     "raw_memory", "", "", "episodic", "active", "", raw.content(), tokenCount(raw.content()),
-                    "", "", "", "", turnIds, 1.0 / 61.0);
-                combined.putIfAbsent(unit.id(), unit);
+                    "", "", "", "", turnIds, route.score());
+                result.add(new RoutedUnit(unit, route.vectorRank(), route.keywordRank(), route.lexical(), route.distance(), route.preference()));
             }
         }
-        Set<String> seen = new LinkedHashSet<>();
-        List<RetrievalUnit> selected = new ArrayList<>();
-        int tokens = 0;
-        for (RetrievalUnit unit : combined.values().stream().sorted(Comparator.comparingDouble(RetrievalUnit::score).reversed()).toList()) {
-            String key = unit.id().startsWith("fallback-") ? unit.canonicalKey()
-                : semanticClusterKey(userId, loadCandidate(userId, unit.id()));
-            if (seen.contains(key) || tokenBudget > 0 && tokens + unit.tokenCount() > tokenBudget) continue;
-            selected.add(unit); seen.add(key); tokens += unit.tokenCount();
-            if (selected.size() >= limit) break;
+        return result;
+    }
+
+    /** KG can retrieve an existing RAG representation only through an exact stored evidence mapping. */
+    public List<RetrievalUnit> evidenceUnits(String userId, String query, List<String> evidenceTexts) {
+        if (userId == null || userId.isBlank() || query == null || query.isBlank() || evidenceTexts.isEmpty()) return List.of();
+        ensureLegacyIndexed(userId);
+        boolean historical = MemoryQueryIntent.historical(query);
+        boolean planned = MemoryQueryIntent.planned(query);
+        Map<String, RetrievalUnit> result = new LinkedHashMap<>();
+        for (String evidence : new LinkedHashSet<>(evidenceTexts)) {
+            for (String id : jdbc.query("SELECT DISTINCT u.id FROM memory_retrieval_unit u "
+                + "LEFT JOIN memory_retrieval_source s ON s.unit_id=u.id "
+                + "WHERE u.user_id=? AND u.searchable=1 AND (u.status='active' OR (?=1 AND u.status='historical')) "
+                + "AND (?=1 OR u.scope<>'planned') AND (?=1 OR u.scope<>'historical') "
+                + "AND (u.content=? OR s.evidence_text=?) ORDER BY u.id LIMIT 40", (rs, row) -> rs.getString(1),
+                userId, historical ? 1 : 0, planned ? 1 : 0, historical ? 1 : 0, evidence, evidence)) {
+                result.putIfAbsent(id, toRetrievalUnit(loadCandidate(userId, id)));
+            }
         }
-        return selected;
+        return List.copyOf(result.values());
     }
 
     public String getRetrievalContext(String userId, String query, float[] embedding, SqliteMemoryService rawStore) {
@@ -835,11 +950,18 @@ public class MemoryCorpusCompactionService {
         return out.toString().trim();
     }
 
-    private void touchRawMemory(String userId, String unitId) {
-        jdbc.update("UPDATE long_term_memory SET access_count=COALESCE(access_count,0)+1,"
-                + "last_accessed=CURRENT_TIMESTAMP WHERE user_id=? AND searchable=1 AND id IN ("
-                + "SELECT CAST(source_id AS INTEGER) FROM memory_retrieval_source "
-                + "WHERE unit_id=? AND source_type='long_term_memory')", userId, unitId);
+    public void recordAccess(String userId, List<RetrievalUnit> selected) {
+        if (!retrievalPolicy.refreshAccess() || selected.isEmpty()) return;
+        Set<String> sourceIds = new LinkedHashSet<>();
+        for (RetrievalUnit unit : selected) {
+            if (unit.id().startsWith("fallback-")) sourceIds.add(unit.id().substring("fallback-".length()));
+            else {
+                sourceIds.addAll(jdbc.query("SELECT source_id FROM memory_retrieval_source "
+                    + "WHERE unit_id=? AND source_type='long_term_memory'", (rs, n) -> rs.getString(1), unit.id()));
+            }
+        }
+        for (String sourceId : sourceIds) jdbc.update("UPDATE long_term_memory SET access_count=COALESCE(access_count,0)+1,"
+            + "last_accessed=? WHERE user_id=? AND searchable=1 AND id=?", retrievalPolicy.sqlNow(), userId, sourceId);
     }
 
     private RetrievalUnit toRetrievalUnit(UnitCandidate unit) {
@@ -1632,24 +1754,6 @@ public class MemoryCorpusCompactionService {
                 + "tokens_before,tokens_after,reason) VALUES(?,?,?,?,?,?,?,?)",
             userId, Math.max(0, batchSequence), action, unitId, sourceId == null ? "" : sourceId,
             Math.max(0, before), Math.max(0, after), reason == null ? "" : reason);
-    }
-
-    private double matchScore(String content, String query) {
-        String normalizedContent = normalize(content);
-        String normalizedQuery = normalize(query);
-        if (normalizedQuery.isBlank() || normalizedContent.isBlank()) return 0;
-        if (normalizedContent.contains(normalizedQuery)) return 1.0;
-        int hits = 0;
-        int total = 0;
-        for (int len = 2; len <= 4; len++) {
-            for (int i = 0; i + len <= normalizedQuery.length(); i++) {
-                String gram = normalizedQuery.substring(i, i + len);
-                if (gram.codePoints().allMatch(Character::isWhitespace)) continue;
-                total++;
-                if (normalizedContent.contains(gram)) hits++;
-            }
-        }
-        return total == 0 || hits == 0 ? 0 : 0.15 + 0.7 * ((double) hits / total);
     }
 
     private static String normalize(String value) {

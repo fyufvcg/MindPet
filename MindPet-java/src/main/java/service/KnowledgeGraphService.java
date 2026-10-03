@@ -3,6 +3,7 @@ package service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import util.Logger;
@@ -78,6 +79,7 @@ public class KnowledgeGraphService {
     private final ObjectMapper mapper;
     private final Executor executor;
     private final Logger logger;
+    private KnowledgeGraphRetrievalService retrieval;
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
 
     public KnowledgeGraphService(
@@ -98,6 +100,13 @@ public class KnowledgeGraphService {
         this.executor = executor;
         this.logger = logger;
         initializeSchema();
+    }
+
+    @Autowired
+    public void configureRetrieval(KnowledgeGraphRetrievalService retrieval) { this.retrieval = retrieval; }
+
+    public KnowledgeGraphRetrievalService retrievalService() {
+        return retrieval != null ? retrieval : new KnowledgeGraphRetrievalService(jdbc, vectorSearch, MemoryRetrievalPolicy.defaults());
     }
 
     public boolean onCompletedTurn(String userId, String sessionId,
@@ -201,31 +210,14 @@ public class KnowledgeGraphService {
             "pendingExtractions", inFlight.size());
     }
 
-    /** Returns compact factual paths for prompt injection. Semantic similarity only selects seeds. */
+    /** Returns compact evidence-backed facts for prompt injection. Similarity only selects seeds. */
     public String getRagContext(String userId, String query, float[] queryVector, int maxEntities) {
-        List<String> seedIds = seedEntityIds(userId, query, queryVector, Math.max(2, maxEntities));
-        if (seedIds.isEmpty()) return "";
-        Set<String> ids = new LinkedHashSet<>(seedIds);
-        ids.addAll(neighborIds(userId, seedIds, maxEntities * 3));
-        List<Map<String, Object>> nodes = loadNodes(userId, new ArrayList<>(ids));
-        Map<String, String> names = new HashMap<>();
-        for (Map<String, Object> node : nodes) names.put(String.valueOf(node.get("id")), String.valueOf(node.get("label")));
-        List<Map<String, Object>> relations = loadExplicitEdges(userId, ids);
-        if (relations.isEmpty()) return "";
-
+        if (maxEntities <= 0) return "";
         StringBuilder out = new StringBuilder("## Knowledge graph facts from prior user conversations\n");
-        int added = 0;
-        for (Map<String, Object> relation : relations) {
-            double confidence = ((Number) relation.getOrDefault("confidence", 0.0)).doubleValue();
-            if (confidence < 0.65) continue;
-            String source = names.get(String.valueOf(relation.get("source")));
-            String target = names.get(String.valueOf(relation.get("target")));
-            if (source == null || target == null) continue;
-            out.append("- ").append(source).append(" --")
-                .append(relation.get("label")).append("--> ").append(target).append("\n");
-            if (++added >= 8) break;
-        }
-        if (added == 0) return "";
+        List<KnowledgeGraphRetrievalService.Fact> facts = retrievalService().retrieve(userId, query, queryVector,
+            (int) Math.min(24L, maxEntities * 2L));
+        if (facts.isEmpty()) return "";
+        for (var fact : facts) out.append("- ").append(fact.content()).append('\n');
         out.append("Use these as user-specific facts only when relevant; do not expose internal graph metadata.");
         return out.toString();
     }

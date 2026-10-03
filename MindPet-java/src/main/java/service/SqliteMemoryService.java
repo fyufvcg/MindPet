@@ -1,12 +1,12 @@
 package service;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import util.Logger;
 
 import java.sql.Timestamp;
 import java.sql.Date;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -24,13 +24,21 @@ public class SqliteMemoryService {
     private final EmbeddingService embedService;
     private final VectorSearchService vectorSearch;
     private final Logger logger;
+    private final MemoryRetrievalPolicy retrievalPolicy;
 
     public SqliteMemoryService(JdbcTemplate jdbc, EmbeddingService embedService,
                                  VectorSearchService vectorSearch, Logger logger) {
+        this(jdbc, embedService, vectorSearch, logger, MemoryRetrievalPolicy.defaults());
+    }
+
+    @Autowired
+    public SqliteMemoryService(JdbcTemplate jdbc, EmbeddingService embedService,
+                                 VectorSearchService vectorSearch, Logger logger, MemoryRetrievalPolicy retrievalPolicy) {
         this.jdbc = jdbc;
         this.embedService = embedService;
         this.vectorSearch = vectorSearch;
         this.logger = logger;
+        this.retrievalPolicy = retrievalPolicy;
         try {
             jdbc.queryForObject("SELECT COUNT(*) FROM long_term_memory", Integer.class);
             logger.log("INFO", "SQLite 长期记忆服务已连接");
@@ -109,25 +117,66 @@ public class SqliteMemoryService {
      * 混合检索 with pre-computed embedding（query 用于关键词匹配，vec 复用以省 API 调用）。
      */
     public List<MemoryResult> search(String userId, String query, float[] vec, int topK) {
-        if (vec == null) return List.of();
-        try {
-            // 1. 语义召回（sqlite-vec 或 Java 精确余弦，取更宽的范围供 RRF 融合）
-            List<MemoryResult> semanticResults = semanticSearch(userId, vec, 20);
+        List<MemoryResult> results = searchCandidates(userId, query, vec, topK);
+        touchAccessed(userId, results);
+        return results;
+    }
 
-            // 2. 关键词召回（中文子串 + 词匹配）
-            List<MemoryResult> keywordResults = keywordSearch(userId, query, 20);
+    /** Candidate retrieval is read-only; the final context owner records actual use. */
+    public List<MemoryResult> searchCandidates(String userId, String query, float[] vec, int topK) {
+        return searchRoutes(userId, query, vec, topK, true, true).stream().map(RoutedMemory::memory).toList();
+    }
+
+    public record RoutedMemory(MemoryResult memory, int keywordRank, int vectorRank,
+                               double lexical, double distance, double preference, double score) { }
+
+    public List<RoutedMemory> searchRoutes(String userId, String query, float[] vec, int topK,
+                                           boolean keywordEnabled, boolean vectorEnabled) {
+        if (userId == null || userId.isBlank() || query == null || query.isBlank() || topK <= 0) return List.of();
+        try {
+            List<MemoryResult> eligible = loadSearchableMemories(userId).stream()
+                .filter(r -> !retrievalPolicy.applyRetention() || r.retentionRate() > RETENTION_MIN).toList();
+            int routeLimit = Math.max(40, topK);
+            var lexical = MemoryRetrievalRanking.lexicalQuery(query, eligible.stream().map(MemoryResult::content).toList());
+            var byId = eligible.stream().collect(java.util.stream.Collectors.toMap(MemoryResult::id, r -> r));
+            List<MemoryResult> semanticResults = new ArrayList<>();
+            if (vectorEnabled && vec != null && vectorSearch != null) {
+                try {
+                    // Apply eligibility before truncation so faded hits cannot consume the candidate budget.
+                    for (var match : vectorSearch.search("long_term_memory", userId, vec,
+                            Math.max(1, count(userId)))) {
+                        MemoryResult row = byId.get(match.id());
+                        if (row != null && Double.isFinite(match.distance()) && match.distance() <= 0.65) {
+                            semanticResults.add(withDistance(row, match.distance()));
+                            if (semanticResults.size() >= routeLimit) break;
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.log("WARN", "语义召回失败，保留关键词召回: " + e.getMessage());
+                }
+            }
+
+            List<MemoryResult> keywordResults = !keywordEnabled ? List.of() : eligible.stream()
+                .filter(r -> lexical.score(r.content()) >= 0.25)
+                .sorted(java.util.Comparator.<MemoryResult>comparingDouble(
+                    r -> lexical.score(r.content())).reversed()
+                    .thenComparing(MemoryResult::id))
+                .limit(routeLimit).toList();
 
             // 3. RRF 融合
             java.util.Map<String, Double> rrfScores = new java.util.LinkedHashMap<>();
+            java.util.Map<String, Integer> keywordRanks = new java.util.LinkedHashMap<>(), vectorRanks = new java.util.LinkedHashMap<>();
             double k = 60;
             for (int i = 0; i < semanticResults.size(); i++) {
                 rrfScores.merge(contentId(semanticResults.get(i)), 1.0 / (k + i + 1), Double::sum);
+                vectorRanks.put(contentId(semanticResults.get(i)), i + 1);
             }
             for (int i = 0; i < keywordResults.size(); i++) {
                 rrfScores.merge(contentId(keywordResults.get(i)), 1.0 / (k + i + 1), Double::sum);
+                keywordRanks.put(contentId(keywordResults.get(i)), i + 1);
             }
 
-            // 4. Reranking：RRF 0.5 + 时间衰减 0.2 + 情感 0.15 + 重要性 0.1 + 层级 0.05
+            // Query relevance dominates; metadata provides bounded tie preferences.
             var allResults = new java.util.ArrayList<>(semanticResults);
             allResults.addAll(keywordResults);
             var byContent = allResults.stream()
@@ -136,94 +185,81 @@ public class SqliteMemoryService {
 
             List<MemoryResult> ranked = byContent.values().stream()
                 .sorted((a, b) -> {
-                    double sa = rerankScore(a, rrfScores.getOrDefault(contentId(a), 0.0));
-                    double sb = rerankScore(b, rrfScores.getOrDefault(contentId(b), 0.0));
-                    return Double.compare(sb, sa);
+                    double sa = rerankScore(a, lexical, rrfScores.getOrDefault(contentId(a), 0.0), keywordEnabled);
+                    double sb = rerankScore(b, lexical, rrfScores.getOrDefault(contentId(b), 0.0), keywordEnabled);
+                    int compared = Double.compare(sb, sa);
+                    return compared != 0 ? compared : a.id().compareTo(b.id());
                 })
                 .limit(topK)
                 .toList();
-            touchAccessed(userId, ranked);
-            return ranked;
+            return ranked.stream().map(r -> new RoutedMemory(r, keywordRanks.getOrDefault(r.id(), 0),
+                vectorRanks.getOrDefault(r.id(), 0), keywordEnabled ? lexical.score(r.content()) : 0, r.distance(),
+                metadataPreference(r), rerankScore(r, lexical, rrfScores.getOrDefault(r.id(), 0.0), keywordEnabled))).toList();
         } catch (Exception e) {
             logger.log("WARN", "SQLite vector search failed: " + e.getMessage());
             return List.of();
         }
     }
 
-    private List<MemoryResult> semanticSearch(String userId, String query, int limit) {
-        return semanticSearch(userId, embedService.embed(query), limit);
+    private List<MemoryResult> loadSearchableMemories(String userId) {
+        return jdbc.query("SELECT id,content,role,created_at,event_date,event_at,event_timezone,event_precision,"
+                + "importance,COALESCE(confidence,1.0) confidence,layer,emotion,last_accessed "
+                + "FROM long_term_memory WHERE user_id=? AND searchable=1 ORDER BY id",
+            (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
+                retrievalPolicy.readStorageTimestamp(rs.getString("created_at")), readEventDate(rs.getString("event_date")),
+                readEventTimestamp(rs.getString("event_at")),
+                rs.getString("event_timezone"), rs.getString("event_precision"), Double.POSITIVE_INFINITY,
+                rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"), rs.getInt("layer"),
+                retrievalPolicy.rawRetention(retrievalPolicy.readStorageTimestamp(rs.getString("last_accessed")),
+                    retrievalPolicy.readStorageTimestamp(rs.getString("created_at")),
+                    rs.getDouble("importance"), rs.getInt("layer"))), userId);
     }
 
-    private List<MemoryResult> semanticSearch(String userId, float[] vec, int limit) {
-        if (vec == null) return List.of();
-        try {
-            List<MemoryResult> results = new ArrayList<>();
-            for (VectorSearchService.VectorMatch match : vectorSearch.search("long_term_memory", userId, vec, Math.max(limit * 4, limit))) {
-                List<MemoryResult> rows = jdbc.query(
-                    "SELECT id,content,role,created_at,event_date,event_at,event_timezone,event_precision,importance,COALESCE(confidence,1.0) confidence,layer,emotion,last_accessed "
-                        + "FROM long_term_memory WHERE user_id=? AND id=? AND searchable=1",
-                    (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
-                        rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
-                        rs.getString("event_timezone"), rs.getString("event_precision"), match.distance(),
-                        rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"), rs.getInt("layer"),
-                        retention(rs.getTimestamp("last_accessed"), rs.getTimestamp("created_at"), rs.getDouble("importance"), rs.getInt("layer"))),
-                    userId, match.id());
-                if (!rows.isEmpty() && rows.get(0).retentionRate() > RETENTION_MIN) results.add(rows.get(0));
-                if (results.size() >= limit) break;
-            }
-            return results;
-        } catch (Exception e) { return List.of(); }
+    private MemoryResult withDistance(MemoryResult r, double distance) {
+        return new MemoryResult(r.id(), r.content(), r.role(), r.createdAt(), r.eventDate(), r.eventAt(),
+            r.eventTimezone(), r.eventPrecision(), distance, r.importance(), r.confidence(), r.emotion(), r.layer(), r.retentionRate());
     }
 
-    /** 关键词匹配：中文子串 + 2-4字分词匹配 */
-    private List<MemoryResult> keywordSearch(String userId, String query, int limit) {
-        try {
-            return jdbc.query(
-                "SELECT id, content, role, created_at, event_date, event_at, event_timezone, event_precision, importance, COALESCE(confidence,1.0) AS confidence, layer, emotion, 0.5 AS distance "
-                + "FROM long_term_memory WHERE user_id = ? AND searchable=1 "
-                + "ORDER BY importance DESC LIMIT 100",
-                ps -> ps.setString(1, userId),
-                (rs, rn) -> new MemoryResult(rs.getString("id"), rs.getString("content"), rs.getString("role"),
-                    rs.getTimestamp("created_at"), rs.getDate("event_date"), rs.getTimestamp("event_at"),
-                    rs.getString("event_timezone"), rs.getString("event_precision"), 0.5, rs.getDouble("importance"), rs.getDouble("confidence"), rs.getString("emotion"),
-                    rs.getInt("layer"), 1.0)
-            ).stream().filter(r -> retention(r.createdAt(), r.createdAt(), r.importance(), r.layer()) > RETENTION_MIN)
-              .filter(r -> matchScore(r.content(), query) > 0)
-              .sorted((a, b) -> Double.compare(matchScore(b.content(), query), matchScore(a.content(), query)))
-              .limit(limit).toList();
-        } catch (Exception e) { return List.of(); }
-    }
-
-    /** 简单关键词匹配分 */
-    private double matchScore(String content, String query) {
-        String c = content.toLowerCase();
-        String q = query.toLowerCase();
-        if (c.contains(q)) return 0.8;
-        // 2-4字子串匹配
-        int hits = 0;
-        for (int len = 2; len <= 4; len++) {
-            for (int i = 0; i <= q.length() - len; i++) {
-                if (c.contains(q.substring(i, i + len))) hits++;
+    /** Supports ISO fixture dates and the epoch milliseconds written by SQLite JDBC setDate. */
+    private Date readEventDate(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return Date.valueOf(java.time.LocalDate.parse(value)); }
+        catch (java.time.DateTimeException e) {
+            try { return new Date(Long.parseLong(value)); }
+            catch (NumberFormatException invalid) {
+                logger.log("WARN", "记忆事件日期无效: " + value);
+                return null;
             }
         }
-        return Math.min(0.6, hits * 0.15);
     }
 
-    private double rerankScore(MemoryResult r, double rrfScore) {
-        long elapsed = System.currentTimeMillis() - (r.createdAt() != null ? r.createdAt().getTime() : 0);
-        double hours = elapsed / 3600000.0;
-        double strength = r.importance() >= 0.6 ? 5.0 : 1.0;
-        double timeDecay = Math.exp(-hours / (strength * 24 + 1));
-        return rrfScore * 0.5 + timeDecay * 0.2 + r.importance() * 0.2
-            + r.confidence() * 0.05 + (r.importance() >= 0.6 ? 0.05 : 0);
+    private Timestamp readEventTimestamp(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return new Timestamp(Long.parseLong(value)); }
+        catch (NumberFormatException ignored) { }
+        try { return Timestamp.valueOf(LocalDateTime.parse(value.trim().replace(' ', 'T'))); }
+        catch (java.time.DateTimeException ignored) { }
+        Timestamp instant = retrievalPolicy.readStorageTimestamp(value);
+        if (instant == null) logger.log("WARN", "记忆事件时间无效: " + value);
+        return instant;
+    }
+
+    private double metadataPreference(MemoryResult r) {
+        double recency = Math.exp(-retrievalPolicy.ageHours(r.createdAt()) / (r.layer() == 2 ? 121.0 : 25.0));
+        return .5 * r.importance() + .3 * recency + .2 * r.confidence();
+    }
+    private double rerankScore(MemoryResult r, MemoryRetrievalRanking.LexicalQuery lexical, double rrfScore, boolean keywordEnabled) {
+        return MemoryRetrievalRanking.retrievalScore(rrfScore, 2,
+            MemoryRetrievalRanking.relevance(keywordEnabled ? lexical.score(r.content()) : 0, r.distance()), metadataPreference(r));
     }
 
     private void touchAccessed(String userId, List<MemoryResult> results) {
+        if (!retrievalPolicy.refreshAccess()) return;
         for (MemoryResult result : results) {
             if (result.id() == null || result.id().isBlank()) continue;
             try {
                 jdbc.update("UPDATE long_term_memory SET access_count=COALESCE(access_count,0)+1, "
-                    + "last_accessed=CURRENT_TIMESTAMP WHERE user_id=? AND id=?", userId, result.id());
+                    + "last_accessed=? WHERE user_id=? AND id=?", retrievalPolicy.sqlNow(), userId, result.id());
             } catch (Exception e) {
                 logger.log("DEBUG", "SQLite memory access refresh failed: " + e.getMessage());
             }
