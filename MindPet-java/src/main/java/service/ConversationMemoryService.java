@@ -21,6 +21,8 @@ public class ConversationMemoryService {
     private final ObjectMapper mapper;
     private final Logger logger;
 
+    private record StoredMemoryRow(long id, Map<String, Object> payload) {}
+
     public ConversationMemoryService(JdbcTemplate jdbc, ObjectMapper mapper, Logger logger) {
         this.jdbc = jdbc;
         this.mapper = mapper;
@@ -34,10 +36,47 @@ public class ConversationMemoryService {
             String sessionId = sessionId();
             jdbc.update("INSERT INTO conversation_memory(user_id,session_id,payload_json,created_at,expires_at) VALUES(?,?,?,?,?)",
                 userId, sessionId, mapper.writeValueAsString(message), now, now + TTL_MILLIS);
-            jdbc.update("DELETE FROM conversation_memory WHERE expires_at IS NOT NULL AND expires_at<?", now);
-            jdbc.update("DELETE FROM conversation_memory WHERE id IN (SELECT id FROM conversation_memory WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT -1 OFFSET ?)",
-                userId, sessionId, MAX_SIZE);
+            prune(userId, sessionId, now);
         } catch (Exception e) { logger.log("WARN", "短期记忆写入失败: " + e.getMessage()); }
+    }
+
+    /** Insert or replace a streaming turn message without adding a database row for every token. */
+    public void upsert(String userId, Map<String, Object> message) {
+        if (userId == null || userId.isBlank() || message == null) return;
+        String messageId = String.valueOf(message.getOrDefault("id", "")).trim();
+        if (messageId.isEmpty()) {
+            append(userId, message);
+            return;
+        }
+        try {
+            long now = System.currentTimeMillis();
+            String sessionId = sessionId();
+            List<StoredMemoryRow> recent = jdbc.query(
+                "SELECT id,payload_json FROM conversation_memory WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT ?",
+                (rs, row) -> new StoredMemoryRow(rs.getLong("id"), parse(rs.getString("payload_json"))),
+                userId, sessionId, MAX_SIZE);
+            Long existingId = recent.stream()
+                .filter(row -> messageId.equals(String.valueOf(row.payload().getOrDefault("id", ""))))
+                .map(StoredMemoryRow::id)
+                .findFirst()
+                .orElse(null);
+            String payload = mapper.writeValueAsString(message);
+            if (existingId == null) {
+                jdbc.update("INSERT INTO conversation_memory(user_id,session_id,payload_json,created_at,expires_at) VALUES(?,?,?,?,?)",
+                    userId, sessionId, payload, now, now + TTL_MILLIS);
+            } else {
+                // Keep the original row order; only refresh its content and seven-day expiry.
+                jdbc.update("UPDATE conversation_memory SET payload_json=?,expires_at=? WHERE id=?",
+                    payload, now + TTL_MILLIS, existingId);
+            }
+            prune(userId, sessionId, now);
+        } catch (Exception e) { logger.log("WARN", "短期记忆更新失败: " + e.getMessage()); }
+    }
+
+    private void prune(String userId, String sessionId, long now) {
+        jdbc.update("DELETE FROM conversation_memory WHERE expires_at IS NOT NULL AND expires_at<?", now);
+        jdbc.update("DELETE FROM conversation_memory WHERE id IN (SELECT id FROM conversation_memory WHERE user_id=? AND session_id=? ORDER BY id DESC LIMIT -1 OFFSET ?)",
+            userId, sessionId, MAX_SIZE);
     }
 
     public List<Map<String, Object>> loadRecent(String userId, int limit) {

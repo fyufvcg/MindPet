@@ -18,8 +18,6 @@ import java.util.List;
 public class SqliteMemoryService {
 
     private static final int PRUNE_THRESHOLD = 500; // 超过此数量时触发清理
-    private static final double RETENTION_MIN = 0.1; // 保留率低于此值的记忆视为"已遗忘"
-
     private final JdbcTemplate jdbc;
     private final EmbeddingService embedService;
     private final VectorSearchService vectorSearch;
@@ -135,7 +133,8 @@ public class SqliteMemoryService {
         if (userId == null || userId.isBlank() || query == null || query.isBlank() || topK <= 0) return List.of();
         try {
             List<MemoryResult> eligible = loadSearchableMemories(userId).stream()
-                .filter(r -> !retrievalPolicy.applyRetention() || r.retentionRate() > RETENTION_MIN).toList();
+                .filter(r -> !retrievalPolicy.applyRetention()
+                    || r.retentionRate() > retrievalPolicy.retentionMinimum()).toList();
             int routeLimit = Math.max(40, topK);
             var lexical = MemoryRetrievalRanking.lexicalQuery(query, eligible.stream().map(MemoryResult::content).toList());
             var byId = eligible.stream().collect(java.util.stream.Collectors.toMap(MemoryResult::id, r -> r));
@@ -271,41 +270,11 @@ public class SqliteMemoryService {
     }
 
     /**
-     * 清理保留率低于阈值的常规记忆（已遗忘的）。
+     * 软退役明确到期的来源或低置信度、未强化的衰减来源；保留确认事实和历史证据。
      */
     public int prune(String userId) {
         try {
-            List<PruneCandidate> candidates = jdbc.query(
-                "SELECT id,content,importance,layer,last_accessed,created_at FROM long_term_memory "
-                    + "WHERE user_id=? AND searchable=1 AND access_count<3",
-                (rs, row) -> new PruneCandidate(rs.getString("id"), rs.getString("content"),
-                    rs.getDouble("importance"), rs.getInt("layer"), rs.getTimestamp("last_accessed"),
-                    rs.getTimestamp("created_at")), userId);
-            int removed = 0;
-            for (PruneCandidate row : candidates) {
-                if (retention(row.lastAccessed(), row.createdAt(), row.importance(), row.layer()) >= RETENTION_MIN) continue;
-                String id = row.id();
-                int changed = jdbc.update("UPDATE long_term_memory SET searchable=0 WHERE user_id=? AND id=? AND searchable=1",
-                    userId, id);
-                if (changed == 0) continue;
-                jdbc.update("UPDATE memory_retrieval_unit SET searchable=0,status='inactive',"
-                        + "compaction_version=compaction_version+1,updated_at=CURRENT_TIMESTAMP "
-                        + "WHERE user_id=? AND unit_type='raw_memory' AND id IN ("
-                        + "SELECT unit_id FROM memory_retrieval_source WHERE source_type='long_term_memory' AND source_id=?) "
-                        + "AND NOT EXISTS (SELECT 1 FROM memory_retrieval_source remaining "
-                        + "JOIN long_term_memory active ON CAST(active.id AS TEXT)=remaining.source_id "
-                        + "WHERE remaining.unit_id=memory_retrieval_unit.id "
-                        + "AND remaining.source_type='long_term_memory' AND active.user_id=? AND active.searchable=1)",
-                    userId, id, userId);
-                int tokens = MemoryCorpusCompactionService.tokenCount(row.content());
-                try {
-                    jdbc.update("INSERT INTO memory_compaction_log(user_id,batch_sequence,action,unit_id,source_id,"
-                            + "tokens_before,tokens_after,reason) VALUES(?,0,'RETIRE',?,?,?,0,'retention_prune')",
-                        userId, id, id, tokens);
-                } catch (Exception ignored) { }
-                removed++;
-            }
-            return removed;
+            return new MemoryForgettingSourceAdapter(jdbc, retrievalPolicy, embedService).prune(userId);
         } catch (Exception e) {
             logger.log("WARN", "SQLite memory prune failed: " + e.getMessage());
             return 0;
@@ -354,14 +323,7 @@ public class SqliteMemoryService {
         }
     }
 
-    private double retention(Timestamp lastAccessed, Timestamp createdAt, double importance, int layer) {
-        Timestamp anchor = lastAccessed != null ? lastAccessed : createdAt;
-        double hours = anchor == null ? 0 : Math.max(0, System.currentTimeMillis() - anchor.getTime()) / 3_600_000.0;
-        double strength = layer == 2 ? 5.0 : 1.0;
-        return importance * Math.exp(-hours / (strength * 24 + 1));
-    }
-
-    private record PruneCandidate(String id, String content, double importance, int layer,
+    private record PruneCandidate(String id, String content, double importance, double confidence, int accessCount, int layer,
                                   Timestamp lastAccessed, Timestamp createdAt) {}
 
     public record MemoryResult(

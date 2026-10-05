@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Spring AI 的 RestClient 自动检测 classpath 上的 OkHttp 并使用它，
  * 但 OkHttp 默认 readTimeout 只有 10 秒，LLM 调用经常超时。
- * 这里显式创建 RestClient.Builder，将超时提到 120 秒。
+ * 这里显式创建 RestClient.Builder，并放宽上游流式响应的空闲读取超时。
  */
 @Configuration
 public class HttpClientConfig {
@@ -20,7 +20,7 @@ public class HttpClientConfig {
     public RestClient.Builder restClientBuilder() {
         OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.MINUTES)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
         return RestClient.builder()

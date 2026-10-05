@@ -92,7 +92,9 @@ export function useChatReplyRuntime({
   const failReply = useCallback((replyId: number, sessionId: string, error: unknown) => {
     discardPendingMessageSave()
     const message = error instanceof Error ? error.message : String(error)
-    const isAbort = message.includes('UserAborted') || message.toLowerCase().includes('aborted')
+    // callLlmInternal converts an explicit user cancellation to this marker.
+    // Generic timeout errors may also contain "aborted" and must remain failures.
+    const isAbort = message.includes('UserAborted')
     const isAuthError = /HTTP\s*(401|403)\b|api[_ -]?key|鉴权|unauthorized|forbidden/i.test(message)
     const isRateLimit = /HTTP\s*429\b|rate.?limit|限流/i.test(message)
     const isServerError = /HTTP\s*5\d\d\b|upstream|service unavailable/i.test(message)
@@ -144,6 +146,7 @@ export function useChatReplyRuntime({
     replyIds.forEach(replyId => abortedReplyIdsRef.current.add(replyId))
     try {
       await window.api.abortLlm(sessionId)
+      discardPendingMessageSave()
       setSendingSessionIds(previous => ({ ...previous, [sessionId]: false }))
       const interrupted: any[] = []
       setSessions(previous => previous.map(session => {

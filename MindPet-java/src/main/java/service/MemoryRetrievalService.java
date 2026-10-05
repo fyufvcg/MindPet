@@ -143,7 +143,21 @@ public class MemoryRetrievalService {
                 }
             } catch (Exception error) { routeFailed("rag-facets", error, failed); }
         }
+        if (options.keyword() && (query.contains("取消") || query.contains("作业") && MemoryQueryIntent.historical(query))) {
+            try {
+                for (var route : corpus.searchFocusedUnitRoutes(userId,query,List.of("取消", "可取消 作业", "另一项 可取消 作业"))) {
+                    Candidate memory=candidates.computeIfAbsent("rag:"+route.unit().id(),ignored->unitCandidate(route.unit()));
+                    memory.rrf=Math.max(memory.rrf,MemoryRetrievalRanking.rrf(route.keywordRank()));
+                    memory.relevance=Math.max(memory.relevance,route.lexical());
+                }
+            } catch(Exception error) { routeFailed("rag-state",error,failed); }
+        }
         var contents = candidates.values().stream().filter(c -> c.unit != null).map(c -> c.content).toList();
+        // Explicit numbered subjects can make unrelated items in the same project ineligible.
+        // Apply only when matching stored evidence exists; generic questions retain all routes.
+        boolean focused = options.rerank() && MemoryRetrievalConstraints.focused(query)
+            && candidates.values().stream().anyMatch(c -> c.unit != null
+                && MemoryRetrievalConstraints.priority(query,c.content) > 0);
         for (var facet : plan.facets()) {
             var lexical = MemoryRetrievalRanking.lexicalQuery(facet.query(), contents);
             for (Candidate candidate : candidates.values()) if (candidate.unit != null) {
@@ -159,6 +173,11 @@ public class MemoryRetrievalService {
                 : candidate.rrf;
             if (options.rerank() && candidate.unit != null && !plan.facets().isEmpty()) {
                 candidate.score = 0.55 * candidate.score + 0.45 * candidate.facetScore;
+            }
+            if (options.rerank() && candidate.unit != null) {
+                double priority=MemoryRetrievalConstraints.priority(query, candidate.content);
+                candidate.score += priority;
+                if(focused && priority==0 && candidate.graphPath.isEmpty()) candidate.selectable=false;
             }
             if (candidate.unit != null) {
                 LinkedHashSet<String> required = new LinkedHashSet<>(candidate.graphPath);

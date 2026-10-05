@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-function-return-type */
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 
 interface StreamUpdate {
@@ -21,7 +21,34 @@ interface UseChatStreamEventsOptions {
 }
 
 /** Batches high-frequency LLM IPC events to one React update per frame. */
-export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef }: UseChatStreamEventsOptions): void {
+export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef }: UseChatStreamEventsOptions): {
+  discardPendingMessageSave: () => void
+} {
+  const pendingMessageSavesRef = useRef(new Map<string, any>())
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushPendingMessageSave = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = null
+    const pending = [...pendingMessageSavesRef.current.values()]
+    pendingMessageSavesRef.current.clear()
+    for (const message of pending) {
+      window.api.saveMessage(message).catch(console.error)
+    }
+  }, [])
+
+  const discardPendingMessageSave = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = null
+    pendingMessageSavesRef.current.clear()
+  }, [])
+
+  const scheduleMessageSave = useCallback((message: any) => {
+    pendingMessageSavesRef.current.set(JSON.stringify([message.sessionId, message.id]), message)
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(flushPendingMessageSave, 750)
+  }, [flushPendingMessageSave])
+
   useEffect(() => {
     if (!window.api.onLlmTextDelta) return undefined
 
@@ -60,6 +87,7 @@ export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef 
       pendingStatusByMessage.clear()
 
       for (const [sessionId, updates] of updatesBySession) {
+        const changedMessages: any[] = []
         updateSessionMessages(sessionId, previous => {
           let messages: any[] | null = null
           for (let index = 0; index < previous.length; index++) {
@@ -67,15 +95,18 @@ export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef 
             const update = updates.get(message.id)
             if (!update || !message.isThinking || abortedReplyIdsRef.current.has(message.id)) continue
             if (!messages) messages = [...previous]
-            messages[index] = {
+            const updatedMessage = {
               ...message,
               ...(update.text ? { text: (message.text || '') + update.text } : {}),
               ...(update.reasoningText ? { reasoningText: (message.reasoningText || '') + update.reasoningText } : {}),
               ...(update.status ? { reasoningStatus: update.status.status, reasoningNotice: update.status.message } : {})
             }
+            messages[index] = updatedMessage
+            changedMessages.push({ ...updatedMessage, sessionId })
           }
           return messages || previous
         })
+        changedMessages.forEach(scheduleMessageSave)
       }
     }
 
@@ -114,6 +145,9 @@ export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef 
       unsubscribeStatus?.()
       if (frameId !== null) cancelAnimationFrame(frameId)
       flush()
+      flushPendingMessageSave()
     }
-  }, [updateSessionMessages, abortedReplyIdsRef])
+  }, [updateSessionMessages, abortedReplyIdsRef, scheduleMessageSave, flushPendingMessageSave])
+
+  return { discardPendingMessageSave }
 }

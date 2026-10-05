@@ -250,12 +250,6 @@ export async function* callJavaBackend(
 
   console.log('[BackendAPI] POST', url, 'userId:', userId)
 
-  // Combine user abort signal with 2-minute timeout
-  const timeoutSignal = AbortSignal.timeout?.(120_000)
-  const combinedSignal = signal
-    ? AbortSignal.any?.([signal, timeoutSignal].filter(Boolean) as AbortSignal[])
-    : timeoutSignal
-
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -263,7 +257,10 @@ export async function* callJavaBackend(
       'Accept': 'application/x-ndjson, text/plain'
     },
     body,
-    signal: combinedSignal
+    // Do not impose a wall-clock limit on the whole generation. Long reasoning
+    // streams can legitimately run past two minutes; explicit user abort still
+    // cancels the request through this signal.
+    signal
   })
 
   if (!response.ok) {

@@ -1744,13 +1744,18 @@ export function useAppStore() {
     }
   }
 
-  const { discardPendingMessageSave } = useChatToolEvents({
+  const { discardPendingMessageSave: discardPendingToolMessageSave } = useChatToolEvents({
     updateSessionMessages,
     setCronTasks,
     activeSessionIdRef,
     cronRunningLogsRef,
     showToast
   })
+  const discardPendingStreamMessageSaveRef = useRef<() => void>(() => {})
+  const discardPendingMessageSave = useCallback(() => {
+    discardPendingToolMessageSave()
+    discardPendingStreamMessageSaveRef.current()
+  }, [discardPendingToolMessageSave])
   const { abortedReplyIdsRef, finalizeReply, failReply, abortReply } = useChatReplyRuntime({
     setSessions,
     setSendingSessionIds,
@@ -1779,7 +1784,11 @@ export function useAppStore() {
     }, 0)
     return () => clearTimeout(timer)
   }, [handleSendChat, pendingAutoSendTick])
-  useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef })
+  const { discardPendingMessageSave: discardPendingStreamMessageSave } = useChatStreamEvents({
+    updateSessionMessages,
+    abortedReplyIdsRef
+  })
+  discardPendingStreamMessageSaveRef.current = discardPendingStreamMessageSave
 
 
   // ==================== Embedding 配置（三态 + 豆包 Key）====================

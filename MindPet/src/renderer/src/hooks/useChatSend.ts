@@ -219,14 +219,21 @@ export function useChatSend({
     setSendingSessionIds(previous => ({ ...previous, [sessionId]: true }))
 
     const activeSession = updatedSessions.find(session => session.id === sessionId)
-    ;(async () => {
-      await window.api.saveMessage({ ...userMessage, sessionId })
-      await window.api.saveMessage({ ...placeholder, sessionId })
-      if (activeSession) await window.api.updateSession(sessionId, { name: activeSession.name })
-    })().catch(console.error)
 
     try {
       if (!activeSession) throw new Error(`SessionNotFound: ${sessionId}`)
+      const userMessageSaved = await window.api.saveMessage({ ...userMessage, sessionId }).catch(error => {
+        console.error('保存用户消息失败', error)
+        return false
+      })
+      const placeholderSaved = await window.api.saveMessage({ ...placeholder, sessionId }).catch(error => {
+        console.error('保存助手占位消息失败', error)
+        return false
+      })
+      if (!userMessageSaved || !placeholderSaved) {
+        console.warn('用户消息或助手占位消息未能落库；继续本次生成。')
+      }
+      await window.api.updateSession(sessionId, { name: activeSession.name }).catch(console.error)
       const chatMessages = activeSession.messages
         .filter((message: any) => (message.sender === 'user' || message.sender === 'agent') && !message.isThinking && !message.isSuperseded)
         .slice(-state.contextRounds * 2)

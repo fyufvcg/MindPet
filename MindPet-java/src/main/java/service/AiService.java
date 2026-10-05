@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @Service
@@ -569,10 +570,69 @@ public class AiService {
         for (var msg : convMemory.loadRecent(userId, limit)) {
             String role = String.valueOf(msg.getOrDefault("role", ""));
             String content = String.valueOf(msg.getOrDefault("content", ""));
+            if (content.isBlank()) continue;
+            String status = String.valueOf(msg.getOrDefault("status", ""));
+            if ("in_progress".equals(status) || "incomplete".equals(status)) {
+                content = "[上一轮回复未完成，以下是中断前已生成的内容]\n" + content;
+            }
             if ("user".equals(role)) messages.add(new UserMessage(content));
             else if ("assistant".equals(role)) messages.add(new AssistantMessage(content));
         }
         return messages;
+    }
+
+    /** Checkpoints partial streamed assistant text in short-term memory without duplicating rows. */
+    private final class StreamMemoryCheckpoint {
+        private final String userId;
+        private final String assistantMessageId;
+        private final Map<String, Object> userEntry;
+        private final StringBuilder content = new StringBuilder();
+        private long lastCheckpointAt;
+        private int lastCheckpointLength;
+        private boolean started;
+
+        private StreamMemoryCheckpoint(String userId, String userMessage, String emotionTag,
+                                       String turnId, String assistantMessageId) {
+            this.userId = userId;
+            this.assistantMessageId = assistantMessageId;
+            this.userEntry = new LinkedHashMap<>();
+            this.userEntry.put("id", turnId);
+            this.userEntry.put("role", "user");
+            this.userEntry.put("content", userMessage);
+            this.userEntry.put("status", "completed");
+            if (emotionTag != null && !emotionTag.isBlank()) this.userEntry.put("emotion", emotionTag);
+        }
+
+        private synchronized void start() {
+            convMemory.upsert(userId, userEntry);
+            started = true;
+            lastCheckpointAt = System.currentTimeMillis();
+            writeAssistant("in_progress");
+        }
+
+        private synchronized void append(String delta) {
+            if (!started || delta == null || delta.isEmpty()) return;
+            content.append(delta);
+            long now = System.currentTimeMillis();
+            if (now - lastCheckpointAt >= 1_000 || content.length() - lastCheckpointLength >= 2_048) {
+                writeAssistant("in_progress");
+                lastCheckpointAt = now;
+                lastCheckpointLength = content.length();
+            }
+        }
+
+        private synchronized void markIncomplete() {
+            if (started) writeAssistant("incomplete");
+        }
+
+        private void writeAssistant(String status) {
+            Map<String, Object> assistantEntry = new LinkedHashMap<>();
+            assistantEntry.put("id", assistantMessageId);
+            assistantEntry.put("role", "assistant");
+            assistantEntry.put("content", content.toString());
+            assistantEntry.put("status", status);
+            convMemory.upsert(userId, assistantEntry);
+        }
     }
 
     private record StreamedResponse(String text, int promptTokens, int completionTokens) {}
@@ -628,11 +688,18 @@ public class AiService {
 
         String emotionTag = emotion.toTag();
         Map<String, Object> userMsgMap = new LinkedHashMap<>();
+        userMsgMap.put("id", turnId);
         userMsgMap.put("role", "user");
         userMsgMap.put("content", userMessage);
+        userMsgMap.put("status", "completed");
         if (!emotionTag.isBlank()) userMsgMap.put("emotion", emotionTag);
-        convMemory.append(userId, userMsgMap);
-        convMemory.append(userId, Map.of("role", "assistant", "content", reply));
+        convMemory.upsert(userId, userMsgMap);
+        Map<String, Object> assistantMemory = new LinkedHashMap<>();
+        assistantMemory.put("id", agentMessageId);
+        assistantMemory.put("role", "assistant");
+        assistantMemory.put("content", reply);
+        assistantMemory.put("status", "completed");
+        convMemory.upsert(userId, assistantMemory);
 
         String sid = tool.ToolUserContext.getSessionId();
         String time = java.time.LocalDateTime.ofInstant(occurredAt, curatorEventZone(userId)).toString();
@@ -815,8 +882,11 @@ public class AiService {
         tool.ToolUserContext.set(userId);
         AtomicBoolean emitted = new AtomicBoolean();
         AtomicBoolean streamedToolsUsed = new AtomicBoolean();
+        AtomicReference<StreamMemoryCheckpoint> memoryCheckpoint = new AtomicReference<>();
         Consumer<String> emit = delta -> {
             emitted.set(true);
+            StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
+            if (checkpoint != null) checkpoint.append(delta);
             onDelta.accept(delta);
         };
         try {
@@ -850,6 +920,11 @@ public class AiService {
                 .toolCallbacks(callbacks);
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
 
+            StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
+                userId, userMessage, emotion.toTag(), turnId, agentMessageId);
+            checkpoint.start();
+            memoryCheckpoint.set(checkpoint);
+
             String alertPrefix = emotion.alert() == null ? "" : emotion.alert() + "\n\n";
             if (!alertPrefix.isEmpty()) emit.accept(alertPrefix);
             StreamedResponse streamed = streamResponse(chatSpec, emit, onReasoningDelta);
@@ -874,11 +949,14 @@ public class AiService {
                 totalPrompt, totalCompletion);
         } catch (Exception e) {
             logger.log("ERROR", "AI 流式调用失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
+            if (checkpoint != null) checkpoint.markIncomplete();
             if (emitted.get()) {
                 if (e instanceof RuntimeException runtimeException) throw runtimeException;
                 throw new IllegalStateException(e);
             }
             emit.accept(fallback);
+            if (checkpoint != null) checkpoint.markIncomplete();
             return model.ChatResult.of(fallback, streamedToolsUsed.get());
         } finally {
             tool.ToolUserContext.clear();
@@ -1024,8 +1102,11 @@ public class AiService {
         tool.ToolUserContext.setImageData(imageBytes);
         AtomicBoolean emitted = new AtomicBoolean();
         AtomicBoolean streamedToolsUsed = new AtomicBoolean();
+        AtomicReference<StreamMemoryCheckpoint> memoryCheckpoint = new AtomicReference<>();
         Consumer<String> emit = delta -> {
             emitted.set(true);
+            StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
+            if (checkpoint != null) checkpoint.append(delta);
             onDelta.accept(delta);
         };
         try {
@@ -1059,6 +1140,11 @@ public class AiService {
                 .toolCallbacks(callbacks);
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
 
+            StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
+                userId, textPrompt, emotion.toTag(), turnId, agentMessageId);
+            checkpoint.start();
+            memoryCheckpoint.set(checkpoint);
+
             StreamedResponse streamed = streamResponse(chatSpec, emit, onReasoningDelta);
             String reply = streamed.text();
             if (reply.isEmpty()) {
@@ -1081,11 +1167,14 @@ public class AiService {
                 totalPrompt, totalCompletion);
         } catch (Exception e) {
             logger.log("ERROR", "图片流式识别失败: " + e.getMessage());
+            StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
+            if (checkpoint != null) checkpoint.markIncomplete();
             if (emitted.get()) {
                 if (e instanceof RuntimeException runtimeException) throw runtimeException;
                 throw new IllegalStateException(e);
             }
             emit.accept(fallback);
+            if (checkpoint != null) checkpoint.markIncomplete();
             return model.ChatResult.of(fallback, streamedToolsUsed.get());
         } finally {
             tool.ToolUserContext.clear();

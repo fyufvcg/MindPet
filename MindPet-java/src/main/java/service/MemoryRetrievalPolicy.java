@@ -11,13 +11,19 @@ import java.time.format.DateTimeFormatter;
 /** Runtime controls for retrieval; ingestion and compaction keep their own policies. */
 @Component
 public class MemoryRetrievalPolicy {
+    public static final double RETENTION_MIN = 0.1;
+    private static final double IMPORTANT_DECAY_HOURS = 121.0;
+    private static final double REGULAR_DECAY_HOURS = 25.0;
+
     private final Clock clock;
     private final boolean refreshAccess;
     private final boolean applyRetention;
 
     @Autowired
     public MemoryRetrievalPolicy(Clock clock,
-            @Value("${app.memory.retrieval.refresh-access:true}") boolean refreshAccess,
+            // Retrieval-time access refresh is opt-in. A stale mapped unit must not
+            // become immortal merely because another route happened to select it.
+            @Value("${app.memory.retrieval.refresh-access:false}") boolean refreshAccess,
             @Value("${app.memory.retrieval.apply-retention:true}") boolean applyRetention) {
         this.clock = clock;
         this.refreshAccess = refreshAccess;
@@ -25,7 +31,7 @@ public class MemoryRetrievalPolicy {
     }
 
     public static MemoryRetrievalPolicy defaults() {
-        return new MemoryRetrievalPolicy(Clock.systemUTC(), true, true);
+        return new MemoryRetrievalPolicy(Clock.systemUTC(), false, true);
     }
 
     public boolean refreshAccess() { return refreshAccess; }
@@ -40,11 +46,13 @@ public class MemoryRetrievalPolicy {
     }
     public double rawRetention(Timestamp accessed, Timestamp created, double importance, int layer) {
         if (accessed == null && created == null) return 0;
-        return importance * Math.exp(-ageHours(accessed != null ? accessed : created) / (layer == 2 ? 121.0 : 25.0));
+        return importance * Math.exp(-ageHours(accessed != null ? accessed : created) / decayHours(layer));
     }
     public boolean visible(Timestamp accessed, Timestamp created, double importance, int layer) {
-        return !applyRetention || rawRetention(accessed, created, importance, layer) > 0.1;
+        return !applyRetention || rawRetention(accessed, created, importance, layer) > RETENTION_MIN;
     }
+    public double decayHours(int layer) { return layer == 2 ? IMPORTANT_DECAY_HOURS : REGULAR_DECAY_HOURS; }
+    public double retentionMinimum() { return RETENTION_MIN; }
     /** SQLite CURRENT_TIMESTAMP and sqlNow are UTC, irrespective of the JDBC host timezone. */
     public Timestamp readStorageTimestamp(String value) {
         if (value == null || value.isBlank()) return null;

@@ -8,7 +8,10 @@ public final class MemoryQueryIntent {
     private MemoryQueryIntent() {}
     public static boolean historical(String query) {
         return contains(query, "以前", "之前", "曾经", "过去", "原来", "历史", "当时", "那时", "老家",
-            "搬家前", "搬迁前", "原先", "曾任", "曾住", "旧址", "曾想", "打算过");
+            "搬家前", "搬迁前", "原先", "曾任", "曾住", "旧址", "曾想", "打算过",
+            "有效期内", "有效期限内", "有效时段内", "仍在有效期", "还在有效期", "仍在有效时段", "还在有效时段",
+            "到期了吗", "已到期", "是否到期", "仍有效", "还有效", "仍然有效", "已失效", "是否失效",
+            "处于有效期", "处在有效期", "有效期吗", "回到", "已完成", "结束的");
     }
     public static boolean planned(String query) {
         return contains(query, "计划", "打算", "准备", "想要", "将来", "以后", "未来", "安排", "考虑",

@@ -3181,6 +3181,7 @@ app.whenReady().then(async () => {
       user_id = excluded.user_id,
       is_summarized = excluded.is_summarized,
       prompt_info = COALESCE(excluded.prompt_info, messages.prompt_info)
+    WHERE NOT (messages.is_thinking = 0 AND excluded.is_thinking = 1)
   `
 
   const serializeMessageForDb = (m: any) => {

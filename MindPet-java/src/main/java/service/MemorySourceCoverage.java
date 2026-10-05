@@ -30,8 +30,16 @@ public final class MemorySourceCoverage {
             if (quoteAt < 0 || valueAt < 0 || content.indexOf(f.text(), quoteAt + 1) >= 0) continue;
             int start = quoteAt + valueAt;
             int spanEnd=start+surface.length();
-            if (spans.stream().anyMatch(s -> start < s[1] && spanEnd > s[0])) continue;
-            spans.add(new int[]{start,start+surface.length()});
+            // A cancellation frame is covered only by the matching negative plan/event
+            // evidence. Do not add its suffixes to the shared frame allowlist.
+            if (isCancellationFrame(f, surface)) {
+                start = quoteAt;
+                spanEnd = quoteAt + f.text().length();
+            }
+            final int coveredStart = start;
+            final int coveredEnd = spanEnd;
+            if (spans.stream().anyMatch(s -> coveredStart < s[1] && coveredEnd > s[0])) continue;
+            spans.add(new int[]{start, spanEnd});
         }
         if (spans.isEmpty()) return false;
         String residual = content;
@@ -50,6 +58,15 @@ public final class MemorySourceCoverage {
         }
         // Every source value must be supported locally; unknown names, numbers or extra details remain.
         return true;
+    }
+
+    private static boolean isCancellationFrame(MemoryEvidenceCoverage.Evidence fact, String surface) {
+        if (!"negated".equals(fact.assertion())
+                || !("plan".equals(fact.predicate()) || "event".equals(fact.predicate()))) return false;
+        String value = Pattern.quote(MemoryEvidenceCoverage.normalize(surface));
+        return MemoryEvidenceCoverage.normalize(fact.text()).matches(
+            "我(?:已经|已)?(?:取消|放弃)(?:参加|报名)?" + value + "(?:的)?(?:计划|安排)[。.!！]?"
+        );
     }
 
     /** Remove only complete independent sentences; a partially understood sentence stays verbatim. */
