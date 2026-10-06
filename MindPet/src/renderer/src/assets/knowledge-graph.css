@@ -4,19 +4,15 @@
   --kg-text-2xs: 8px;
   --kg-text-xs: 9px;
   --kg-text-xs-plus: 9.5px;
-  --kg-text-sm: 10px;
-  --kg-text-label: 10.5px;
-  --kg-text-control: 11px;
-  --kg-text-body: 12px;
+  --kg-text-sm: 12px;
+  --kg-text-label: 11px;
+  --kg-text-control: 12px;
+  --kg-text-body: 13px;
   --kg-text-title: 13px;
   --kg-text-section: 14px;
   --kg-text-inspector: 18px;
   --kg-fact-edge: color-mix(in srgb, var(--color-action-primary) 58%, var(--text-secondary));
-  --kg-semantic-edge: color-mix(
-    in srgb,
-    var(--color-status-success) 62%,
-    var(--color-action-primary)
-  );
+  --kg-semantic-edge: color-mix(in srgb, #9582c6 78%, var(--text-secondary));
   --kg-field-dot: color-mix(in srgb, var(--text-secondary) 18%, transparent);
   height: auto;
   width: 100%;
@@ -307,7 +303,9 @@
   border-bottom: 1px solid var(--border-card);
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-block: 8px;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--bg-content) 82%, var(--bg-card));
   font-size: var(--kg-text-label);
@@ -331,9 +329,19 @@
   margin-left: auto;
 }
 .kg-edge-key i {
-  width: 14px;
+  width: 23px;
   height: 0;
-  border-top: 1px solid var(--kg-fact-edge);
+  border-top: 2px solid var(--kg-fact-edge);
+  position: relative;
+}
+.kg-edge-key i.fact::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border-left: 5px solid var(--kg-fact-edge);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
 }
 .kg-edge-key i.semantic {
   margin-left: 5px;
@@ -357,9 +365,103 @@
   min-width: 0;
   flex: 1;
   isolation: isolate;
-  background: var(--bg-content);
+  background:
+    radial-gradient(
+      ellipse at 18% 22%,
+      color-mix(in srgb, #638edd 13%, transparent),
+      transparent 54%
+    ),
+    radial-gradient(
+      ellipse at 82% 74%,
+      color-mix(in srgb, #9582c6 10%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse at 56% 36%,
+      transparent 28%,
+      color-mix(in srgb, #7898be 9%, transparent) 100%
+    ),
+    color-mix(in srgb, var(--bg-content) 94%, #7898be);
   border-radius: 0 0 0 var(--kg-radius-surface);
   overflow: hidden;
+}
+
+.agent-window-container.light .knowledge-graph-canvas {
+  background:
+    radial-gradient(
+      ellipse at 18% 22%,
+      color-mix(in srgb, #638edd 4%, transparent),
+      transparent 54%
+    ),
+    radial-gradient(
+      ellipse at 82% 74%,
+      color-mix(in srgb, #9582c6 2.5%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse at 56% 36%,
+      transparent 28%,
+      color-mix(in srgb, #7898be 2%, transparent) 100%
+    ),
+    #ffffff;
+}
+
+.kg-space-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--text-secondary) 34%, #7898be);
+}
+.kg-space-field__dust {
+  fill: currentColor;
+  opacity: 0.38;
+}
+.kg-space-field__contours {
+  stroke: currentColor;
+  stroke-width: 0.7;
+  opacity: 0.15;
+}
+.kg-space-field__stars {
+  stroke: currentColor;
+  stroke-width: 0.9;
+  opacity: 0.26;
+}
+
+.kg-islands {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.kg-island {
+  position: absolute;
+  border-radius: 48%;
+  background: radial-gradient(
+    ellipse,
+    color-mix(in srgb, #7898be 9%, transparent),
+    color-mix(in srgb, #9582c6 3%, transparent) 58%,
+    transparent 72%
+  );
+  pointer-events: none;
+}
+.kg-island > span {
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  transform: translateX(-50%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+.kg-island small {
+  font-size: 10px;
+  font-weight: 400;
+  margin-left: 8px;
+  opacity: 0.7;
 }
 
 .knowledge-graph-canvas .react-flow__attribution {
@@ -396,7 +498,7 @@
 }
 
 .knowledge-graph-canvas .kg-edge-semantic.animated .react-flow__edge-path {
-  animation: kg-memory-edge-flow 2400ms linear infinite;
+  animation: kg-memory-edge-flow 600ms linear 1;
 }
 
 .knowledge-graph-workspace.is-dragging .react-flow__edge-path {
@@ -437,13 +539,22 @@
   color: var(--star-color);
   cursor: pointer;
 }
+.memory-star-node:focus-visible {
+  outline: 1.5px solid var(--color-action-primary);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
 
 .memory-star-node__halo {
   position: absolute;
-  inset: 5%;
-  border: 1px solid color-mix(in srgb, var(--star-color) 42%, transparent);
+  inset: -22%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--star-color) 23%, transparent),
+    transparent 67%
+  );
   border-radius: 50%;
-  opacity: 0.44;
+  opacity: var(--star-strength);
   transform: scale(0.92);
   transition:
     opacity 180ms var(--motion-standard),
@@ -451,21 +562,52 @@
     border-color 180ms var(--motion-standard);
 }
 
-.memory-star-node__core {
-  width: 54%;
-  height: 54%;
-  border: 2px solid var(--star-color);
+.memory-star-node__orbit {
+  position: absolute;
+  inset: 12%;
+  border: 1px solid color-mix(in srgb, var(--star-color) 38%, transparent);
   border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 180ms var(--motion-standard),
+    transform 220ms var(--motion-standard);
+}
+
+.memory-star-node__core {
+  width: 64%;
+  height: 64%;
   display: grid;
   place-items: center;
   color: var(--star-color);
-  background: color-mix(in srgb, var(--star-color) 12%, var(--bg-card));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--star-color) 17%, transparent);
+  opacity: var(--star-strength);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--star-color) 45%, transparent));
   transition:
     width 180ms var(--motion-standard),
     height 180ms var(--motion-standard),
-    background 180ms var(--motion-standard),
-    box-shadow 180ms var(--motion-standard);
+    filter 180ms var(--motion-standard);
+}
+
+.memory-star-glyph {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.memory-star-glyph > path {
+  fill: var(--star-color);
+  stroke: color-mix(in srgb, var(--star-color) 65%, var(--bg-card));
+  stroke-width: 0.6;
+}
+.memory-star-glyph .memory-star-glyph__rays {
+  fill: none;
+  stroke: var(--star-color);
+  stroke-width: 1;
+  opacity: 0.35;
+  stroke-linecap: round;
+}
+.memory-star-glyph.is-user > path {
+  stroke-width: 1.5;
+  fill: color-mix(in srgb, var(--star-color) 75%, var(--bg-card));
 }
 
 .memory-star-node.is-drop-target .memory-star-node__core {
@@ -476,30 +618,24 @@
   animation: memory-drop-related 460ms var(--motion-standard) 48ms both;
 }
 
-.memory-star-node__core > span {
-  width: 28%;
-  height: 28%;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .memory-star-node__name {
   position: absolute;
-  top: calc(100% - 7px);
+  top: 77%;
   left: 50%;
-  max-width: 116px;
-  padding: 2px 4px;
+  max-width: 134px;
+  padding: 3px 6px;
   overflow: hidden;
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--bg-content) 94%, transparent);
+  background: color-mix(in srgb, var(--bg-content) 88%, transparent);
   border-radius: 4px;
   font-size: var(--kg-text-sm);
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.4;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--kg-label-scale, 1));
+  transform-origin: top center;
   transition: opacity 160ms var(--motion-standard);
 }
 
@@ -528,40 +664,61 @@
 }
 
 .memory-star-node:hover .memory-star-node__halo,
-.memory-star-node.is-selected .memory-star-node__halo {
-  border-color: var(--star-color);
-  opacity: 0.9;
-  transform: scale(1.05);
+.memory-star-node.is-selected .memory-star-node__halo,
+.memory-star-node.is-hovered .memory-star-node__halo {
+  opacity: 1;
+  transform: scale(1.15);
 }
 
 .memory-star-node:hover .memory-star-node__core,
-.memory-star-node.is-selected .memory-star-node__core {
-  width: 62%;
-  height: 62%;
-  background: color-mix(in srgb, var(--star-color) 20%, var(--bg-card));
-  box-shadow: 0 9px 22px color-mix(in srgb, var(--star-color) 28%, transparent);
+.memory-star-node.is-selected .memory-star-node__core,
+.memory-star-node.is-hovered .memory-star-node__core {
+  opacity: 1;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--star-color) 65%, transparent));
+}
+.memory-star-node:is(:hover, .is-selected, .is-hovered) .memory-star-node__orbit {
+  opacity: 0.9;
+  transform: scale(1);
+}
+.memory-star-node:is(.is-selected, .is-hovered) .memory-star-node__name {
+  color: var(--text-primary);
+  font-weight: 750;
 }
 
 .memory-star-node.is-core .memory-star-node__core {
-  width: 64%;
-  height: 64%;
+  width: 76%;
+  height: 76%;
 }
 .memory-star-node.is-core .memory-star-node__halo {
-  border-style: dashed;
-  opacity: 0.74;
+  animation: kg-star-breathe 7s ease-in-out var(--star-delay) infinite;
 }
 .memory-star-node.is-dimmed {
-  opacity: 0.19;
-  filter: saturate(0.5);
+  opacity: 0.48;
+}
+.memory-star-node.is-fading .memory-star-node__core {
+  filter: saturate(0.4);
+}
+.memory-star-node__fading {
+  position: absolute;
+  top: 48%;
+  left: 71%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.65;
 }
 .memory-star-node.is-constellation .memory-star-node__name,
 .memory-star-node.is-constellation .memory-star-node__count {
   opacity: 0;
   pointer-events: none;
 }
+.memory-star-node.is-constellation:is(.is-core, .is-selected, .is-hovered) .memory-star-node__name {
+  opacity: 1;
+}
 .memory-star-node.is-constellation .memory-star-node__core {
-  width: 44%;
-  height: 44%;
+  width: 72%;
+  height: 72%;
 }
 
 .knowledge-graph-canvas .react-flow__controls,
@@ -594,13 +751,37 @@
   position: absolute;
   z-index: 3;
   left: 15px;
-  bottom: 14px;
+  bottom: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
   font-size: var(--kg-text-label);
-  pointer-events: none;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-content) 88%, transparent);
+}
+.kg-field-label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kg-strength-key i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-action-primary);
+}
+.kg-strength-key i:nth-child(2) {
+  opacity: 0.55;
+}
+.kg-strength-key i:nth-child(3) {
+  opacity: 0.25;
+}
+.kg-strength-key {
+  font-size: 10px;
 }
 
 .kg-field-label svg {
@@ -675,6 +856,8 @@
   width: clamp(288px, 30%, 370px);
   flex: 0 0 clamp(288px, 30%, 370px);
   min-height: 0;
+  max-height: clamp(540px, calc(100vh - 190px), 760px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 15px;
@@ -683,6 +866,76 @@
   box-shadow: -12px 0 28px rgba(15, 23, 42, 0.08);
   animation: inspector-arrival 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
   border-radius: 0 0 var(--kg-radius-surface) 0;
+}
+.kg-retention {
+  padding: 0 0 15px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.kg-retention > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.kg-retention > span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-action-primary);
+}
+.kg-retention > span i.is-fading {
+  opacity: 0.45;
+}
+.kg-retention > small {
+  float: right;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.kg-retention > div {
+  height: 3px;
+  border-radius: 2px;
+  margin-top: 8px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.kg-retention > div i {
+  display: block;
+  height: 100%;
+  background: var(--color-action-primary);
+  opacity: 0.65;
+}
+.kg-retention p {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.kg-semantic-note {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.kg-semantic-section .kg-section-heading strong {
+  color: color-mix(in srgb, #9582c6 80%, var(--text-primary));
+}
+.kg-related-list {
+  max-height: 175px;
+  overflow-y: auto;
+}
+.kg-evidence-list {
+  min-height: 130px;
+}
+
+@keyframes kg-star-breathe {
+  0%,
+  100% {
+    transform: scale(0.91);
+    opacity: var(--star-strength);
+  }
+  50% {
+    transform: scale(1.13);
+    opacity: calc(var(--star-strength) * 0.7);
+  }
 }
 
 .knowledge-evidence-panel.is-closing {
@@ -880,6 +1133,235 @@
 .kg-spin {
   animation: kg-spin 0.9s linear infinite;
 }
+
+.kg-tool-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.kg-connect-guide {
+  padding: 9px 15px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--color-action-primary-soft);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.kg-connect-guide span {
+  flex: 1;
+}
+.kg-connect-guide button {
+  border: 0;
+  background: transparent;
+  color: var(--color-action-primary);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.is-connecting .memory-star-node {
+  cursor: crosshair;
+}
+.is-connecting .memory-star-handle {
+  width: 9px;
+  height: 9px;
+  opacity: 1;
+  pointer-events: all;
+  background: var(--bg-card);
+  border: 1.5px solid var(--star-color);
+}
+.is-connecting .memory-star-handle.react-flow__handle-target {
+  opacity: 0;
+}
+.is-connecting .react-flow__connection-path {
+  stroke: var(--kg-fact-edge);
+  stroke-width: 1.5;
+}
+.kg-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kg-editor-heading h3 {
+  margin: 0;
+}
+.kg-editor-description {
+  margin: 12px 0 22px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.kg-editor fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.kg-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.kg-edit-field input:not([type='range']),
+.kg-edit-field textarea,
+.kg-edit-field select {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 9px;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+.kg-edit-field textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+.kg-edit-field input::placeholder,
+.kg-edit-field textarea::placeholder {
+  color: var(--text-muted);
+}
+.kg-edit-field :is(input, textarea, select):focus-visible {
+  outline: 2px solid var(--color-action-primary);
+  outline-offset: 2px;
+}
+.kg-edit-field small {
+  font-size: 10px;
+  color: var(--text-muted);
+  align-self: flex-end;
+  font-weight: 400;
+}
+.kg-edit-field input[readonly],
+.kg-edit-field select:disabled {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.kg-edit-importance > span {
+  display: flex;
+  justify-content: space-between;
+}
+.kg-edit-importance input {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--color-action-primary);
+}
+.kg-edit-help {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: -4px 0 16px;
+}
+.kg-edit-direction {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -6px 0 14px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.kg-edit-direction button {
+  margin-left: auto;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--color-action-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.kg-relation-preview {
+  padding: 10px 0 16px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.kg-relation-preview b {
+  padding: 0 5px;
+  color: var(--color-action-primary);
+}
+.kg-edit-error {
+  color: var(--color-status-danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.kg-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border-card);
+  padding-top: 14px;
+}
+.kg-edit-save {
+  min-height: 34px;
+  padding: 7px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-action-primary);
+  color: var(--color-text-on-action);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kg-editor button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.kg-edit-delete {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-status-danger);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.kg-related-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.kg-related-list .kg-related-row > button:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.kg-related-list .kg-related-row .kg-relation-edit {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  flex: 0 0 28px;
+  justify-content: center;
+}
+.kg-manual-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 7px;
+  color: var(--color-action-primary);
+  font-size: 10px;
+}
+@media (max-width: 760px) {
+  .knowledge-evidence-panel.kg-editor {
+    height: min(88%, 580px);
+  }
+}
 @keyframes kg-spin {
   to {
     transform: rotate(360deg);
@@ -958,7 +1440,7 @@
 
 @media (max-width: 900px) {
   .knowledge-graph-title {
-    display: none;
+    display: inline-flex;
   }
   .knowledge-graph-search {
     width: min(420px, 46vw);
@@ -967,7 +1449,7 @@
     gap: 9px;
   }
   .kg-edge-key {
-    display: none !important;
+    margin-left: 0;
   }
 }
 
@@ -1007,7 +1489,7 @@
     position: absolute;
     z-index: 5;
     inset: auto 8px 8px 8px;
-    width: 100%;
+    width: auto;
     height: min(54%, 390px);
     border-top: 1px solid var(--border-card);
     border-left: 0;
@@ -1015,6 +1497,13 @@
     border-radius: var(--kg-radius-surface);
     box-shadow: 0 -14px 30px rgba(15, 23, 42, 0.12);
     animation-name: inspector-arrival-mobile;
+  }
+  .knowledge-graph-canvas .react-flow__minimap {
+    display: none;
+  }
+  .kg-field-label {
+    font-size: 10px;
+    left: 10px;
   }
 
   .knowledge-evidence-panel.is-closing {
@@ -1029,5 +1518,90 @@
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+  }
+}
+
+/* Star-map motion never changes graph coordinates or label positions. */
+.memory-star-node__core {
+  animation: kg-star-arrival 430ms var(--motion-standard) var(--star-arrival, 0ms) backwards;
+}
+.memory-star-node__pulse {
+  position: absolute;
+  inset: 9%;
+  border: 1px solid var(--star-color);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.memory-star-node.is-selected .memory-star-node__pulse {
+  animation: kg-star-pulse 550ms var(--motion-standard) both;
+}
+.kg-space-field {
+  --kg-dust-low: 0.3;
+}
+.agent-window-container.light .kg-space-field {
+  --kg-dust-low: 0.55;
+}
+.kg-space-field__dust circle:nth-child(7n),
+.kg-space-field__stars {
+  animation: kg-dust-shimmer 12s ease-in-out infinite alternate;
+}
+.kg-space-field__dust circle:nth-child(14n) {
+  animation-delay: -7s;
+}
+.kg-space-field__stars {
+  animation-duration: 10s;
+  animation-delay: -4s;
+}
+.knowledge-graph-canvas .react-flow__edge.is-focused .react-flow__edge-path {
+  animation: kg-path-focus 350ms var(--motion-standard) both;
+}
+.knowledge-graph-workspace.is-motion-paused *,
+.knowledge-graph-workspace.is-motion-paused *::before,
+.knowledge-graph-workspace.is-motion-paused *::after {
+  animation-play-state: paused !important;
+}
+@keyframes kg-star-arrival {
+  from {
+    opacity: 0.15;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: var(--star-strength);
+    transform: scale(1);
+  }
+}
+@keyframes kg-star-pulse {
+  from {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+@keyframes kg-dust-shimmer {
+  from {
+    opacity: var(--kg-dust-low, 0.3);
+  }
+  to {
+    opacity: 0.75;
+  }
+}
+@keyframes kg-path-focus {
+  from {
+    stroke-opacity: 0.35;
+  }
+  to {
+    stroke-opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .knowledge-graph-panel *,
+  .knowledge-graph-panel *::before,
+  .knowledge-graph-panel *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

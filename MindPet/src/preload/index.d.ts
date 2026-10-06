@@ -240,6 +240,10 @@ declare global {
       memoryTableCreate: (table: string, data: Record<string, string>) => Promise<{ status: string; message?: string; created?: number }>
       memoryTableUpdate: (table: string, id: string, data: Record<string, string>) => Promise<{ status: string; updated?: number; message?: string }>
       getKnowledgeGraph: (query?: string, limit?: number) => Promise<any>
+      listKnowledgeGraphEntities: () => Promise<{ status: string; entities?: { id: string; label: string; type: string }[]; message?: string }>
+      saveKnowledgeGraphEntity: (input: { label: string; type: string; summary: string; importance: number }, entityId?: string) => Promise<{ status: string; id?: string; message?: string }>
+      saveKnowledgeGraphRelation: (input: { source: string; target: string; label: string; importance: number }, relationId?: string) => Promise<{ status: string; id?: string; message?: string }>
+      deleteKnowledgeGraphRelation: (relationId: string) => Promise<{ status: string; deleted?: boolean; message?: string }>
       getKnowledgeGraphEvidence: (entityId: string, limit?: number) => Promise<any>
       deleteKnowledgeGraphEntity: (entityId: string) => Promise<{ status: string; deleted: boolean }>
       rebuildKnowledgeGraph: (sessionLimit?: number) => Promise<{ status: string; scheduled: number }>

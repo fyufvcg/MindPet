@@ -1,13 +1,19 @@
 package controller;
 
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import service.KnowledgeGraphService;
+import service.KnowledgeGraphEditingService;
 import service.SessionService;
 
 import java.util.LinkedHashMap;
@@ -22,10 +28,13 @@ public class KnowledgeGraphController {
 
     private final KnowledgeGraphService graph;
     private final SessionService sessions;
+    private final KnowledgeGraphEditingService editing;
 
-    public KnowledgeGraphController(KnowledgeGraphService graph, SessionService sessions) {
+    public KnowledgeGraphController(KnowledgeGraphService graph, SessionService sessions,
+                                    KnowledgeGraphEditingService editing) {
         this.graph = graph;
         this.sessions = sessions;
+        this.editing = editing;
     }
 
     @GetMapping
@@ -40,6 +49,44 @@ public class KnowledgeGraphController {
     @GetMapping("/stats")
     public Map<String, Object> stats() {
         return Map.of("status", "ok", "stats", graph.stats(USER_ID));
+    }
+
+    @GetMapping("/entities")
+    public Map<String, Object> entities() {
+        return Map.of("status", "ok", "entities", editing.entities(USER_ID));
+    }
+
+    @PostMapping("/entities")
+    public Map<String, Object> createEntity(@RequestBody KnowledgeGraphEditingService.EntityInput input) {
+        return editing.saveEntity(USER_ID, null, input);
+    }
+
+    @PutMapping("/entities/{entityId}")
+    public Map<String, Object> updateEntity(@PathVariable String entityId,
+            @RequestBody KnowledgeGraphEditingService.EntityInput input) {
+        return editing.saveEntity(USER_ID, entityId, input);
+    }
+
+    @PostMapping("/relations")
+    public Map<String, Object> createRelation(@RequestBody KnowledgeGraphEditingService.RelationInput input) {
+        return editing.saveRelation(USER_ID, null, input);
+    }
+
+    @PutMapping("/relations/{relationId}")
+    public Map<String, Object> updateRelation(@PathVariable String relationId,
+            @RequestBody KnowledgeGraphEditingService.RelationInput input) {
+        return editing.saveRelation(USER_ID, relationId, input);
+    }
+
+    @DeleteMapping("/relations/{relationId}")
+    public Map<String, Object> deleteRelation(@PathVariable String relationId) {
+        return Map.of("status", "ok", "deleted", editing.deleteRelation(USER_ID, relationId));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> editingError(ResponseStatusException error) {
+        return ResponseEntity.status(error.getStatusCode()).body(Map.of("status", "error",
+            "message", error.getReason() == null ? "图谱操作失败" : error.getReason()));
     }
 
     @GetMapping("/entities/{entityId}/evidence")

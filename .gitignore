@@ -98,3 +98,8 @@ temp/
 *.rar
 *.7z
 MindPet/build/backend/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+# Office temporary lock files
+~$*

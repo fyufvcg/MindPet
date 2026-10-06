@@ -342,6 +342,13 @@ const api = {
     ipcRenderer.invoke('api:memory-stats'),
   getKnowledgeGraph: (query?: string, limit?: number): Promise<any> =>
     ipcRenderer.invoke('api:get-knowledge-graph', query, limit),
+  listKnowledgeGraphEntities: () => ipcRenderer.invoke('api:list-knowledge-graph-entities'),
+  saveKnowledgeGraphEntity: (input: { label: string; type: string; summary: string; importance: number }, entityId?: string) =>
+    ipcRenderer.invoke('api:save-knowledge-graph-entity', input, entityId),
+  saveKnowledgeGraphRelation: (input: { source: string; target: string; label: string; importance: number }, relationId?: string) =>
+    ipcRenderer.invoke('api:save-knowledge-graph-relation', input, relationId),
+  deleteKnowledgeGraphRelation: (relationId: string) =>
+    ipcRenderer.invoke('api:delete-knowledge-graph-relation', relationId),
   getKnowledgeGraphEvidence: (entityId: string, limit?: number): Promise<any> =>
     ipcRenderer.invoke('api:get-knowledge-graph-evidence', entityId, limit),
   deleteKnowledgeGraphEntity: (entityId: string): Promise<{ status: string; deleted: boolean }> =>

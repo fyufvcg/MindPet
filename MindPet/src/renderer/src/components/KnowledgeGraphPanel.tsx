@@ -1,17 +1,18 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import React from 'react'
 import {
-  Background,
-  BackgroundVariant,
   Controls,
+  ConnectionMode,
   Handle,
   MarkerType,
   MiniMap,
   Position,
   ReactFlow,
+  ViewportPortal,
   useEdgesState,
   useNodesState,
   type Edge,
+  type Connection,
   type Node,
   type NodeProps,
   type ReactFlowInstance
@@ -24,6 +25,9 @@ import {
   EyeOff,
   Focus,
   LoaderCircle,
+  Link2,
+  Pencil,
+  Plus,
   MoreHorizontal,
   Network,
   RefreshCw,
@@ -34,6 +38,8 @@ import {
   Trash2,
   X
 } from 'lucide-react'
+import { KnowledgeGraphEditor, type GraphEdit } from './KnowledgeGraphEditor'
+import { KnowledgeGraphBackdrop } from './KnowledgeGraphBackdrop'
 
 interface GraphNode {
   id: string
@@ -53,6 +59,8 @@ interface GraphEdge {
   label: string
   kind: 'fact' | 'semantic'
   confidence: number
+  importance?: number
+  lastSeen?: string
 }
 
 interface GraphStats {
@@ -111,6 +119,10 @@ type MemoryNodeData = {
   isDimmed: boolean
   detailLevel: DetailLevel
   dropAnimation: DropAnimation
+  retention: number
+  isHovered: boolean
+  delay: number
+  clusterId: string
 }
 
 type MemoryFlowNode = Node<MemoryNodeData, 'memory'>
@@ -123,17 +135,17 @@ const HANDLE_SIDES: Array<[HandleSide, Position]> = [
 ]
 
 const TYPE_COLORS: Record<string, string> = {
-  person: '#dd8a22',
-  project: '#3d78e8',
-  technology: '#12a4b5',
-  tool: '#0b8a7a',
-  preference: '#d35b8a',
-  goal: '#8067d9',
-  topic: '#4c70c5',
-  organization: '#bc7040',
-  place: '#41a565',
-  event: '#d35d53',
-  other: '#718096'
+  person: '#b98b46',
+  project: '#638edd',
+  technology: '#519eaf',
+  tool: '#5b9d91',
+  preference: '#b67d9c',
+  goal: '#9582c6',
+  topic: '#7898be',
+  organization: '#b39274',
+  place: '#7da487',
+  event: '#bf8d83',
+  other: '#8a99ae'
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -168,13 +180,15 @@ const MemoryStarNode = React.memo(function MemoryStarNode({
   data,
   selected
 }: NodeProps<MemoryFlowNode>): React.JSX.Element {
-  const title = `${data.label} · ${TYPE_NAMES[data.type] || data.type} · 提及 ${data.mentionCount} 次`
+  const title = `${data.label} · ${TYPE_NAMES[data.type] || data.type} · 提及 ${data.mentionCount} 次 · ${retentionLabel(data.retention)}`
   return (
     <div
       className={[
         'memory-star-node',
         data.isCore ? 'is-core' : '',
         data.isDimmed ? 'is-dimmed' : '',
+        data.isHovered ? 'is-hovered' : '',
+        data.retention < 0.3 ? 'is-fading' : '',
         data.detailLevel === 'constellation' ? 'is-constellation' : '',
         data.dropAnimation === 'target' ? 'is-drop-target' : '',
         data.dropAnimation === 'related' ? 'is-drop-related' : '',
@@ -182,18 +196,49 @@ const MemoryStarNode = React.memo(function MemoryStarNode({
       ]
         .filter(Boolean)
         .join(' ')}
-      style={{ '--star-color': data.color } as React.CSSProperties}
+      style={
+        {
+          '--star-color': data.color,
+          '--star-strength': 0.24 + data.retention * 0.76,
+          '--star-delay': `${data.delay}s`,
+          '--star-arrival': `${data.isCore ? 0 : 100 + Math.abs(data.delay) * 35}ms`
+        } as React.CSSProperties
+      }
       title={title}
       aria-label={title}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          event.stopPropagation()
+          event.currentTarget.click()
+        }
+      }}
     >
+      <span className="memory-star-node__pulse" aria-hidden="true" />
       <span className="memory-star-node__halo" aria-hidden="true" />
+      <span className="memory-star-node__orbit" aria-hidden="true" />
       <span className="memory-star-node__core" aria-hidden="true">
-        {data.isCore ? <Sparkles size={15} strokeWidth={1.8} /> : <span />}
+        <svg
+          viewBox="0 0 48 48"
+          className={data.isCore ? 'memory-star-glyph is-user' : 'memory-star-glyph'}
+        >
+          {data.isCore ? (
+            <path d="M24 3 30.2 16.1 44.5 18 34 28 36.6 42.5 24 35.6 11.4 42.5 14 28 3.5 18 17.8 16.1Z" />
+          ) : (
+            <>
+              <path d="M24 2C26.7 17.7 30.3 21.3 46 24 30.3 26.7 26.7 30.3 24 46 21.3 30.3 17.7 26.7 2 24 17.7 21.3 21.3 17.7 24 2Z" />
+              <path
+                className="memory-star-glyph__rays"
+                d="m10 10 6 6m16 16 6 6m0-28-6 6M16 32l-6 6"
+              />
+            </>
+          )}
+        </svg>
       </span>
       <span className="memory-star-node__name">{data.label}</span>
-      {data.detailLevel === 'detail' && data.mentionCount > 1 && (
-        <span className="memory-star-node__count">{data.mentionCount}</span>
-      )}
+      {data.retention < 0.3 && <span className="memory-star-node__fading" aria-hidden="true" />}
       {HANDLE_SIDES.map(([side, position]) => (
         <Handle
           key={`target-${side}`}
@@ -219,6 +264,33 @@ const MemoryStarNode = React.memo(function MemoryStarNode({
 })
 
 const nodeTypes = { memory: MemoryStarNode }
+
+/** Visual projection of the existing KG decay policy; never changes stored state. */
+function visualRetention(
+  item: { importance: number; lastSeen?: string; type?: string },
+  now = Date.now()
+): number {
+  const importance = Math.max(0, Math.min(1, item.importance))
+  const seen = Date.parse(item.lastSeen || '')
+  const hours = Number.isFinite(seen) ? Math.max(0, (now - seen) / 3_600_000) : 0
+  const lifetime =
+    importance >= 0.8
+      ? 8760
+      : !item.type
+        ? 1440
+        : ['person', 'preference', 'organization', 'technology', 'tool'].includes(item.type)
+          ? 4320
+          : ['project', 'goal'].includes(item.type)
+            ? 1440
+            : ['event', 'topic'].includes(item.type)
+              ? 504
+              : 720
+  return importance * Math.exp(-hours / lifetime)
+}
+
+function retentionLabel(value: number): string {
+  return value >= 0.6 ? '记忆清晰' : value >= 0.3 ? '记忆渐淡' : '记忆微弱'
+}
 
 function entityWeight(item: GraphNode): number {
   return item.importance * 100 + Math.min(item.mentionCount, 30)
@@ -246,13 +318,8 @@ function connectedIds(edges: GraphEdge[], selectedId: string | null): Set<string
   return ids
 }
 
-const NODE_LABEL_CLEARANCE = 136
-const RADIAL_LAYER_GAP = 178
-const RADIAL_LAYER_BASE = [190, 360, 520]
-
 function nodeSize(item: GraphNode, isCore: boolean): number {
-  const importanceSize = 48 + item.importance * 22 + Math.min(item.mentionCount, 10) * 1.6
-  return Math.round(Math.min(isCore ? 98 : 82, Math.max(isCore ? 72 : 48, importanceSize)))
+  return Math.round(isCore ? 76 : 42 + item.importance * 16)
 }
 
 function buildAdjacency(edges: GraphEdge[]): Map<string, Set<string>> {
@@ -266,39 +333,6 @@ function buildAdjacency(edges: GraphEdge[]): Map<string, Set<string>> {
   return adjacency
 }
 
-function radialDistance(count: number, base: number): number {
-  if (count < 2) return base
-  const minimumCircumference = count * NODE_LABEL_CLEARANCE
-  return Math.max(base, minimumCircumference / (Math.PI * 2))
-}
-
-function angleFor(point: { x: number; y: number }): number {
-  return Math.atan2(point.y, point.x)
-}
-
-function angleDifference(left: number, right: number): number {
-  let difference = left - right
-  while (difference > Math.PI) difference -= Math.PI * 2
-  while (difference < -Math.PI) difference += Math.PI * 2
-  return difference
-}
-
-function averageNeighborAngle(
-  item: GraphNode,
-  adjacency: Map<string, Set<string>>,
-  placedAngles: Map<string, number>
-): number | null {
-  const angles = [...(adjacency.get(item.id) || [])]
-    .map((id) => placedAngles.get(id))
-    .filter((angle): angle is number => angle !== undefined)
-  if (angles.length === 0) return null
-  const vector = angles.reduce(
-    (result, angle) => ({ x: result.x + Math.cos(angle), y: result.y + Math.sin(angle) }),
-    { x: 0, y: 0 }
-  )
-  return angleFor(vector)
-}
-
 function buildNodes(
   items: GraphNode[],
   edges: GraphEdge[],
@@ -306,37 +340,60 @@ function buildNodes(
   detailLevel: DetailLevel
 ): MemoryFlowNode[] {
   const core = getCoreEntity(items)
-  const adjacency = buildAdjacency(edges)
-  const depths = new Map<string, number>()
-  if (core) {
-    depths.set(core.id, 0)
-    const queue = [core.id]
-    while (queue.length > 0) {
-      const currentId = queue.shift() as string
-      const nextDepth = (depths.get(currentId) || 0) + 1
-      adjacency.get(currentId)?.forEach((neighborId) => {
-        if (!depths.has(neighborId)) {
-          depths.set(neighborId, Math.min(nextDepth, 3))
-          queue.push(neighborId)
-        }
-      })
+  if (!core) return []
+  // Group by actual factual connectivity. Semantic visibility never moves the layout.
+  const adjacency = buildAdjacency(
+    edges.filter(
+      (edge) => edge.kind === 'fact' && edge.source !== core.id && edge.target !== core.id
+    )
+  )
+  const remaining = items.filter((item) => item.id !== core.id)
+  const ranked = [...remaining].sort(
+    (a, b) =>
+      (adjacency.get(b.id)?.size || 0) * 12 +
+      entityWeight(b) -
+      (adjacency.get(a.id)?.size || 0) * 12 -
+      entityWeight(a)
+  )
+  const seeds: GraphNode[] = []
+  for (const candidate of ranked) {
+    if (seeds.length >= Math.min(8, Math.max(1, Math.ceil(remaining.length / 8)))) break
+    if (
+      !seeds.some(
+        (seed) =>
+          adjacency.get(seed.id)?.has(candidate.id) && (adjacency.get(candidate.id)?.size || 0) < 4
+      )
+    )
+      seeds.push(candidate)
+  }
+  const owners = new Map(seeds.map((seed) => [seed.id, seed.id]))
+  const queue = seeds.map((seed) => seed.id)
+  for (let index = 0; index < queue.length; index++) {
+    const id = queue[index]
+    for (const neighbor of adjacency.get(id) || []) {
+      if (owners.has(neighbor)) continue
+      owners.set(neighbor, owners.get(id) as string)
+      queue.push(neighbor)
     }
   }
-
-  const layerEntries = new Map<number, GraphNode[]>()
-  items
-    .filter((item) => item.id !== core?.id)
-    .forEach((item) => {
-      const depth = depths.get(item.id) || 3
-      layerEntries.set(depth, [...(layerEntries.get(depth) || []), item])
-    })
-
+  const groups = new Map(seeds.map((seed) => [seed.id, [] as GraphNode[]]))
+  for (const item of remaining) {
+    let owner = owners.get(item.id)
+    if (!owner)
+      owner =
+        seeds.find((seed) => seed.type === item.type)?.id ||
+        [...groups].sort((a, b) => a[1].length - b[1].length)[0]?.[0]
+    if (owner) groups.get(owner)?.push(item)
+  }
   const focusIds = connectedIds(edges, selectedId)
   const hasFocus = focusIds.size > 0
   const result: MemoryFlowNode[] = []
-  const placedAngles = new Map<string, number>()
-
-  const pushNode = (item: GraphNode, position: { x: number; y: number }, isCore: boolean): void => {
+  const pushNode = (
+    item: GraphNode,
+    position: { x: number; y: number },
+    isCore: boolean,
+    clusterId: string
+  ): void => {
     const size = nodeSize(item, isCore)
     result.push({
       id: item.id,
@@ -352,7 +409,11 @@ function buildNodes(
         isCore,
         isDimmed: hasFocus && !focusIds.has(item.id),
         detailLevel,
-        dropAnimation: null
+        dropAnimation: null,
+        retention: visualRetention(item),
+        isHovered: false,
+        delay: -((result.length * 0.71) % 8),
+        clusterId
       },
       style: {
         width: size,
@@ -361,46 +422,73 @@ function buildNodes(
     })
   }
 
-  if (core) pushNode(core, { x: 0, y: 0 }, true)
-
-  const orderedLayers = [...layerEntries.entries()].sort(([left], [right]) => left - right)
-  orderedLayers.forEach(([depth, entries]) => {
-    const radius = radialDistance(
-      entries.length,
-      RADIAL_LAYER_BASE[Math.min(depth - 1, RADIAL_LAYER_BASE.length - 1)] +
-        Math.max(0, depth - RADIAL_LAYER_BASE.length) * RADIAL_LAYER_GAP
+  pushNode(core, { x: 0, y: 0 }, true, '')
+  const groupRadius = Math.max(300, Math.sqrt(remaining.length) * 61)
+  ;[...groups].forEach(([seedId, entries], groupIndex) => {
+    const angle = -Math.PI / 2 + (groupIndex * Math.PI * 2) / groups.size
+    const center = { x: Math.cos(angle) * groupRadius * 1.24, y: Math.sin(angle) * groupRadius }
+    const sorted = [...entries].sort((a, b) =>
+      a.id === seedId ? -1 : b.id === seedId ? 1 : entityWeight(b) - entityWeight(a)
     )
-    const sortedEntries = [...entries].sort((left, right) => {
-      const leftAngle = averageNeighborAngle(left, adjacency, placedAngles)
-      const rightAngle = averageNeighborAngle(right, adjacency, placedAngles)
-      if (leftAngle !== null && rightAngle !== null) {
-        return angleDifference(leftAngle, rightAngle)
-      }
-      if (leftAngle !== null) return -1
-      if (rightAngle !== null) return 1
-      return entityWeight(right) - entityWeight(left)
-    })
-    const angleStep = (Math.PI * 2) / Math.max(sortedEntries.length, 1)
-    const firstTarget = sortedEntries[0]
-      ? averageNeighborAngle(sortedEntries[0], adjacency, placedAngles)
-      : null
-    const rotation = firstTarget === null ? -Math.PI / 2 : firstTarget - angleStep / 2
-
-    sortedEntries.forEach((item, itemIndex) => {
-      const angle = rotation + angleStep * itemIndex
-      placedAngles.set(item.id, angle)
+    sorted.forEach((item, index) => {
+      const ring = Math.ceil(index / 7)
+      const localAngle = angle + ((index - 1) * Math.PI * 2) / 7 + ring * 0.36
       pushNode(
         item,
-        {
-          x: Math.cos(angle) * radius,
-          y: Math.sin(angle) * radius
-        },
-        false
+        index === 0
+          ? center
+          : {
+              x: center.x + Math.cos(localAngle) * ring * 157,
+              y: center.y + Math.sin(localAngle) * ring * 128
+            },
+        false,
+        seedId
       )
     })
   })
-
+  // Resolve label collisions once; the graph stays still during reading and hover.
+  for (let pass = 0; pass < 45; pass++) {
+    for (let i = 0; i < result.length; i++)
+      for (let j = i + 1; j < result.length; j++) {
+        const a = result[i],
+          b = result[j]
+        const dx = b.position.x - a.position.x,
+          dy = b.position.y - a.position.y
+        if (Math.abs(dx) >= 142 || Math.abs(dy) >= 103) continue
+        const moveX = 142 - Math.abs(dx),
+          moveY = 103 - Math.abs(dy)
+        const axis = moveX < moveY ? 'x' : 'y'
+        const push = ((axis === 'x' ? moveX : moveY) + 1) / 2
+        const sign = (axis === 'x' ? dx : dy) >= 0 ? 1 : -1
+        if (!a.data.isCore) a.position[axis] -= push * sign
+        if (!b.data.isCore) b.position[axis] += push * sign
+      }
+  }
   return result
+}
+
+function buildIslands(
+  nodes: MemoryFlowNode[]
+): Array<{ id: string; label: string; x: number; y: number; width: number; height: number }> {
+  const groups = new Map<string, MemoryFlowNode[]>()
+  nodes.forEach((node) => {
+    if (node.data.clusterId)
+      groups.set(node.data.clusterId, [...(groups.get(node.data.clusterId) || []), node])
+  })
+  return [...groups]
+    .filter(([, group]) => group.length >= 3)
+    .map(([id, group]) => {
+      const minX = Math.min(...group.map((node) => node.position.x)) - 90
+      const minY = Math.min(...group.map((node) => node.position.y)) - 80
+      return {
+        id,
+        label: nodes.find((node) => node.id === id)?.data.label || '相关记忆',
+        x: minX,
+        y: minY,
+        width: Math.max(...group.map((node) => node.position.x)) + 90 - minX,
+        height: Math.max(...group.map((node) => node.position.y)) + 85 - minY
+      }
+    })
 }
 
 function getHandleSides(
@@ -434,6 +522,17 @@ function buildEdges(
     const isFocused = !selectedId || item.source === selectedId || item.target === selectedId
     const sourceNode = nodesById.get(item.source)
     const targetNode = nodesById.get(item.target)
+    const endpointRetention = Math.min(
+      sourceNode?.data.retention ?? 1,
+      targetNode?.data.retention ?? 1
+    )
+    const strength =
+      factual && item.importance !== undefined
+        ? Math.min(
+            endpointRetention,
+            visualRetention({ importance: item.importance, lastSeen: item.lastSeen })
+          )
+        : endpointRetention
     const handleSides =
       sourceNode && targetNode
         ? getHandleSides(sourceNode, targetNode)
@@ -446,7 +545,7 @@ function buildEdges(
       sourceHandle: `source-${handleSides.sourceSide}`,
       targetHandle: `target-${handleSides.targetSide}`,
       pathOptions: { curvature: 0.16 },
-      className: factual ? 'kg-edge-fact' : 'kg-edge-semantic',
+      className: `${factual ? 'kg-edge-fact' : 'kg-edge-semantic'}${selectedId && isFocused ? ' is-focused' : ''}`,
       animated: !factual && Boolean(selectedId) && isFocused,
       data: {
         kind: item.kind,
@@ -455,18 +554,31 @@ function buildEdges(
       },
       label:
         selectedId && isFocused && factual ? RELATION_NAMES[item.label] || item.label : undefined,
-      markerEnd:
-        factual && isFocused ? { type: MarkerType.ArrowClosed, width: 12, height: 12 } : undefined,
+      markerEnd: factual
+        ? { type: MarkerType.ArrowClosed, width: 10, height: 10, color: 'var(--kg-fact-edge)' }
+        : undefined,
       style: {
         stroke: factual ? 'var(--kg-fact-edge)' : 'var(--kg-semantic-edge)',
-        strokeWidth: factual ? (isFocused ? 1.8 : 1.15) : isFocused ? 1.3 : 0.9,
-        strokeDasharray: factual ? undefined : '2 8',
+        strokeWidth: factual
+          ? selectedId && isFocused
+            ? 1.8
+            : 1.15
+          : selectedId && isFocused
+            ? 1.4
+            : 1,
+        strokeDasharray: factual ? undefined : '4 7',
         strokeLinecap: 'round',
-        opacity: isFocused ? (factual ? Math.max(0.52, item.confidence) : 0.48) : 0.08
+        opacity: isFocused
+          ? selectedId
+            ? 0.82
+            : factual
+              ? 0.28 + strength * 0.37
+              : 0.18 + strength * 0.24
+          : 0.07
       },
       labelStyle: {
         fill: 'var(--text-secondary)',
-        fontSize: 10,
+        fontSize: 12,
         fontWeight: 650
       },
       labelBgStyle: {
@@ -500,6 +612,7 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   const [query, setQuery] = React.useState('')
   const [activeTypes, setActiveTypes] = React.useState<Set<string>>(new Set())
   const [showSemantic, setShowSemantic] = React.useState(true)
+  const [hoveredId, setHoveredId] = React.useState<string | null>(null)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -509,8 +622,18 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   const [evidence, setEvidence] = React.useState<Evidence[]>([])
   const [evidenceLoading, setEvidenceLoading] = React.useState(false)
   const [detailLevel, setDetailLevel] = React.useState<DetailLevel>('detail')
+  const [viewportZoom, setViewportZoom] = React.useState(1)
   const [detailMenuOpen, setDetailMenuOpen] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [edit, setEdit] = React.useState<GraphEdit | null>(null)
+  const [connecting, setConnecting] = React.useState(false)
+  const [connectionSource, setConnectionSource] = React.useState<string | null>(null)
+  const [motionPaused, setMotionPaused] = React.useState(document.hidden)
+  React.useEffect(() => {
+    const update = (): void => setMotionPaused(document.hidden)
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
   const dropAnimationRunRef = React.useRef(0)
   const inspectorCloseTimerRef = React.useRef<number | null>(null)
   const fitPendingRef = React.useRef(false)
@@ -519,6 +642,69 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
     MemoryFlowEdge
   > | null>(null)
   const nodesRef = React.useRef<MemoryFlowNode[]>([])
+  const evidenceRequestRef = React.useRef(0)
+  const graphRequestRef = React.useRef(0)
+  const seenItemsRef = React.useRef<Set<string> | null>(null)
+  const canvasRef = React.useRef<HTMLElement | null>(null)
+  const reducedMotion = React.useSyncExternalStore(
+    React.useCallback((notify) => {
+      const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+      media.addEventListener('change', notify)
+      return () => media.removeEventListener('change', notify)
+    }, []),
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+  React.useEffect(() => {
+    if (loading || !nodes.length || !edges.length || !canvasRef.current) return
+    const ids = new Set([...nodes, ...edges].map((item) => item.id))
+    const previous = seenItemsRef.current
+    seenItemsRef.current = ids
+    if (reducedMotion) return
+    const animations: Animation[] = []
+    const frame = requestAnimationFrame(() => {
+      canvasRef.current?.querySelectorAll<HTMLElement>('.react-flow__node').forEach((element) => {
+        const id = element.dataset.id
+        if (previous && id && !previous.has(id)) {
+          const core = element.querySelector('.memory-star-node__core')
+          if (core)
+            animations.push(
+              core.animate(
+                [
+                  { transform: 'scale(0.75)', opacity: 0.4 },
+                  { transform: 'scale(1.12)', opacity: 1, offset: 0.45 },
+                  { transform: 'scale(1)' }
+                ],
+                { duration: 600, easing: 'cubic-bezier(0.2,0.8,0.2,1)' }
+              )
+            )
+        }
+      })
+      canvasRef.current
+        ?.querySelectorAll<SVGPathElement>('.react-flow__edge-path')
+        .forEach((path, index) => {
+          const edge = path.closest('[data-id]')
+          const id = edge?.getAttribute('data-id')
+          if (previous && (!id || previous.has(id))) return
+          const length = path.getTotalLength()
+          // Preserve the semantic dash pattern after drawing finishes.
+          animations.push(
+            path.animate(
+              [
+                { strokeDasharray: String(length), strokeDashoffset: String(length) },
+                { strokeDasharray: String(length), strokeDashoffset: '0' }
+              ],
+              { duration: 500, delay: previous ? 0 : Math.min(index * 5, 220), easing: 'ease-out' }
+            )
+          )
+        })
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      animations.forEach((animation) => animation.cancel())
+    }
+  }, [loading, nodes.length, edges.length, reducedMotion])
+  const focusId = connecting ? null : selectedId || hoveredId
+  const islands = React.useMemo(() => buildIslands(nodes), [nodes])
 
   const allTypes = React.useMemo(
     () =>
@@ -546,6 +732,28 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
       ),
     [rawEdges, showSemantic, visibleNodeIds]
   )
+  const layoutEdges = React.useMemo(
+    () =>
+      rawEdges.filter(
+        (item) =>
+          item.kind === 'fact' && visibleNodeIds.has(item.source) && visibleNodeIds.has(item.target)
+      ),
+    [rawEdges, visibleNodeIds]
+  )
+  const semanticRelated = React.useMemo(() => {
+    const byId = new Map(rawNodes.map((item) => [item.id, item]))
+    return rawEdges
+      .filter(
+        (edge) =>
+          edge.kind === 'semantic' && (edge.source === selectedId || edge.target === selectedId)
+      )
+      .map((edge) => ({
+        entity: byId.get(edge.source === selectedId ? edge.target : edge.source),
+        edge
+      }))
+      .filter((item): item is RelatedEntity => Boolean(item.entity))
+      .sort((a, b) => b.edge.confidence - a.edge.confidence)
+  }, [rawEdges, rawNodes, selectedId])
   const selected = rawNodes.find((item) => item.id === selectedId) || null
 
   React.useEffect(() => {
@@ -558,6 +766,7 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
 
   const closeInspector = React.useCallback((): void => {
     if (!selectedId || inspectorClosing) return
+    evidenceRequestRef.current += 1
     setInspectorClosing(true)
     inspectorCloseTimerRef.current = window.setTimeout(() => {
       setSelectedId(null)
@@ -591,42 +800,78 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   }, [selectedId, visibleNodeIds])
 
   React.useEffect(() => {
-    const nextNodes = buildNodes(visibleNodes, visibleEdges, null, 'detail')
+    const nextNodes = buildNodes(visibleNodes, layoutEdges, null, 'detail')
     nodesRef.current = nextNodes
     setNodes(nextNodes)
-    setEdges(buildEdges(visibleEdges, null, nextNodes))
-  }, [setEdges, setNodes, visibleEdges, visibleNodes])
+  }, [setNodes, layoutEdges, visibleNodes])
 
   React.useEffect(() => {
-    const focusedIds = connectedIds(visibleEdges, selectedId)
+    const focusedIds = connectedIds(visibleEdges, focusId)
     const hasFocus = focusedIds.size > 0
     setNodes((currentNodes) => {
       const nextNodes = currentNodes.map((node) => {
         const isDimmed = hasFocus && !focusedIds.has(node.id)
-        if (node.data.isDimmed === isDimmed && node.data.detailLevel === detailLevel) return node
+        const isHovered = node.id === hoveredId
+        const selected = node.id === selectedId
+        if (
+          node.data.isDimmed === isDimmed &&
+          node.data.detailLevel === detailLevel &&
+          node.data.isHovered === isHovered &&
+          node.selected === selected
+        )
+          return node
         return {
           ...node,
-          data: { ...node.data, isDimmed, detailLevel }
+          selected,
+          data: { ...node.data, isDimmed, detailLevel, isHovered }
         }
       })
       nodesRef.current = nextNodes
       return nextNodes
     })
-    setEdges(buildEdges(visibleEdges, selectedId, nodesRef.current))
-  }, [detailLevel, selectedId, setEdges, setNodes, visibleEdges])
+    setEdges(buildEdges(visibleEdges, focusId, nodesRef.current))
+  }, [detailLevel, focusId, hoveredId, selectedId, setEdges, setNodes, visibleEdges, visibleNodes])
 
   React.useEffect(() => {
     if (!fitPendingRef.current || !flowInstance || nodes.length === 0) return
     fitPendingRef.current = false
     const frame = window.requestAnimationFrame(() => {
-      flowInstance.fitView({ padding: 0.1, maxZoom: 1.35, duration: 360 })
+      flowInstance.fitView({ padding: 0.13, maxZoom: 1.2, duration: reducedMotion ? 0 : 360 })
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [flowInstance, nodes])
+  }, [flowInstance, nodes, reducedMotion])
 
   const resetView = React.useCallback((): void => {
-    flowInstance?.fitView({ padding: 0.1, maxZoom: 1.35, duration: 360 })
-  }, [flowInstance])
+    flowInstance?.fitView({ padding: 0.13, maxZoom: 1.2, duration: reducedMotion ? 0 : 360 })
+  }, [flowInstance, reducedMotion])
+
+  React.useEffect(() => {
+    if (!selectedId || !flowInstance || connecting || edit) return
+    const ids = connectedIds(visibleEdges, selectedId)
+    const narrow = window.matchMedia('(max-width: 760px)').matches
+    let cancelled = false
+    const frame = requestAnimationFrame(() =>
+      flowInstance
+        .fitView({
+          nodes: [...ids].map((id) => ({ id })),
+          padding: narrow ? 0.55 : 0.25,
+          maxZoom: 1.15,
+          duration: reducedMotion ? 0 : 320
+        })
+        .then(() => {
+          if (!narrow || cancelled) return
+          const viewport = flowInstance.getViewport()
+          flowInstance.setViewport(
+            { ...viewport, y: viewport.y - (canvasRef.current?.clientHeight || 520) * 0.25 },
+            { duration: reducedMotion ? 0 : 180 }
+          )
+        })
+    )
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
+  }, [selectedId, flowInstance, reducedMotion, visibleEdges, connecting, edit])
 
   const clearDropAnimation = React.useCallback((): void => {
     setNodes((currentNodes) => {
@@ -644,7 +889,8 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   }, [setNodes])
 
   const loadGraph = React.useCallback(
-    async (search = query): Promise<void> => {
+    async (search = query, focusAfter?: string): Promise<void> => {
+      const requestId = ++graphRequestRef.current
       setLoading(true)
       setLoadError(null)
       try {
@@ -652,7 +898,9 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           search.trim() || undefined,
           250
         )) as GraphResponse
+        if (requestId !== graphRequestRef.current) return
         if (data.status !== 'ok') throw new Error('backend unavailable')
+        evidenceRequestRef.current += 1
         setRawNodes(data.nodes || [])
         setRawEdges(data.edges || [])
         setStats(
@@ -664,15 +912,17 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           }
         )
         setActiveTypes(new Set())
-        setSelectedId(null)
+        setSelectedId(data.nodes.some((node) => node.id === focusAfter) ? focusAfter! : null)
+        setHoveredId(null)
         clearDropAnimation()
         setEvidence([])
         fitPendingRef.current = true
       } catch {
+        if (requestId !== graphRequestRef.current) return
         setLoadError('知识图谱暂时无法连接')
         showToast('无法读取知识图谱，请确认 MindPet 本地后端已启动', 'error')
       } finally {
-        setLoading(false)
+        if (requestId === graphRequestRef.current) setLoading(false)
       }
     },
     [clearDropAnimation, query, showToast]
@@ -694,14 +944,18 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
     setSelectedId(nodeId)
     setDetailMenuOpen(false)
     setEvidenceLoading(true)
+    setEvidence([])
+    const requestId = ++evidenceRequestRef.current
     try {
       const data = await window.api.getKnowledgeGraphEvidence(nodeId, 20)
-      setEvidence(data.evidence || [])
+      if (requestId === evidenceRequestRef.current) setEvidence(data.evidence || [])
     } catch {
-      setEvidence([])
-      showToast('读取来源对话失败', 'error')
+      if (requestId === evidenceRequestRef.current) {
+        setEvidence([])
+        showToast('读取来源对话失败', 'error')
+      }
     } finally {
-      setEvidenceLoading(false)
+      if (requestId === evidenceRequestRef.current) setEvidenceLoading(false)
     }
   }
 
@@ -742,6 +996,49 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
     await loadGraph(query)
   }
 
+  const openEdit = (value: GraphEdit): void => {
+    setEdit(value)
+    setConnecting(false)
+    setConnectionSource(null)
+    setDetailMenuOpen(false)
+  }
+  const stopConnecting = React.useCallback((): void => {
+    setConnecting(false)
+    setConnectionSource(null)
+  }, [])
+  React.useEffect(() => {
+    if (!connecting) return
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') stopConnecting()
+    }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [connecting, stopConnecting])
+  const pickNode = (id: string): void => {
+    if (edit) return
+    if (!connecting) {
+      void selectNode(id)
+      return
+    }
+    if (!connectionSource) {
+      setConnectionSource(id)
+      setSelectedId(id)
+      return
+    }
+    if (connectionSource === id) return
+    openEdit({ kind: 'relation', source: connectionSource, target: id })
+  }
+  const connectNodes = ({ source, target }: Connection): void => {
+    if (source && target && source !== target) openEdit({ kind: 'relation', source, target })
+  }
+  const editSaved = async (focusId?: string): Promise<void> => {
+    setEdit(null)
+    setQuery('')
+    await loadGraph('', focusId)
+    if (focusId) await selectNode(focusId)
+    showToast('图谱已保存', 'success')
+  }
+
   return (
     <div className="knowledge-graph-panel">
       <header className="knowledge-graph-toolbar">
@@ -780,6 +1077,31 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           </form>
         </div>
         <div className="knowledge-graph-toolbar__end">
+          <button
+            className="kg-tool-button"
+            type="button"
+            onClick={() => openEdit({ kind: 'entity' })}
+            disabled={Boolean(edit) || loading}
+          >
+            <Plus size={15} />
+            新增实体
+          </button>
+          <button
+            className={`kg-tool-button ${connecting ? 'is-active' : ''}`}
+            type="button"
+            aria-pressed={connecting}
+            disabled={Boolean(edit) || loading || rawNodes.length < 2}
+            onClick={() => {
+              if (connecting) stopConnecting()
+              else {
+                setConnecting(true)
+                setConnectionSource(selectedId)
+              }
+            }}
+          >
+            <Link2 size={15} />
+            连线
+          </button>
           <div className="kg-filter">
             <button
               className={`kg-tool-button ${activeTypes.size > 0 ? 'is-active' : ''}`}
@@ -858,14 +1180,14 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
 
       <div className="knowledge-graph-meta">
         <span>
-          <strong>{stats.entityCount}</strong> 个记忆实体
+          <strong>{visibleNodes.length}</strong> / {stats.entityCount} 个实体
         </span>
         <span>
           <strong>{stats.relationCount}</strong> 条确认关系
         </span>
         <span>
           <Database size={13} />
-          <strong>{stats.evidenceCount}</strong> 条来源对话
+          <strong>{stats.evidenceCount}</strong> 条来源记录
         </span>
         {stats.pendingExtractions > 0 && (
           <span className="kg-pending">
@@ -875,17 +1197,37 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
         )}
         <span className="kg-edge-key">
           <i className="fact" />
-          事实 <i className="semantic" />
+          事实关系 <i className="semantic" />
           语义相似
         </span>
       </div>
 
+      {connecting && (
+        <div className="kg-connect-guide" role="status">
+          <Link2 size={15} />
+          <span>
+            {connectionSource
+              ? `已选择“${rawNodes.find((node) => node.id === connectionSource)?.label || '起点'}”，点击终点节点`
+              : '点击起点节点，再点击终点；也可拖动节点边缘的连接点'}
+          </span>
+          <button type="button" onClick={stopConnecting}>
+            取消连线
+          </button>
+        </div>
+      )}
+
       <div
-        className={['knowledge-graph-workspace', isDragging ? 'is-dragging' : '']
+        className={[
+          'knowledge-graph-workspace',
+          isDragging ? 'is-dragging' : '',
+          motionPaused || isDragging ? 'is-motion-paused' : '',
+          connecting ? 'is-connecting' : ''
+        ]
           .filter(Boolean)
           .join(' ')}
       >
-        <section className="knowledge-graph-canvas" aria-label="知识图谱画布">
+        <section ref={canvasRef} className="knowledge-graph-canvas" aria-label="知识图谱画布">
+          <KnowledgeGraphBackdrop />
           {loading && rawNodes.length === 0 ? (
             <div className="kg-empty">
               <LoaderCircle size={22} className="kg-spin" />
@@ -910,22 +1252,54 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
             <div className="kg-empty">
               <Sparkles size={26} />
               <strong>还没有可展示的记忆</strong>
-              <span>继续与 Agent 对话，或从历史会话提取已有信息。</span>
-              <button type="button" className="kg-empty-action" onClick={() => void rebuild()}>
-                <RotateCcw size={14} />
-                开始历史重建
+              <span>手动创建第一颗记忆，或继续与 Agent 对话。</span>
+              <button
+                type="button"
+                className="kg-empty-action"
+                onClick={() => openEdit({ kind: 'entity' })}
+              >
+                <Plus size={14} />
+                新增实体
               </button>
             </div>
           ) : (
             <ReactFlow<MemoryFlowNode, MemoryFlowEdge>
+              style={
+                {
+                  '--kg-label-scale': Math.min(1.7, Math.max(1, 1 / viewportZoom))
+                } as React.CSSProperties
+              }
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              onNodeClick={(_, node) => void selectNode(node.id)}
+              onNodeClick={(_, node) => pickNode(node.id)}
+              onEdgeClick={(_, edge) => {
+                if (connecting || edit) return
+                const fact = rawEdges.find((item) => item.id === edge.id && item.kind === 'fact')
+                if (fact)
+                  openEdit({
+                    kind: 'relation',
+                    id: fact.id,
+                    source: fact.source,
+                    target: fact.target,
+                    label: fact.label,
+                    importance: fact.importance
+                  })
+              }}
+              onConnect={connectNodes}
+              onNodeMouseEnter={(_, node) => setHoveredId(node.id)}
+              onNodeMouseLeave={() => setHoveredId(null)}
+              onNodeDrag={(_, node) => {
+                nodesRef.current = nodesRef.current.map((item) =>
+                  item.id === node.id ? node : item
+                )
+                setEdges(buildEdges(visibleEdges, focusId, nodesRef.current))
+              }}
               onNodeDragStart={() => {
                 setIsDragging(true)
+                setHoveredId(null)
                 dropAnimationRunRef.current += 1
                 clearDropAnimation()
               }}
@@ -953,26 +1327,46 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                 }, 620)
               }}
               onPaneClick={() => {
-                closeInspector()
+                if (!edit && !connecting) closeInspector()
               }}
-              onMoveEnd={(_, viewport) =>
-                setDetailLevel(viewport.zoom < 0.46 ? 'constellation' : 'detail')
-              }
+              onMoveStart={() => setMotionPaused(true)}
+              onMoveEnd={() => setMotionPaused(document.hidden)}
+              onMove={(_, viewport) => {
+                setViewportZoom(viewport.zoom)
+                setDetailLevel(viewport.zoom < 0.36 ? 'constellation' : 'detail')
+              }}
               onInit={setFlowInstance}
               minZoom={0.08}
               maxZoom={2.2}
               nodeOrigin={[0.5, 0.5]}
               onlyRenderVisibleElements
-              nodesConnectable={false}
+              nodesConnectable={connecting}
+              connectionMode={ConnectionMode.Loose}
+              isValidConnection={(connection) => connection.source !== connection.target}
               deleteKeyCode={null}
               proOptions={{ hideAttribution: true }}
             >
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={26}
-                size={1}
-                color="var(--kg-field-dot)"
-              />
+              <ViewportPortal>
+                <div className="kg-islands" aria-hidden="true">
+                  {islands.map((island) => (
+                    <div
+                      key={island.id}
+                      className="kg-island"
+                      style={{
+                        left: island.x,
+                        top: island.y,
+                        width: island.width,
+                        height: island.height
+                      }}
+                    >
+                      <span>
+                        {island.label}
+                        <small>相关星群</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ViewportPortal>
               <MiniMap
                 pannable
                 zoomable
@@ -982,9 +1376,22 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
             </ReactFlow>
           )}
           {rawNodes.length > 0 && (
-            <div className="kg-field-label" aria-hidden="true">
-              <Sparkles size={13} />
-              {detailLevel === 'constellation' ? '星群视图' : '实体视图'}
+            <div className="kg-field-label">
+              <span>
+                <Sparkles size={13} />
+                {detailLevel === 'constellation'
+                  ? '星群视图 · 放大查看名称'
+                  : '拖动画布 · 滚轮缩放 · 点击查看来源'}
+              </span>
+              <span
+                className="kg-strength-key"
+                title="亮度依据已有重要度、类型和最后提及时间估算；仅用于展示，不改变检索和遗忘。"
+              >
+                <i />
+                <i />
+                <i />
+                记忆由清晰到微弱
+              </span>
             </div>
           )}
           {loading && rawNodes.length > 0 && (
@@ -995,7 +1402,22 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           )}
         </section>
 
-        {selected && (
+        {edit && (
+          <KnowledgeGraphEditor
+            key={
+              edit.kind === 'entity'
+                ? `entity-${edit.entity?.id || 'new'}`
+                : `relation-${edit.id || `${edit.source}-${edit.target}`}`
+            }
+            edit={edit}
+            entities={rawNodes}
+            typeNames={TYPE_NAMES}
+            relationNames={RELATION_NAMES}
+            onClose={() => setEdit(null)}
+            onSaved={editSaved}
+          />
+        )}
+        {selected && !edit && !connecting && (
           <aside
             className={`knowledge-evidence-panel${inspectorClosing ? ' is-closing' : ''}`}
             aria-label="记忆检视器"
@@ -1006,6 +1428,24 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                 {TYPE_NAMES[selected.type] || selected.type}
               </div>
               <div className="kg-inspector-actions">
+                <button
+                  className="kg-icon-button"
+                  type="button"
+                  title="编辑实体"
+                  aria-label="编辑实体"
+                  onClick={() => openEdit({ kind: 'entity', entity: selected })}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="kg-icon-button"
+                  type="button"
+                  title="从此节点连线"
+                  aria-label="从此节点连线"
+                  onClick={() => openEdit({ kind: 'relation', source: selected.id, target: '' })}
+                >
+                  <Link2 size={15} />
+                </button>
                 <div className="kg-detail-menu">
                   <button
                     className="kg-icon-button"
@@ -1048,6 +1488,19 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                 提及 <b>{selected.mentionCount}</b> 次
               </span>
             </div>
+            <div className="kg-retention" title="展示估算值，不改变后端记忆状态">
+              <span>
+                <i className={visualRetention(selected) < 0.3 ? 'is-fading' : ''} />
+                {retentionLabel(visualRetention(selected))}
+              </span>
+              <small>展示保留度 {Math.round(visualRetention(selected) * 100)}%</small>
+              <div aria-hidden="true">
+                <i style={{ width: `${visualRetention(selected) * 100}%` }} />
+              </div>
+              {selected.lastSeen && (
+                <p>最后提及 · {new Date(selected.lastSeen).toLocaleDateString('zh-CN')}</p>
+              )}
+            </div>
 
             <section className="kg-related-section">
               <div className="kg-section-heading">
@@ -1059,19 +1512,61 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                   <span className="kg-detail-empty">暂无确认关系</span>
                 ) : (
                   relatedEntities.map(({ entity, edge }) => (
-                    <button key={edge.id} type="button" onClick={() => void selectNode(entity.id)}>
-                      <i style={{ background: TYPE_COLORS[entity.type] || TYPE_COLORS.other }} />
-                      <span>{entity.label}</span>
-                      <small>{RELATION_NAMES[edge.label] || edge.label}</small>
-                    </button>
+                    <div className="kg-related-row" key={edge.id}>
+                      <button type="button" onClick={() => void selectNode(entity.id)}>
+                        <i style={{ background: TYPE_COLORS[entity.type] || TYPE_COLORS.other }} />
+                        <span>{entity.label}</span>
+                        <small>
+                          {edge.target === selected.id ? '← ' : '→ '}
+                          {RELATION_NAMES[edge.label] || edge.label}
+                        </small>
+                      </button>
+                      <button
+                        className="kg-icon-button kg-relation-edit"
+                        type="button"
+                        aria-label={`编辑${selected.label}与${entity.label}的关系`}
+                        title="编辑关系"
+                        onClick={() =>
+                          openEdit({
+                            kind: 'relation',
+                            id: edge.id,
+                            source: edge.source,
+                            target: edge.target,
+                            label: edge.label,
+                            importance: edge.importance
+                          })
+                        }
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </div>
                   ))
                 )}
               </div>
             </section>
 
+            {semanticRelated.length > 0 && (
+              <section className="kg-related-section kg-semantic-section">
+                <div className="kg-section-heading">
+                  <strong>语义相似</strong>
+                  <span>{semanticRelated.length}</span>
+                </div>
+                <p className="kg-semantic-note">内容接近，表示相似程度。</p>
+                <div className="kg-related-list">
+                  {semanticRelated.map(({ entity, edge }) => (
+                    <button key={edge.id} type="button" onClick={() => void selectNode(entity.id)}>
+                      <i style={{ background: TYPE_COLORS[entity.type] || TYPE_COLORS.other }} />
+                      <span>{entity.label}</span>
+                      <small>{Math.round(edge.confidence * 100)}%</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section className="kg-evidence-section">
               <div className="kg-section-heading">
-                <strong>来源对话</strong>
+                <strong>来源记录</strong>
                 <span>{evidence.length}</span>
               </div>
               <div className="kg-evidence-list">
@@ -1085,6 +1580,12 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                 ) : (
                   evidence.map((item) => (
                     <article className="kg-evidence-item" key={item.id}>
+                      {item.sessionId === 'manual:knowledge-graph' && (
+                        <span className="kg-manual-source">
+                          <Pencil size={11} />
+                          手动确认
+                        </span>
+                      )}
                       {item.predicate && (
                         <div className="kg-evidence-relation">
                           {item.sourceName} {RELATION_NAMES[item.predicate] || item.predicate}{' '}

@@ -3314,6 +3314,29 @@ app.whenReady().then(async () => {
   const BACKEND = backendUrl('/api/desktop/memory')
   const KNOWLEDGE_GRAPH_BACKEND = backendUrl('/api/desktop/knowledge-graph')
 
+  const editKnowledgeGraph = async (path: string, method = 'GET', input?: unknown) => {
+    try {
+      const res = await fetch(`${KNOWLEDGE_GRAPH_BACKEND}${path}`, {
+        method,
+        ...(input === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) return { status: 'error', message: data.message || '图谱操作失败，请刷新后重试' }
+      return data
+    } catch {
+      return { status: 'error', message: '无法连接本地后端，请确认服务已启动后重试' }
+    }
+  }
+  ipcMain.handle('api:list-knowledge-graph-entities', () => editKnowledgeGraph('/entities'))
+  ipcMain.handle('api:save-knowledge-graph-entity', (_, input: unknown, entityId?: string) =>
+    editKnowledgeGraph(`/entities${entityId ? `/${encodeURIComponent(entityId)}` : ''}`, entityId ? 'PUT' : 'POST', input))
+  ipcMain.handle('api:save-knowledge-graph-relation', (_, input: unknown, relationId?: string) =>
+    editKnowledgeGraph(`/relations${relationId ? `/${encodeURIComponent(relationId)}` : ''}`, relationId ? 'PUT' : 'POST', input))
+  ipcMain.handle('api:delete-knowledge-graph-relation', (_, relationId: string) =>
+    editKnowledgeGraph(`/relations/${encodeURIComponent(relationId)}`, 'DELETE'))
+
   ipcMain.handle('api:get-knowledge-graph', async (_, query?: string, limit?: number) => {
     try {
       const params = new URLSearchParams({ limit: String(limit || 100) })
