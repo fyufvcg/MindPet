@@ -26,7 +26,7 @@ public class ProfileProjectionService {
 
     @Autowired
     public ProfileProjectionService(JdbcTemplate jdbc, Clock clock) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.clock = clock == null ? Clock.systemDefaultZone() : clock;
     }
 

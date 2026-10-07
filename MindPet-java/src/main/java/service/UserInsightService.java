@@ -19,7 +19,7 @@ public class UserInsightService {
 
     public UserInsightService(JdbcTemplate jdbc, EmbeddingService embedService,
                               VectorSearchService vectorSearch, Logger logger) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.embedService = embedService;
         this.vectorSearch = vectorSearch;
         this.logger = logger;

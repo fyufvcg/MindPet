@@ -387,6 +387,16 @@ CREATE TABLE IF NOT EXISTS kg_entity (
   last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, normalized_name, entity_type)
 );
+CREATE TABLE IF NOT EXISTS kg_entity_alias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  entity_id TEXT NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,
+  normalized_alias TEXT NOT NULL,
+  display_alias TEXT NOT NULL,
+  alias_source TEXT NOT NULL DEFAULT 'explicit',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, entity_id, normalized_alias)
+);
 CREATE TABLE IF NOT EXISTS kg_relation (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -395,11 +405,41 @@ CREATE TABLE IF NOT EXISTS kg_relation (
   predicate TEXT NOT NULL,
   confidence REAL NOT NULL DEFAULT 0.5,
   importance REAL NOT NULL DEFAULT 0.5,
+  semantic_predicate TEXT NOT NULL DEFAULT '',
+  resolution_kind TEXT NOT NULL DEFAULT 'NEW',
+  fact_status TEXT NOT NULL DEFAULT 'ACTIVE',
+  temporal_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+  valid_from TEXT,
+  valid_to TEXT,
+  superseded_by TEXT REFERENCES kg_relation(id),
   mention_count INTEGER NOT NULL DEFAULT 1,
   first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, source_entity_id, target_entity_id, predicate)
 );
+-- Additive V3 lifecycle journal. Legacy graph/API columns and retrieval schema remain compatible.
+CREATE TABLE IF NOT EXISTS kg_fact_event (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  turn_hash TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  source_entity_id TEXT NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,
+  target_entity_id TEXT NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,
+  relation_id TEXT NOT NULL REFERENCES kg_relation(id) ON DELETE CASCADE,
+  semantic_predicate TEXT NOT NULL,
+  normalized_predicate TEXT NOT NULL,
+  polarity TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  importance REAL NOT NULL,
+  user_message TEXT NOT NULL,
+  assistant_message TEXT NOT NULL DEFAULT '',
+  prior_predicate TEXT NOT NULL,
+  prior_semantic_predicate TEXT NOT NULL,
+  UNIQUE(user_id,turn_hash,source_entity_id,target_entity_id,semantic_predicate)
+);
+CREATE INDEX IF NOT EXISTS idx_kg_fact_event_user_turn ON kg_fact_event(user_id,turn_hash);
 CREATE TABLE IF NOT EXISTS kg_evidence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
@@ -419,9 +459,13 @@ CREATE TABLE IF NOT EXISTS kg_turn_ingest (
   session_id TEXT NOT NULL DEFAULT '',
   entity_count INTEGER NOT NULL DEFAULT 0,
   relation_count INTEGER NOT NULL DEFAULT 0,
+  pipeline_version TEXT NOT NULL DEFAULT 'legacy',
+  memory_type TEXT NOT NULL DEFAULT 'none',
+  store_decision TEXT NOT NULL DEFAULT 'UNKNOWN',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_kg_evidence_user_created ON kg_evidence(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kg_entity_alias_lookup ON kg_entity_alias(user_id, normalized_alias);
 CREATE INDEX IF NOT EXISTS idx_kg_entity_user_importance ON kg_entity(user_id, importance DESC, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_kg_relation_user_source ON kg_relation(user_id, source_entity_id);
 CREATE INDEX IF NOT EXISTS idx_kg_relation_user_target ON kg_relation(user_id, target_entity_id);

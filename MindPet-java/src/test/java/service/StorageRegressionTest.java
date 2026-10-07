@@ -80,8 +80,9 @@ class StorageRegressionTest {
         jdbc.update("INSERT INTO memory_fact(id,user_id,predicate,value_text,scope,assertion,source_turn_id,normalized_start) "
             + "VALUES(42,'u','plan','摄影课程','planned','possible','turn','2026-09-01')");
         jdbc.update("INSERT INTO user_profile_current(user_id,slot_key,value,source_fact_id) VALUES('u','test','value',42)");
-        try (var data = (com.zaxxer.hikari.HikariDataSource) new config.SqliteStorageConfig().sqliteDataSource(
-                path.toString(), tempDir.resolve("no-vector-extension").toString())) {
+        var data = new config.SqliteStorageConfig().sqliteDataSource(
+            path.toString(), tempDir.resolve("no-vector-extension").toString());
+        try (var cleanup = (AutoCloseable) data) {
             JdbcTemplate migrated = new JdbcTemplate(data);
             migrated.update("INSERT INTO memory_fact(user_id,predicate,value_text,scope,assertion,source_turn_id,normalized_start) "
                 + "VALUES('u','plan','摄影课程','planned','planned','turn','2026-09-01')");

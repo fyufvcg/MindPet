@@ -62,7 +62,54 @@ public class SqliteStorageConfig {
         migrateGrowthReflectionColumns(dataSource);
         migrateMemoryConsolidation(dataSource);
         migrateMemoryRetrievalCorpus(dataSource);
-        return dataSource;
+        migrateV3MemoryWriteSchema(dataSource);
+        return service.v3.SensitivePersistenceGuard.wrap(dataSource);
+    }
+
+    /** Additive, idempotent V3 migration; legacy rows and retrieval columns remain untouched. */
+    private void migrateV3MemoryWriteSchema(DataSource dataSource) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                Set<String> relationColumns = tableColumns(statement, "kg_relation");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "semantic_predicate",
+                    "TEXT NOT NULL DEFAULT ''");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "resolution_kind",
+                    "TEXT NOT NULL DEFAULT 'NEW'");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "fact_status",
+                    "TEXT NOT NULL DEFAULT 'ACTIVE'");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "temporal_status",
+                    "TEXT NOT NULL DEFAULT 'UNKNOWN'");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "valid_from", "TEXT");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "valid_to", "TEXT");
+                addColumnIfMissing(statement, "kg_relation", relationColumns, "superseded_by", "TEXT");
+
+                Set<String> ingestColumns = tableColumns(statement, "kg_turn_ingest");
+                addColumnIfMissing(statement, "kg_turn_ingest", ingestColumns, "pipeline_version",
+                    "TEXT NOT NULL DEFAULT 'legacy'");
+                addColumnIfMissing(statement, "kg_turn_ingest", ingestColumns, "memory_type",
+                    "TEXT NOT NULL DEFAULT 'none'");
+                addColumnIfMissing(statement, "kg_turn_ingest", ingestColumns, "store_decision",
+                    "TEXT NOT NULL DEFAULT 'UNKNOWN'");
+
+                statement.execute("CREATE TABLE IF NOT EXISTS kg_entity_alias ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL,"
+                    + "entity_id TEXT NOT NULL REFERENCES kg_entity(id) ON DELETE CASCADE,"
+                    + "normalized_alias TEXT NOT NULL,display_alias TEXT NOT NULL,"
+                    + "alias_source TEXT NOT NULL DEFAULT 'explicit',"
+                    + "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+                    + "UNIQUE(user_id,entity_id,normalized_alias))");
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_kg_entity_alias_lookup "
+                    + "ON kg_entity_alias(user_id,normalized_alias)");
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_kg_relation_user_fact_status "
+                    + "ON kg_relation(user_id,fact_status,last_seen DESC)");
+                connection.commit();
+            } catch (Exception migrationError) {
+                connection.rollback();
+                throw migrationError;
+            }
+        }
     }
 
     private void migrateMemoryRetrievalCorpus(DataSource dataSource) throws Exception {

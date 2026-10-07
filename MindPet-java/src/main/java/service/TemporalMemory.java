@@ -18,28 +18,30 @@ public final class TemporalMemory {
     private TemporalMemory() {}
 
     public record Resolved(LocalDate eventDate, LocalDateTime eventAt,
-                           String timezone, String precision) {
+                           String timezone, String precision, boolean invalidTemporalToken) {
         public boolean hasValue() {
             return eventDate != null || eventAt != null;
         }
     }
 
     public static Resolved resolve(String content, Instant reference, ZoneId zone) {
-        if (content == null || content.isBlank()) return empty(zone);
+        if (content == null || content.isBlank()) return empty(zone, false);
         ZoneId safeZone = zone == null ? ZoneId.systemDefault() : zone;
         LocalDate baseDate = (reference == null ? Instant.now() : reference)
             .atZone(safeZone).toLocalDate();
+        boolean invalidTemporalToken = hasInvalidTemporalToken(content, baseDate);
 
         LocalDate date = explicitDate(content, baseDate);
         if (date == null) {
             int offset = relativeOffset(content);
-            if (offset == Integer.MIN_VALUE) return empty(safeZone);
+            if (offset == Integer.MIN_VALUE) return empty(safeZone, invalidTemporalToken);
             date = baseDate.plusDays(offset);
         }
 
         LocalTime time = time(content);
         LocalDateTime eventAt = time == null ? null : LocalDateTime.of(date, time);
-        return new Resolved(date, eventAt, safeZone.getId(), time == null ? "date" : "minute");
+        return new Resolved(
+            date, eventAt, safeZone.getId(), time == null ? "date" : "minute", invalidTemporalToken);
     }
 
     public static String relativeLabel(LocalDate eventDate, ZoneId zone) {
@@ -85,6 +87,43 @@ public final class TemporalMemory {
         return Integer.MIN_VALUE;
     }
 
+    private static boolean hasInvalidTemporalToken(String content, LocalDate baseDate) {
+        Matcher iso = ISO_DATE.matcher(content);
+        if (iso.find() && !isValidDate(
+                Integer.parseInt(iso.group(1)), Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3)))) {
+            return true;
+        }
+        Matcher chinese = CHINESE_DATE.matcher(content);
+        if (chinese.find()) {
+            int year = chinese.group(1) == null ? baseDate.getYear() : Integer.parseInt(chinese.group(1));
+            if (!isValidDate(year, Integer.parseInt(chinese.group(2)), Integer.parseInt(chinese.group(3)))) {
+                return true;
+            }
+        }
+        Matcher matcher = TIME.matcher(content);
+        if (!matcher.find()) return false;
+        try {
+            String period = matcher.group(1);
+            int hour = Integer.parseInt(matcher.group(2));
+            int minute = matcher.group(3) == null ? 0 : Integer.parseInt(matcher.group(3));
+            if (hour > 23 || minute > 59) return true;
+            if (("下午".equals(period) || "晚上".equals(period)) && hour < 12) hour += 12;
+            if ("中午".equals(period) && hour < 11) hour += 12;
+            return hour > 23;
+        } catch (RuntimeException ignored) {
+            return true;
+        }
+    }
+
+    private static boolean isValidDate(int year, int month, int day) {
+        try {
+            LocalDate.of(year, month, day);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     private static LocalTime time(String content) {
         Matcher matcher = TIME.matcher(content);
         if (!matcher.find()) return null;
@@ -108,8 +147,8 @@ public final class TemporalMemory {
         return false;
     }
 
-    private static Resolved empty(ZoneId zone) {
+    private static Resolved empty(ZoneId zone, boolean invalidTemporalToken) {
         ZoneId safeZone = zone == null ? ZoneId.systemDefault() : zone;
-        return new Resolved(null, null, safeZone.getId(), "none");
+        return new Resolved(null, null, safeZone.getId(), "none", invalidTemporalToken);
     }
 }

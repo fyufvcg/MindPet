@@ -13,7 +13,7 @@ public class UserProfileService {
     private final ProfileProjectionService projectionService;
 
     public UserProfileService(JdbcTemplate jdbc, ProfileProjectionService projectionService) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.projectionService = projectionService;
     }
 

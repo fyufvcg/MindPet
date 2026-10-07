@@ -38,7 +38,8 @@ public final class MemoryContentSafety {
     public static boolean looksSensitive(String value) {
         if (value == null || value.isBlank()) return false;
         String normalized = value.toLowerCase(Locale.ROOT);
-        return SECRET_LABEL.matcher(normalized).find()
+        return service.v3.V3SensitiveAccount.containsIdentifier(value)
+            || SECRET_LABEL.matcher(normalized).find()
             || SECRET_TOKEN.matcher(normalized).find()
             || NATIONAL_ID.matcher(normalized).find()
             || LONG_CARD_NUMBER.matcher(normalized).find();

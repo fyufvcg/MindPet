@@ -99,7 +99,7 @@ public class KnowledgeGraphRetrievalService {
         if (seeds.isEmpty()) return List.of();
         Set<String> wanted = MemoryQueryIntent.targetPredicates(query);
         List<Edge> edges = jdbc.query("SELECT id,source_entity_id,target_entity_id,predicate,confidence,importance,last_seen "
-                + "FROM kg_relation WHERE user_id=? AND confidence>=0.65 "
+                + "FROM kg_relation WHERE user_id=? AND confidence>=0.65 AND fact_status='ACTIVE' "
                 + "AND EXISTS(SELECT 1 FROM kg_evidence evidence WHERE evidence.user_id=kg_relation.user_id "
                 + "AND evidence.relation_id=kg_relation.id AND TRIM(evidence.user_message)<>'') ORDER BY id",
             (rs, n) -> new Edge(rs.getString("id"), rs.getString("source_entity_id"), rs.getString("target_entity_id"),
