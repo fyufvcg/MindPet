@@ -47,6 +47,7 @@ public class MemoryFactService {
     @Transactional
     public SavedFact merge(String userId, FactCandidate candidate) {
         if (userId == null || userId.isBlank() || candidate == null) return new SavedFact(0, false, null);
+        candidate = canonicalCandidate(candidate);
         String predicate = clean(candidate.predicate());
         String value = clean(candidate.value());
         String scope = clean(candidate.scope()).toLowerCase(java.util.Locale.ROOT);
@@ -63,10 +64,12 @@ public class MemoryFactService {
             return new SavedFact(0, false, null);
         }
 
+        normalizeDirectReports(userId, predicate, scope);
         String normalizedStart = clean(candidate.normalizedStart());
         ExistingFact sameProposal = findByIdempotencyKey(userId, sourceTurn, predicate, value, scope, assertion, normalizedStart);
         if (sameProposal != null && !"rolled_back".equals(jdbc.queryForObject(
                 "SELECT status FROM memory_fact WHERE id=?", String.class, sameProposal.id()))) {
+            reconcileConfirmedSlot(userId, candidate, sameProposal.id());
             return new SavedFact(sameProposal.id(), false, null);
         }
 
@@ -153,6 +156,42 @@ public class MemoryFactService {
     }
 
     public static String clean(String value) { return value == null ? "" : value.trim(); }
+
+    private static FactCandidate canonicalCandidate(FactCandidate candidate) {
+        String predicate = clean(candidate.predicate());
+        String value = MemoryCuratorFactSupport.canonicalValue(predicate, candidate.value());
+        String scope = clean(candidate.scope()).toLowerCase(java.util.Locale.ROOT);
+        String assertion = clean(candidate.assertion()).toLowerCase(java.util.Locale.ROOT);
+        if ("reported".equals(assertion) && MemoryCuratorFactSupport.supports(candidate.rawText(),
+                new MemoryEvidenceCoverage.Evidence(predicate, value, scope, assertion, clean(candidate.rawText())))) {
+            assertion = MemoryFactOntology.canonicalAssertion(assertion, candidate.rawText());
+        }
+        return new FactCandidate(candidate.predicate(),
+            value, candidate.valueJson(), candidate.scope(), assertion,
+            candidate.confidence(), candidate.validFrom(), candidate.validTo(), candidate.observedAt(),
+            candidate.timezone(), candidate.rawTimeExpression(), candidate.normalizedStart(), candidate.normalizedEnd(),
+            candidate.precision(), candidate.timeStatus(), candidate.sourceTurnId(), candidate.rawText(), candidate.sourceSequence());
+    }
+
+    private void normalizeDirectReports(String userId, String predicate, String scope) {
+        for (java.util.Map<String, Object> row : jdbc.queryForList(
+                "SELECT id,value_text,raw_text,source_turn_id,normalized_start FROM memory_fact WHERE user_id=? AND predicate=? AND scope=? "
+                    + "AND assertion='reported' AND status IN ('active','proposed')", userId, predicate, scope)) {
+            String raw = clean((String) row.get("raw_text"));
+            String value = clean((String) row.get("value_text"));
+            if ("observed".equals(MemoryFactOntology.canonicalAssertion("reported", raw))
+                    && MemoryCuratorFactSupport.supports(raw,
+                        new MemoryEvidenceCoverage.Evidence(predicate, value, scope, "reported", raw))) {
+                // Legacy databases may already contain an observed row with the same physical key.
+                jdbc.update("UPDATE memory_fact SET assertion='observed',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=? "
+                    + "AND NOT EXISTS(SELECT 1 FROM memory_fact other WHERE other.user_id=? AND other.id<>? "
+                    + "AND other.source_turn_id=? AND other.predicate=? AND other.value_text=? AND other.scope=? "
+                    + "AND other.assertion='observed' AND COALESCE(other.normalized_start,'')=?)",
+                    userId, row.get("id"), userId, row.get("id"), row.get("source_turn_id"), predicate, value, scope,
+                    clean((String)row.get("normalized_start")));
+            }
+        }
+    }
 
     private ExistingFact findByIdempotencyKey(String userId, String sourceTurn, String predicate,
                                                String value, String scope, String assertion, String normalizedStart) {

@@ -33,6 +33,7 @@ public class MemoryCorpusCompactionService {
     private final VectorSearchService vectorSearch;
     private final Logger logger;
     private final MemoryRetrievalPolicy retrievalPolicy;
+    private final MemoryLifecycleCoordinator lifecycle;
     private static final int CORPUS_MIGRATION_VERSION = 3;
     private static final int ROLLBACK_BATCHES = 20;
     private static final double MAX_VECTOR_DISTANCE = 0.65;
@@ -57,9 +58,12 @@ public class MemoryCorpusCompactionService {
         this.vectorSearch = vectorSearch;
         this.logger = logger;
         this.retrievalPolicy = retrievalPolicy;
+        this.lifecycle = new MemoryLifecycleCoordinator(jdbc, retrievalPolicy);
     }
 
     /** Starts a durable undo journal inside the curator commit transaction. */
+    MemoryLifecycleCoordinator lifecycleCoordinator() { return lifecycle; }
+
     public void beginBatch(String userId, long batchSequence) {
         if (userId == null || userId.isBlank() || batchSequence <= 0) {
             throw new IllegalArgumentException("压缩批次缺少有效用户或序号");
@@ -69,6 +73,7 @@ public class MemoryCorpusCompactionService {
         if (existing.isEmpty()) {
             jdbc.update("INSERT INTO memory_compaction_batch(user_id,batch_sequence,status) VALUES(?,?,'applying')",
                 userId, batchSequence);
+            snapshotLifecycle(userId, batchSequence);
             return;
         }
         if ("committed".equals(existing.get(0)) && Boolean.TRUE.equals(jdbc.queryForObject(
@@ -84,9 +89,16 @@ public class MemoryCorpusCompactionService {
         jdbc.update("UPDATE memory_compaction_batch SET status='applying',created_at=CURRENT_TIMESTAMP,"
                 + "completed_at=NULL,rolled_back_at=NULL WHERE user_id=? AND batch_sequence=?",
             userId, batchSequence);
+        snapshotLifecycle(userId, batchSequence);
+    }
+
+    private void snapshotLifecycle(String userId, long sequence) {
+        for (Map<String,Object> row : jdbc.queryForList("SELECT * FROM memory_lifecycle WHERE user_id=?",userId))
+            remember(userId,sequence,"memory_lifecycle",text(row.get("unit_id")),row);
     }
 
     public void completeBatch(String userId, long batchSequence) {
+        lifecycle.synchronize(userId);
         int changed = jdbc.update("UPDATE memory_compaction_batch SET status='committed',completed_at=CURRENT_TIMESTAMP "
                 + "WHERE user_id=? AND batch_sequence=? AND status='applying'", userId, batchSequence);
         if (changed != 1) throw new IllegalStateException("馆长压缩批次状态异常，无法提交回滚清单");
@@ -128,6 +140,7 @@ public class MemoryCorpusCompactionService {
                 + "WHERE user_id=? AND batch_sequence=? AND status='committed'", userId, batchSequence);
         log(userId, batchSequence, "ROLLBACK", "", Long.toString(batchSequence), 0, 0,
             "restored_previous_compaction_state");
+        lifecycle.synchronize(userId);
     }
 
     /** Captures the fact slot and profile projection before deterministic version reconciliation. */
@@ -415,8 +428,9 @@ public class MemoryCorpusCompactionService {
             + normalize(assertion) + "|" + normalize(value) + "|"
             + normalize(text(fact.get("normalized_start"))) + "|" + normalize(text(fact.get("normalized_end")));
         String factStatus = text(fact.get("status"));
-        String content = factContent(predicate, value, "",
-            "superseded".equals(factStatus) ? "historical" : scope, assertion);
+        String content = MemoryCuratorFactSupport.retrievalText(predicate, value,
+            "superseded".equals(factStatus) ? "historical" : scope, assertion, text(fact.get("raw_text")));
+        if (!text(proposedText).equals(content)) embedding = null;
         String status = Set.of("rolled_back", "merged_duplicate").contains(factStatus) ? factStatus : "superseded".equals(factStatus) ? "historical"
             : "inactive".equals(factStatus) && !"negated".equals(assertion) ? "inactive" : "active";
         int searchable = Set.of("inactive", "rolled_back", "merged_duplicate").contains(status) ? 0 : 1;
@@ -425,12 +439,21 @@ public class MemoryCorpusCompactionService {
         int tokenCount = tokenCount(content);
         UnitState existing = findByFactId(userId, factId);
         String unitId = existing == null ? stableId("fact", userId, Long.toString(factId)) : existing.id();
+        // Equal values can represent separate intervals (A -> B -> A). Keep each fact's
+        // identity and sources instead of colliding with the older interval's unique key.
+        // Reconfirming the same fact still updates its existing retrieval unit in place.
+        String keyOwner = rowId("SELECT id FROM memory_retrieval_unit WHERE user_id=? AND canonical_key=?",
+            userId, canonicalKey);
+        if (!keyOwner.isBlank() && !keyOwner.equals(unitId)) {
+            canonicalKey += "|fact_version|" + factId;
+        }
         snapshotUnit(userId, unitId, batchSequence);
         jdbc.update("INSERT INTO memory_retrieval_unit(id,user_id,canonical_key,unit_type,predicate,scope,status,searchable,"
                 + "content,embedding,token_count,valid_from,valid_to,fact_id,supersedes_unit_id,compaction_version) "
                 + "VALUES(?, ?, ?, 'fact', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1) "
-                + "ON CONFLICT(id) DO UPDATE SET predicate=excluded.predicate,scope=excluded.scope,status=excluded.status,"
-                + "searchable=excluded.searchable,content=excluded.content,embedding=COALESCE(excluded.embedding,memory_retrieval_unit.embedding),"
+                + "ON CONFLICT(id) DO UPDATE SET canonical_key=excluded.canonical_key,predicate=excluded.predicate,scope=excluded.scope,status=excluded.status,"
+                + "searchable=excluded.searchable,content=excluded.content,embedding=CASE WHEN memory_retrieval_unit.content=excluded.content "
+                + "THEN COALESCE(excluded.embedding,memory_retrieval_unit.embedding) ELSE excluded.embedding END,"
                 + "token_count=excluded.token_count,valid_from=excluded.valid_from,valid_to=excluded.valid_to,fact_id=excluded.fact_id,"
                 + "supersedes_unit_id=COALESCE(excluded.supersedes_unit_id,memory_retrieval_unit.supersedes_unit_id),"
                 + "compaction_version=memory_retrieval_unit.compaction_version+1,updated_at=CURRENT_TIMESTAMP",
@@ -565,7 +588,7 @@ public class MemoryCorpusCompactionService {
     public record CompactionPlan(String userId, long batchSequence, List<CompactionDecision> decisions) {
         public CompactionPlan { decisions = List.copyOf(decisions); }
     }
-    private record CoveredFact(String unitId, MemoryEvidenceCoverage.Evidence evidence) {}
+    private record CoveredFact(String unitId, MemoryEvidenceCoverage.Evidence evidence, String projectedText) {}
 
     /** Construct the complete plan without changing raw visibility. LLM IDs are not inputs. */
     public CompactionPlan planCompaction(String userId, long batchSequence) {
@@ -584,17 +607,21 @@ public class MemoryCorpusCompactionService {
             boolean complete = true;
             String residual="";
             for (Map<String, Object> source : sources) {
-                List<CoveredFact> facts = coveredFacts(userId, text(source.get("source_turn_id")));
+                List<CoveredFact> facts = coveredFacts(userId, text(source.get("source_turn_id"))).stream()
+                    .filter(fact -> MemoryCuratorFactSupport.preservesCriticalDetails(fact.evidence(), fact.projectedText()))
+                    .toList();
                 if (!"user".equals(text(source.get("role"))) || number(source.get("searchable")) != 1
                         || !normalize(text(source.get("content"))).equals(normalize(text(source.get("unit_content"))))) {
                     complete = false;
                     break;
                 }
-                facts.stream().filter(fact -> MemoryEvidenceCoverage.supports(fact.evidence().text(), fact.evidence()))
+                facts.stream().filter(fact -> MemoryCuratorFactSupport.supports(fact.evidence().text(), fact.evidence()))
                     .map(CoveredFact::unitId).forEach(targets::add);
-                if(!MemoryEvidenceCoverage.fullyCovered(text(source.get("content")),facts.stream().map(CoveredFact::evidence).toList())) {
+                List<MemoryEvidenceCoverage.Evidence> coverage = facts.stream().map(CoveredFact::evidence)
+                    .map(MemoryCuratorFactSupport::coverageEvidence).toList();
+                if(!MemoryEvidenceCoverage.fullyCovered(text(source.get("content")),coverage)) {
                     complete=false;
-                    if(sources.size()==1)residual=MemorySourceCoverage.residual(text(source.get("content")),facts.stream().map(CoveredFact::evidence).toList());
+                    if(sources.size()==1)residual=MemorySourceCoverage.residual(text(source.get("content")),coverage);
                 }
             }
             boolean partial=!complete&&!residual.isBlank()&&!targets.isEmpty();
@@ -613,12 +640,12 @@ public class MemoryCorpusCompactionService {
     }
 
     private List<CoveredFact> coveredFacts(String userId, String turnId) {
-        return jdbc.query("SELECT u.id,f.predicate,f.value_text,f.scope,f.assertion,s.evidence_text,s.surface_value "
+        return jdbc.query("SELECT u.id,f.predicate,f.value_text,f.scope,f.assertion,s.evidence_text,s.surface_value,u.content "
             + "FROM memory_retrieval_unit u JOIN memory_fact f ON f.id=u.fact_id AND f.user_id=u.user_id "
             + "JOIN memory_retrieval_source s ON s.unit_id=u.id AND s.source_type='curator_turn' "
             + "WHERE u.user_id=? AND u.unit_type='fact' AND u.searchable=1 AND u.status IN ('active','historical') "
             + "AND s.source_turn_id=?", (rs, row) -> new CoveredFact(rs.getString(1), new MemoryEvidenceCoverage.Evidence(
-                rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7))), userId, turnId);
+                rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7)), rs.getString(8)), userId, turnId);
     }
 
     /** Recheck all coverage before applying a plan inside the enclosing commit transaction. */
@@ -650,7 +677,7 @@ public class MemoryCorpusCompactionService {
                             plan.userId(), sourceId) != 1) throw new IllegalStateException("压缩来源未能原子退出检索");
                     for (String target : decision.targetUnitIds()) {
                         boolean supportsTarget = coveredFacts(plan.userId(), text(source.get("source_turn_id"))).stream()
-                            .anyMatch(fact -> target.equals(fact.unitId()) && MemoryEvidenceCoverage.supports(fact.evidence().text(), fact.evidence()));
+                            .anyMatch(fact -> target.equals(fact.unitId()) && MemoryCuratorFactSupport.supports(fact.evidence().text(), fact.evidence()));
                         if (!supportsTarget) continue;
                         addSource(target, "long_term_memory", sourceId, text(source.get("source_turn_id")),
                             text(source.get("content")), plan.batchSequence());
@@ -1102,6 +1129,9 @@ public class MemoryCorpusCompactionService {
         if (rows.isEmpty()) return false;
         String content = text(rows.get(0).get("content"));
         if (!supportsSingleFact(content, predicate, value, scope, assertion)
+                || !MemoryCuratorFactSupport.preservesCriticalDetails(
+                    new MemoryEvidenceCoverage.Evidence(predicate, value, scope, assertion, content),
+                    MemoryCuratorFactSupport.retrievalText(predicate, value, scope, assertion, content))
                 || MemoryContentSafety.looksSensitive(content)) return false;
         for (Map<String, Object> row : rows) {
             if (!"user".equals(text(row.get("role"))) || number(row.get("searchable")) != 1
@@ -1140,6 +1170,9 @@ public class MemoryCorpusCompactionService {
             String turnId = text(row.get("source_turn_id"));
             String content = text(row.get("content"));
             if (turnId.isBlank() || !normalize(content).equals(normalize(text(row.get("unit_content"))))) return 0;
+            if (!MemoryCuratorFactSupport.preservesCriticalDetails(
+                    new MemoryEvidenceCoverage.Evidence(predicate, value, scope, assertion, content),
+                    rowId("SELECT content FROM memory_retrieval_unit WHERE user_id=? AND id=?", userId, factUnitId))) return 0;
         }
         snapshotUnit(userId, rawUnitId, batchSequence);
         snapshotUnit(userId, factUnitId, batchSequence);
@@ -1197,7 +1230,8 @@ public class MemoryCorpusCompactionService {
                     || text(row.get("source_turn_id")).isBlank()
                     || !Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM curator_turns WHERE user_id=? AND turn_id=?)",
                         Boolean.class, userId, text(row.get("source_turn_id"))))
-                    || number(row.get("importance")) > 0.30 || number(row.get("access_count")) >= 3
+                    || !Double.isFinite(decimal(row.get("importance")))
+                    || decimal(row.get("importance")) > 0.30 || number(row.get("access_count")) >= 3
                     || MemoryContentSafety.looksSensitive(sourceContent) || hasDurableSignal(sourceContent)
                     || !normalize(content).equals(normalize(sourceContent))) return false;
         }
@@ -1261,7 +1295,8 @@ public class MemoryCorpusCompactionService {
 
     private static boolean hasDurableSignal(String content) {
         String value = normalize(content);
-        return containsAny(value, "我叫", "我是", "我的职业", "我在做", "我住在", "我来自", "我的家人",
+        return MemoryCuratorFactSupport.hasActivityStatusToPreserve(content)
+            || containsAny(value, "我叫", "我是", "我的职业", "我在做", "我住在", "我来自", "我的家人",
             "我喜欢", "我不喜欢", "我偏好", "我的习惯", "我希望你", "请记住", "长期", "一直以来",
             "我过敏", "我的生日", "我的目标", "我的计划", "我正在", "我有一个", "我养了");
     }
@@ -1364,7 +1399,9 @@ public class MemoryCorpusCompactionService {
             } + cleanValue;
         }
         if ("historical".equals(normalizedScope) && Set.of("plan", "event").contains(normalizedPredicate)) {
-            return "用户曾" + (Set.of("possible", "uncertain").contains(normalizedAssertion) ? "考虑" : "计划") + "：" + cleanValue;
+            if (Set.of("possible", "uncertain").contains(normalizedAssertion)) return "用户曾考虑（未确认）：" + cleanValue;
+            if ("planned".equals(normalizedAssertion)) return "用户曾计划：" + cleanValue;
+            return "用户历史经历：" + cleanValue;
         }
         String requiredCue = switch (normalizedPredicate) {
             case "current_location" -> switch (normalizedScope) {
@@ -1607,6 +1644,11 @@ public class MemoryCorpusCompactionService {
             }
         }
         switch (entityType) {
+            case "memory_lifecycle" -> {
+                if (existedBefore) jdbc.update("UPDATE memory_lifecycle SET state=?,original_scope=?,original_status=?,reason=?,retired_at=?,pinned=? "
+                    + "WHERE user_id=? AND unit_id=?",state.get("state"),state.get("original_scope"),state.get("original_status"),
+                    state.get("reason"),state.get("retired_at"),state.get("pinned"),userId,recordKey);
+            }
             case "memory_retrieval_unit" -> restoreUnit(userId, recordKey, existedBefore, state);
             case "memory_retrieval_source" -> restoreSource(recordKey, existedBefore, state);
             case "long_term_memory" -> {
@@ -1790,6 +1832,7 @@ public class MemoryCorpusCompactionService {
     private static String emptyToNull(String value) { return value == null || value.isBlank() ? null : value; }
     private static String text(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
     private static long number(Object value) { return value instanceof Number n ? n.longValue() : 0L; }
+    private static double decimal(Object value) { return value instanceof Number n ? n.doubleValue() : Double.NaN; }
     private static byte[] bytes(Object value) { return value instanceof byte[] bytes ? bytes : null; }
 
     private record UnitState(String id, int tokenCount, String content) {}

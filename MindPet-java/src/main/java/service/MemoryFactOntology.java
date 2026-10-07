@@ -38,6 +38,13 @@ public final class MemoryFactOntology {
         return ASSERTIONS;
     }
 
+    /** The curator validates first-person evidence before treating a report as an observation. */
+    public static String canonicalAssertion(String assertion, String evidence) {
+        String value = assertion == null ? "" : assertion.trim().toLowerCase(java.util.Locale.ROOT);
+        return "reported".equals(value) && MemoryCuratorFactSupport.isDirectUserStatement(evidence)
+            ? "observed" : value;
+    }
+
     public static boolean supportsPredicate(String predicate) {
         return predicate != null && SCOPES.containsKey(predicate.trim());
     }
@@ -76,6 +83,8 @@ public final class MemoryFactOntology {
             .append("planned scope 只能搭配 planned、possible、uncertain 或 negated assertion；")
             .append("planned assertion 只能用于 planned scope。\n")
             .append("若用户明确表达计划、打算或已安排，使用 planned assertion；若只是可能、尚未决定或备选去向，使用 possible assertion。\n")
+            .append("用户直接陈述自己的确定事实用 observed；明确再次确认同一事实用 confirmed。reported 仅用于转述，不能将第三方经历当作用户事实。\n")
+            .append("event/experience 的 value 优先使用用户消息中的连续原文，保留年份、地点、人数与完成状态；不要把我在改写成用户于。\n")
             .append("画像仅允许 home_location + stable，以及 current_location、occupation_current、")
             .append("relationship_status_current、current_project + current；计划和历史事实不得覆盖当前画像。\n")
             .append("城市必须按语义选择：长期的家或老家用 home_location + stable；当前居住地、搬迁前住址和未来拟搬城市都用 current_location，分别搭配 current、historical、planned scope。\n")

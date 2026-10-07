@@ -165,7 +165,7 @@ public class MemoryCuratorCommitService {
                 .thenComparing(fact -> text(fact.get("value"))));
             for (Map<String, Object> fact : orderedFacts) {
                 rejectionCounts.item("facts",((Number)fact.get("_item_index")).intValue());
-                String value = MemoryValueNormalizer.canonical(text(fact.get("predicate")),
+                String value = MemoryCuratorFactSupport.canonicalValue(text(fact.get("predicate")),
                     text(fact.getOrDefault("canonical_value",fact.get("value"))));
                 String proposedAction = text(fact.get("action")).toUpperCase(java.util.Locale.ROOT);
                 Object replacesValue = fact.get("replaces_unit_ids");
@@ -219,8 +219,9 @@ public class MemoryCuratorCommitService {
                         parseInstant(observed.occurredAt(), observed.completedAt()), sourceZone);
                     String start = sourceTime.resolved() ? sourceTime.normalizedStart() : "";
                     String end = sourceTime.resolved() ? sourceTime.normalizedEnd() : "";
+                    String mentionAssertion = MemoryFactOntology.canonicalAssertion(assertion, mention.evidence());
                     MemoryFactService.FactCandidate candidate = new MemoryFactService.FactCandidate(
-                        predicate, value, valueJson, scope, assertion, confidence,
+                        predicate, value, valueJson, scope, mentionAssertion, confidence,
                         start, end, observed.occurredAt(), sourceZone.getId(), rawTime,
                         start, end, sourceTime.precision(), sourceTime.status(), observed.turnId(),
                         MemoryContentSafety.normalizeEvidence(mention.evidence()), sequenceById.getOrDefault(observed.turnId(), 0L));
@@ -240,7 +241,7 @@ public class MemoryCuratorCommitService {
                 int at=((Number)detail.get("item_index")).intValue();
                 if (!"facts".equals(detail.get("section")) || at<0 || at>=facts.size() || !(facts.get(at) instanceof Map<?,?> raw)) continue;
                 String predicate=text(raw.get("predicate")), scope=text(raw.get("scope"));
-                String val=MemoryValueNormalizer.canonical(predicate,text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value")));
+                String val=MemoryCuratorFactSupport.canonicalValue(predicate,text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value")));
                 boolean hasSupportedSource=preparedFacts.stream().anyMatch(p->p.candidate().predicate().equals(predicate)
                     && p.candidate().value().equals(val) && p.candidate().scope().equals(scope));
                 if(!hasSupportedSource && (MemoryFactOntology.isProfileSlot(predicate) || Set.of("plan","event").contains(predicate)))
@@ -250,7 +251,7 @@ public class MemoryCuratorCommitService {
                 (Set.of("plan","event").contains(p.candidate().predicate())?p.candidate().value():p.candidate().scope())));
             for(int at=0;at<facts.size();at++) if(facts.get(at) instanceof Map<?,?> raw
                     && blockedSlots.contains(text(raw.get("predicate"))+"|"+(Set.of("plan","event").contains(text(raw.get("predicate")))
-                        ?text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value")):text(raw.get("scope"))))) {
+                        ?MemoryCuratorFactSupport.canonicalValue(text(raw.get("predicate")),text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value"))):text(raw.get("scope"))))) {
                 rejectionCounts.item("facts",at);rejectionCounts.add("dependency_slot_pending");
             }
         }
@@ -295,8 +296,8 @@ public class MemoryCuratorCommitService {
             String baseAction = "negated".equals(assertion) ? "RETIRE"
                 : result.supersededId() != null ? "SUPERSEDE"
                 : !result.inserted() ? "MERGE" : "KEEP";
-            String retrievalText = MemoryCorpusCompactionService.factContent(
-                predicate, value, "", scope, assertion);
+            String retrievalText = MemoryCuratorFactSupport.retrievalText(
+                predicate, value, scope, assertion, candidate.rawText());
             if (corpusCompactionService != null) corpusCompactionService.reconcileFactStatuses(userId, targetSequence);
             corpusCompactionServiceSafeSync(userId, result.id(), retrievalText,
                 embeddings.get(retrievalText), targetSequence);
@@ -662,7 +663,8 @@ public class MemoryCuratorCommitService {
             String surface=MemoryValueNormalizer.findSurface(predicate,value,evidence);
             if (fact.get("surface_values") instanceof List<?> surfaces && index<surfaces.size()) {
                 String specified=text(surfaces.get(index));
-                if (evidence.contains(specified) && MemoryValueNormalizer.equivalent(predicate,value,specified)) surface=specified;
+                if (!specified.isBlank() && evidence.contains(specified)
+                        && MemoryCuratorFactSupport.equivalentSurface(predicate,value,specified)) surface=specified;
                 else surface="";
             }
             if (surface.isBlank()) {
@@ -681,7 +683,7 @@ public class MemoryCuratorCommitService {
                 rejectionCounts.add("polarity_mismatch_or_uncertainty");
                 continue;
             }
-            if (!MemoryEvidenceCoverage.supports(evidence,new MemoryEvidenceCoverage.Evidence(predicate,value,scope,assertion,evidence,surface))) {
+            if (!MemoryCuratorFactSupport.supports(evidence,new MemoryEvidenceCoverage.Evidence(predicate,value,scope,assertion,evidence,surface))) {
                 rejectionCounts.add("predicate_evidence_insufficient"); continue;
             }
             sources.add(new FactSource(turn, evidence,surface));

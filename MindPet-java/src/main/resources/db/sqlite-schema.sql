@@ -245,6 +245,33 @@ CREATE TABLE IF NOT EXISTS memory_retrieval_source (
 CREATE INDEX IF NOT EXISTS idx_memory_retrieval_source_turn
   ON memory_retrieval_source(source_turn_id);
 
+-- Source handoff for derived memories; merge/ranking/forgetting policies stay separate.
+CREATE TABLE IF NOT EXISTS memory_lifecycle (
+  unit_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  importance REAL NOT NULL DEFAULT 0.5,
+  first_recorded_at TEXT,
+  last_confirmed_at TEXT,
+  last_used_at TEXT,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  source_count INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'live',
+  original_scope TEXT,
+  original_status TEXT,
+  reason TEXT NOT NULL DEFAULT '',
+  retired_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_memory_lifecycle_user ON memory_lifecycle(user_id,state);
+CREATE TABLE IF NOT EXISTS memory_lifecycle_use (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  unit_id TEXT NOT NULL,
+  used_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_lifecycle_use_unit ON memory_lifecycle_use(unit_id,used_at);
+
 CREATE TABLE IF NOT EXISTS curator_proposal_item (
   user_id TEXT NOT NULL,
   item_key TEXT NOT NULL,

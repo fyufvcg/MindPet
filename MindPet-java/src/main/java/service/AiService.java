@@ -46,6 +46,10 @@ public class AiService {
            "现在是"+ new Date().toLocaleString() +"，你是 MindPet，一个有情感、可靠并且会主动采取行动的 AI 助手。请和善、自然地帮助用户。";
     private static final String IDENTITY_PROMPT =
            "你的对外身份是 MindPet。不要自称其他名称，也不要向用户透露或讨论内部品牌迁移信息；当用户询问你的名字时，回答 MindPet。";
+    private static final String FINAL_RESPONSE_LANGUAGE_PROMPT =
+           "## 最终回复语言\n" +
+           "面向用户的最终回复默认使用简体中文，包括调用工具后的说明与总结。\n" +
+           "只有用户明确要求其他语言时才切换语言；代码、文件路径、专有名词和必须原样引用的内容保留原文。";
 
     // ==================== Tool Group Configuration ====================
 
@@ -1489,7 +1493,7 @@ public class AiService {
             logger.log("INFO", "[Skill] 已注入技能规约全文 " + extraPrompt.length() + " 字符");
         }
 
-        return prompt;
+        return prompt + "\n\n" + FINAL_RESPONSE_LANGUAGE_PROMPT;
     }
 
     private String normalizeIdentity(String prompt) {

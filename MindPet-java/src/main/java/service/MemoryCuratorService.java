@@ -46,6 +46,7 @@ public class MemoryCuratorService {
         action 可建议 KEEP、MERGE、SUPERSEDE、RETIRE 或 NOOP；不确定替换目标时 replaces_unit_ids 返回空数组。相同值的重复确认应合并证据；不同有效期不能合为同一连续状态。
         retrieval_text 是可独立理解的短检索表达，保留事实的主体、限定条件与值，不要抄录整段对话。不得提议压缩候选列表之外的单元。
         对含有多个事实的消息逐项提取全部长期有效信息，每项提供自己的连续原文证据。Java 仅在全部语义都已覆盖时压缩原始消息；无法解释的剩余内容必须保留。
+        对个人课程、培训、会议、项目、合同、预约和行程，取消、完成、延期等状态变化属于需要保留的信息。取消事实按对应 plan/event 与 negated assertion 提取，完成经历保留已完成状态，不得只保留早期计划。不同活动期次、日期、地点、人数和搬家前等关键限定必须保留在 value 与检索表达中；无法完整提取时保留原文，不得将其列入 retire。普通临时计算、页码核对和一次性工具任务完成仍可作为闲聊噪声。
         对闲聊噪声，可在顶层 retire 数组中提议退出默认检索；只能复制低价值原始记忆候选中的 unit_id，reason 固定为 non_durable_noise，每批最多 10 条。不得退役有长期价值、经常使用或敏感的记忆。Java 会再次核验，提案不等于删除；原始证据始终保留。
         只依据用户消息提取事实，不要把 MindPet 的回复当作用户事实。current_location 与 home_location 是不同字段，不能互相替代。长期的家或老家用 home_location + stable；当前居住地、搬迁前住址、未来拟搬城市都用 current_location，分别配 current、historical、planned。不要把可能搬去的城市写成 plan predicate，也不要把“可能搬去某地”整句写入 value。过去职业用 occupation_current + historical。
         若未来去向只是可能、备选或尚未决定，使用 planned scope + possible assertion；明确计划或已安排才使用 planned assertion。事实 assertion 必须与所列每条 evidence 的肯定、否定和确定程度一致。
@@ -180,8 +181,9 @@ public class MemoryCuratorService {
     private void processDueBatches(String userId, String lockToken) {
         try {
             repairPendingItems(userId);
+            int batchLimit = REVIEW_TURNS;
             while (true) {
-                List<CuratorTurnStore.CompletedTurn> turns = turnStore.recentPending(userId, REVIEW_TURNS);
+                List<CuratorTurnStore.CompletedTurn> turns = turnStore.recentPending(userId, batchLimit);
                 if (turns.isEmpty()) return;
                 String lastTurnId = turns.get(turns.size() - 1).turnId();
                 long target = turnStore.sequenceFor(userId, lastTurnId);
@@ -203,6 +205,12 @@ public class MemoryCuratorService {
                         result = commitService.commitPartial(userId, proposal, turns, target, embeddings);
                     }
                     recordRun(userId, target, turns.size(), result.saved(), result.rejections().isEmpty()?"success":"partial", "", result.rejections());
+                    try {
+                        if(corpusCompactionService!=null)corpusCompactionService.lifecycleCoordinator()
+                            .repairMissingEmbeddings(userId,insightService::prepareEmbedding);
+                    } catch(Exception repairError) {
+                        logger.log("WARN","记忆整理已提交，缺失向量暂待恢复："+repairError.getMessage());
+                    }
                     logger.log("INFO", "记忆馆长完成 → user=" + userId + " checkpoint=" + target
                         + " 审查" + turns.size() + "轮，保存" + result.saved() + "条，过滤" + result.rejectedCount() + "条");
                     try {
@@ -211,6 +219,12 @@ public class MemoryCuratorService {
                         logger.log("WARN", "提交后安排记忆回响失败: " + e.getMessage());
                     }
                 } catch (Exception e) {
+                    if (e instanceof ProposalFormatException && turns.size() > 1) {
+                        recordRun(userId, target, turns.size(), 0, "split_retry", e.getMessage(), Map.of());
+                        batchLimit = Math.max(1, turns.size() / 2);
+                        logger.log("WARN", "馆长输出不完整，保留原批次并缩小为" + batchLimit + "轮重试");
+                        continue;
+                    }
                     turnStore.recordError(userId, e.getMessage());
                     Map<String, Integer> rejections = e instanceof MemoryCuratorCommitService.ProposalRejectedException rejected
                         ? rejected.rejections() : Map.of();
@@ -358,12 +372,16 @@ public class MemoryCuratorService {
             if (rejectionReasons.containsKey("compaction_action_mismatch")) {
                 repairGuidance.append("action 必须与实际操作一致：明确合并已有事实或原始记忆用 MERGE，新事实且不合并旧单元用 KEEP。\n");
             }
-            userMessage += "\n\n上一版完整提案未提交，校验拒绝原因如下：" + rejectionReasons
-                + "。请修复这些错误并返回完整提案；保留语义正确且证据有效的条目，只调整被拒绝的条目。"
+            if (rejectionReasons.containsKey("fact_value_not_in_evidence")
+                    || rejectionReasons.containsKey("predicate_evidence_insufficient") || rejectionReasons.containsKey("pending_repair")) {
+                repairGuidance.append("event/experience 的规范值必须是证据里的连续原文；已完成经历保留全部年份、地点、人数及完成限定。独立经历可以使用 experience；既有课程计划的完成应保持相同 predicate 和课程名，用 episodic scope 表示实际完成。不得通过省略数字或状态规避校验。\n");
+            }
+            userMessage += "\n\n待修复提案的校验原因如下：" + rejectionReasons
+                + "。只返回被拒绝条目的修复版本，其他数组可以为空；已经有效的条目由 Java 保留。"
                 + "validation_details 给出 section、item_index、source_index、turn_id 和具体证据。只能修复相应条目，不得删掉有效事实来规避错误。"
                 + "修复项必须保留原 proposal_item_id；不允许重排 ID 或用新 ID 替代。"
                 + "\n" + repairGuidance
-                + "上一版提案：\n" + mapper.writeValueAsString(previousProposal);
+                + "待修复条目：\n" + mapper.writeValueAsString(failedItemsOnly(previousProposal));
         }
         userMessage += "\n\n" + dialogue;
 
@@ -378,18 +396,42 @@ public class MemoryCuratorService {
 
     private static String text(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
 
+    private Map<String, Object> failedItemsOnly(Map<String, Object> proposal) {
+        List<?> details = proposal.get("validation_details") instanceof List<?> list ? list : List.of();
+        Map<String, Object> failed = new LinkedHashMap<>();
+        for (String section : List.of("facts", "insights", "growth", "retire")) {
+            List<?> items = proposal.get(section) instanceof List<?> list ? list : List.of();
+            List<Object> selected = new ArrayList<>();
+            for (int index = 0; index < items.size(); index++) {
+                final int at = index;
+                if (details.stream().anyMatch(d -> d instanceof Map<?, ?> m && section.equals(m.get("section"))
+                        && m.get("item_index") instanceof Number number && number.intValue() == at)) selected.add(items.get(index));
+            }
+            failed.put(section, selected);
+        }
+        failed.put("validation_details", details);
+        return failed;
+    }
+
     private Map<String, byte[]> prepareCuratedEmbeddings(String userId, Map<String, Object> proposal) {
         Map<String, byte[]> embeddings = new LinkedHashMap<>();
         Object factsValue = proposal.get("facts");
         if (factsValue instanceof List<?> facts) {
             for (Object item : facts) {
                 if (!(item instanceof Map<?, ?> raw)) continue;
-                String content = MemoryCorpusCompactionService.factContent(
-                    text(raw.get("predicate")), MemoryValueNormalizer.canonical(text(raw.get("predicate")),text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value"))),
-                    "", text(raw.get("scope")), text(raw.get("assertion")));
-                if (!content.isBlank() && content.length() <= 800
-                        && !MemoryContentSafety.looksSensitive(content)) {
-                    embeddings.putIfAbsent(content, insightService.prepareEmbedding(content));
+                String predicate = text(raw.get("predicate"));
+                String value = MemoryCuratorFactSupport.canonicalValue(predicate,
+                    text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value")));
+                List<?> evidence = raw.get("evidence") instanceof List<?> quotes ? quotes : List.of();
+                for (Object quote : evidence) {
+                    String assertion = MemoryFactOntology.canonicalAssertion(text(raw.get("assertion")), text(quote));
+                    for (String scope : List.of(text(raw.get("scope")), "historical")) {
+                        String content = MemoryCuratorFactSupport.retrievalText(predicate, value, scope, assertion, text(quote));
+                        if (!content.isBlank() && content.length() <= 800
+                                && !MemoryContentSafety.looksSensitive(content) && !embeddings.containsKey(content)) {
+                            embeddings.put(content, insightService.prepareEmbedding(content));
+                        }
+                    }
                 }
             }
         }
@@ -411,21 +453,31 @@ public class MemoryCuratorService {
     }
 
     private Map<String, Object> parseSummary(String result) throws Exception {
-        if (result == null || result.isBlank()) throw new IllegalStateException("馆长没有返回结构化提案");
+        if (result == null || result.isBlank()) throw new ProposalFormatException("馆长没有返回结构化提案", null);
         String json = result.trim();
         if (json.startsWith("```")) {
             json = json.replaceAll("```\\w*\\n?", "").replace("```", "").trim();
         }
-        Map<String, Object> proposal = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> proposal;
+        try {
+            proposal = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new ProposalFormatException("馆长JSON不完整或格式错误", error);
+        }
+        if (proposal == null) throw new ProposalFormatException("馆长提案为空", null);
         for (String field : List.of("facts", "insights", "growth")) {
             if (!(proposal.get(field) instanceof List<?>)) {
-                throw new IllegalStateException("馆长提案缺少数组字段: " + field);
+                throw new ProposalFormatException("馆长提案缺少数组字段: " + field, null);
             }
         }
         if (proposal.containsKey("retire") && !(proposal.get("retire") instanceof List<?>)) {
-            throw new IllegalStateException("馆长退役提案必须是数组");
+            throw new ProposalFormatException("馆长退役提案必须是数组", null);
         }
         return proposal;
+    }
+
+    private static final class ProposalFormatException extends IllegalStateException {
+        private ProposalFormatException(String message, Throwable cause) { super(message, cause); }
     }
 
     private List<String> normalizeTopics(Object value) {

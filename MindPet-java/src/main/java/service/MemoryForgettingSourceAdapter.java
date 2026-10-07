@@ -101,6 +101,7 @@ public final class MemoryForgettingSourceAdapter {
             retired++;
         }
         archiveExpiredResiduals(userId, context);
+        retired += new MemoryLifecycleCoordinator(jdbc, time).evaluate(userId);
         return retired;
     }
 

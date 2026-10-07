@@ -46,6 +46,7 @@ public class MemoryRetrievalService {
     private final KnowledgeGraphRetrievalService graph;
     private final Logger logger;
     private final int defaultTokens;
+    private final MemoryLifecycleCoordinator lifecycle;
 
     @Autowired
     public MemoryRetrievalService(MemoryCorpusCompactionService corpus, SqliteMemoryService raw,
@@ -56,6 +57,7 @@ public class MemoryRetrievalService {
         this.graph = graph;
         this.logger = logger;
         this.defaultTokens = Math.max(1, defaultTokens);
+        this.lifecycle = corpus.lifecycleCoordinator();
     }
     public String getRetrievalContext(String userId, String query, float[] vector) {
         return retrieve(userId, query, vector, Options.defaults(defaultTokens), true).context();
@@ -152,6 +154,17 @@ public class MemoryRetrievalService {
                 }
             } catch(Exception error) { routeFailed("rag-state",error,failed); }
         }
+        if (options.keyword() && !MemoryLifecycleRetrievalBridge.historyQueries(query).isEmpty()) {
+            try {
+                for (String historyQuery : MemoryLifecycleRetrievalBridge.historyQueries(query))
+                    for (var route : corpus.searchFocusedUnitRoutes(userId,historyQuery,List.of(query))) {
+                        Candidate memory=candidates.computeIfAbsent("rag:"+route.unit().id(),ignored->unitCandidate(route.unit()));
+                        memory.rrf=Math.max(memory.rrf,MemoryRetrievalRanking.rrf(route.keywordRank()));
+                        memory.relevance=Math.max(memory.relevance,route.lexical());
+                        memory.preference=Math.max(memory.preference,route.preference());
+                    }
+            } catch(Exception error) { routeFailed("lifecycle-history",error,failed); }
+        }
         var contents = candidates.values().stream().filter(c -> c.unit != null).map(c -> c.content).toList();
         // Explicit numbered subjects can make unrelated items in the same project ineligible.
         // Apply only when matching stored evidence exists; generic questions retain all routes.
@@ -196,6 +209,8 @@ public class MemoryRetrievalService {
         if (recordAccess) {
             try { corpus.recordAccess(userId, used); }
             catch (Exception error) { routeFailed("access", error, failed); }
+            try { lifecycle.recordUse(userId, used.stream().map(MemoryCorpusCompactionService.RetrievalUnit::id).toList()); }
+            catch (Exception error) { routeFailed("lifecycle-access", error, failed); }
         }
         String context = serialize(selected);
         List<Evidence> evidence = selected.stream().map(c -> new Evidence(c.id, c.kind, c.content, c.scope, c.status,

@@ -38,7 +38,9 @@ public class MemoryForgettingMaintenanceService {
             for (String userId : jdbc.query(
                     "SELECT user_id FROM long_term_memory WHERE searchable=1 UNION "
                         + "SELECT user_id FROM memory_retrieval_unit WHERE unit_type='residual_memory' "
-                        + "AND status='active' AND searchable=1 AND scope IN ('episodic','planned') ORDER BY user_id",
+                        + "AND status='active' AND searchable=1 AND scope IN ('episodic','planned') UNION "
+                        + "SELECT user_id FROM memory_retrieval_unit WHERE unit_type IN ('fact','insight','growth') "
+                        + "AND status='active' AND searchable=1 ORDER BY user_id",
                     (rs, row) -> rs.getString(1))) {
                 retired += memoryStore.prune(userId);
             }
