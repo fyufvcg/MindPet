@@ -1,332 +1,55 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://readme-typing-svg.demolab.com?font=Noto+Sans+SC&weight=600&size=32&duration=3000&pause=1000&color=58A6FF&center=true&vCenter=true&width=600&lines=MindPet%EF%BC%8C%E8%AE%B0%E4%BD%8F%E4%BD%A0%E3%80%82" />
-  <img src="https://readme-typing-svg.demolab.com?font=Noto+Sans+SC&weight=600&size=32&duration=3000&pause=1000&color=0969DA&center=true&vCenter=true&width=600&lines=MindPet%EF%BC%8C%E8%AE%B0%E4%BD%8F%E4%BD%A0%E3%80%82" alt="MindPet，记住你。" />
-</picture>
+# MindPet
 
-<p align="center">
-  <em>A companion that remembers — 跨平台 · 跨会话 · 越聊越懂你</em>
-</p>
+MindPet 是一个桌面 AI 助手。桌面端使用 Electron、React 和 TypeScript，Java 后端提供对话、工具调用和记忆能力；本地数据使用 SQLite。LLM 和 Embedding 需要配置可用的本地或远程服务。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen.svg" alt="Platform" />
-  <img src="https://img.shields.io/badge/java-21-orange.svg" alt="Java 21" />
-  <img src="https://img.shields.io/badge/electron-39-9cf.svg" alt="Electron 39" />
-</p>
+## 目录
 
----
+- `MindPet/`：Electron 桌面端
+- `MindPet-java/`：Spring Boot 后端
+- `XiaoqingDesktop.bat`：Windows 源码开发启动脚本
+- `scripts/check.bat`：SQLite 存储检查脚本
+- `LICENSE`：MIT License
 
-## ✨ 什么是 MindPet
+## 源码开发
 
-MindPet 是一个**桌面 AI 智能伴侣**——不是存日志的聊天机器人，而是会理解什么重要、选择什么留下的长期伙伴。它拥有长期记忆、情感感知、知识图谱和自主工具调用能力，跨会话、跨入口，每次打开都是接着聊。
-
-> **不是存日志，是理解什么重要，选择什么留下。**
-
----
-
-## 🧠 核心能力
-
-### 1. 长期记忆 —— 选择性记住该记住的
-
-MindPet **不会把每条消息都塞进长期记忆**。消息先进入 SQLite 短期上下文窗口，由 LLM 结合知识图谱评估重要性：有价值的事实写入 SQLite 长期存储，闲聊只在短期窗口里保留，过期自然消失。
-
-| 机制 | 说明 |
-|------|------|
-| **重要性评估** | LLM 判断每条内容的长期价值，只有达到阈值的才存入长期记忆 |
-| **混合检索** | 语义向量 + 关键词 + RRF 融合 + Reranking，TopK 精准召回 |
-| **三层画像** | 事实记忆 → 用户画像 → 相处经验，逐层沉淀 |
-| **自动遗忘** | `importance × e^(-age/decay)`，琐事快忘、重要的事慢忘 |
-
-```
-用户消息 → 短期上下文 (SQLite TTL) → LLM 评估重要性
-                                      │
-                         ┌────────────┼────────────┐
-                         ▼            ▼            ▼
-                    重要事实      普通对话      闲聊/噪音
-                  写入 SQLite     短期保留      直接丢弃
-                  向量索引       过期消失
-```
-
-### 2. Memory Curator —— 记忆馆长
-
-每 **15 轮对话**自动唤醒，跨会话审查最近 20 轮对话：
-
-- **去重合并**：同一件事说了多次？合并为一条更完整的记忆
-- **反思提炼**：从碎片化事实中总结用户偏好和行为模式
-- **画像更新**：维护用户画像、相处经验、LLM 自我成长三个维度
-- **不膨胀**：确保记忆库精简、不矛盾
-
-### 3. 情感感知 —— 读懂你的弦外之音
-
-真正的陪伴不是看见「开心」就庆祝，而是知道你在**苦笑、强撑，还是终于松了一口气**。
-
-MindPet 采用**三层情感分析架构**：
-
-| 层级 | 职责 | 示例 |
-|------|------|------|
-| **① 安全筛查** | 硬编码危险信号关键词，不可遗漏 | 自杀、自残等危机信号 |
-| **② LLM 判断** | 结构化输出 `emotion` + `intensity` + `triggers` | 11 种情绪分类 |
-| **③ 语境翻转** | 6 条规则纠正 LLM 盲区 | 见下表 |
-
-| 用户说 | 表面情绪 | MindPet 真正理解 |
-|--------|----------|-----------------|
-| 「哈哈，老板周末凌晨三点发消息」 | 开心 | 😮‍💨 **苦笑 / 自嘲** |
-| 「算了，反正没人在乎」 | 无所谓 | 💔 **强装镇定** |
-| 「终于考完了」 | 焦虑 | 😌 **如释重负** |
-
-> 支持 **11 种情绪**：开心 / 难过 / 焦虑 / 生气 / 平静 / 兴奋 / 压力 / 释然 / 感恩 / 孤独 / 疲惫
-
-### 4. 知识图谱 —— 记忆可视化
-
-记忆不是黑盒。知识图谱自动将人物、事件、偏好整理成可探索的**关系网络**。
-
-<p align="center">
-  <b>实体 → 关系 → 证据链</b><br/>
-  每条关系都能追溯到原始对话，也可以手动编辑或删除
-</p>
-
-| 能力 | 说明 |
-|------|------|
-| **自动构建** | 从对话中抽取实体（人/事/物）和关系，实时更新图谱 |
-| **可视化浏览** | 记忆星图交互探索，按类型、时间、关联度筛选 |
-| **可溯源** | 每条边都有证据链，点击回到原始对话 |
-| **可编辑** | 用户可以直接修改关系、删除错误记忆 |
-
----
-
-## 🔌 能力扩展：MCP + Skill
-
-MindPet 不是封闭系统。通过 MCP 协议和 Skill 规约，**任何人都可以给它添加新能力**。
-
-### MCP 自主接入
-
-**填一个 URL，自动发现全部工具：**
-
-```
-用户界面填入 MCP Server URL
-        │
-        ▼
-  McpManager 自动连接 ──→ 发现 tools[] 列表
-        │
-        ▼
-  注册为 LLM 可调用工具 ──→ 对话中按需触发
-```
-
-- 支持 **SSE / Streamable HTTP / Auto** 三种传输协议
-- 工具发现**自动缓存**，断线自动重连
-- 前后端双 MCP 管理层：Electron 端 + Java 端均可接入
-
-### 内置 MCP
-
-项目预置了常用 MCP 服务，开箱即用：
-
-| 服务 | 能力 |
-|------|------|
-| 🍳 **HowToCook** | 菜谱查询、食材搭配 |
-| 🚗 **DiDi** | 打车、出行规划 |
-| 🚄 **12306** | 火车票查询、余票监控 |
-| 🛒 **外卖** | 周边商家、菜品搜索 |
-
-### Skill 规约
-
-用 **Markdown 写一段话**，就能给 MindPet 定义新技能：
-
-- 📝 可视化 Markdown 编辑器
-- 🎯 定义触发条件 + 行为指令 + 语气约束
-- ⚡ 保存即注入 system prompt，无需重启
-
----
-
-## 🏗️ 项目架构
-
-```
-┌─────────────────────────────────────────────────┐
-│                    入口层                         │
-│    微信 Bot  │  QQ Bot  │  桌面客户端  │  ...    │
-├─────────────────────────────────────────────────┤
-│                  MindPet Agent                    │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  MCP 管理 │  │ Skill 引擎│  │  情感分析     │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  RPA 自动化│ │ Office 文档│ │  工具编排     │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────┤
-│                    记忆层                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │SQLite 长期 │  │SQLite TTL│  │  知识图谱     │  │
-│  │+sqlite-vec│  │ 短期上下文│  │  SQLite      │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────┘
-```
-
-### 技术栈
-
-| 层 | 技术 |
-|---|------|
-| **桌面客户端** | Electron 39 · React 19 · TypeScript 5.9 · Vite 7 · Pixi.js (Live2D) |
-| **后端服务** | Spring Boot 3.3 · Java 21 · Spring AI 1.0 |
-| **本地存储** | SQLite · 随应用自动创建 |
-| **向量检索** | sqlite-vec · Java 精确余弦回退 |
-| **LLM** | OpenAI 兼容协议（豆包 / DeepSeek / 任意兼容 API） |
-| **Embedding** | BGE-M3 (Ollama) / 豆包 Embedding |
-
----
-
-## 🚀 快速开始
-
-### 方式一：桌面安装包（推荐）
-
-安装包内置 Electron 前端、Java 后端、精简 JRE、SQLite 和 sqlite-vec。终端用户无需安装 Node.js、Java、PostgreSQL、Redis 或 Docker；业务数据保存在应用的用户数据目录。
-
-```powershell
-# 开发者构建 Windows 安装包
-cd MindPet
-npm install
-npm run build:win
-```
-
-构建过程会编译 Java 后端并用 `jlink` 生成随包运行时；安装后的应用自动启动后端和本地数据库。
-
-### 自动更新与发布
-
-自动更新使用本仓库的 GitHub Releases。`1.0.1` 是首个带更新器的版本；当前源码版本为 `1.1.2`。`1.0.0` 不包含更新器，仍在使用该版本的用户需要先手动安装 `1.0.1` 或更新版本。安装更新器后的版本会在启动时自动检查并下载，也可在应用内 **设置 → 应用更新** 手动检查。
-
-发布 Windows 更新时，在 `MindPet` 目录运行 `npm run build:win`，构建产物在 `MindPet/release/`。在 GitHub 的 `fyufvcg/MindPet` 仓库创建 tag 为 `v<版本号>` 的 Release，并上传该目录生成的安装程序、对应 `.blockmap` 和 `latest.yml`。`latest.yml` 是更新检查所需的版本清单；不能只上传安装程序。用户端从 GitHub Release 下载更新，不需要另部署更新服务器。仓库 Release 及资产必须允许目标用户读取；私有仓库需要改用公开的静态下载地址。
-
-更新只替换应用文件，用户的 SQLite 数据仍保存在本机 `data/backend/mindpet.db`。
-
-**两种 Embedding 模式**（同一份代码，靠 profile 切换）：
-
-| 模式 | 命令 | 说明 |
-|---|---|---|
-| **云端 Embedding**（默认可配置） | 在设置页填写 Embedding API | 无需安装本地模型，向量和记忆仍写入本机 SQLite |
-| **本地 Embedding** | 安装 Ollama + bge-m3 | 文本和向量生成过程也留在本机 |
-
-本地隐私模式首次需拉取模型（约 1.1GB，一次性）：
-
-```powershell
-ollama pull bge-m3
-```
-
-MindPet 目前面向用户的部署方式是桌面安装包；仓库不再维护 Docker Compose 或云服务器部署流程。`MindPet-java/sql/` 中的旧数据库迁移脚本保留作历史数据迁移参考，不参与桌面版运行。
-
-### 方式二：源码手动部署（开发者）
-
-<details>
-<summary>展开：源码构建需要 JDK 21 + Maven + Node 20</summary>
-
-### 前置依赖
-
-| 依赖 | 版本要求 | 说明 |
-|------|---------|------|
-| **JDK** | 21+ | 后端运行环境 |
-| **Maven** | 3.8+ | 后端构建 |
-| **Node.js** | 20+ | 前端运行环境 |
-| **Ollama** | (可选) | 本地 Embedding 模型 |
-
-### 1. 数据库
-
-无需初始化数据库。后端首次运行时自动创建 `~/.mindpet/mindpet.db` 和完整表结构，并加载当前平台对应的 sqlite-vec 原生库。
-
-### 2. 配置后端
-
-复制配置模板并修改：
-
-```bash
-cd MindPet-java
-cp src/main/resources/application-template.yml src/main/resources/application.yml
-```
-
-编辑 `application.yml`，填入你的 API Key：
-
-```yaml
-spring:
-  ai:
-    openai:
-      api-key: your-api-key-here        # LLM API Key
-      base-url: https://ark.cn-beijing.volces.com/api/v3
-      chat:
-        model: doubao-seed-1-8-251228
-app:
-  storage:
-    sqlite:
-      path: ${MINDPET_DATA_DIR:${user.home}/.mindpet}/mindpet.db
-  embedding:
-    use-ollama: true                     # 使用本地 Ollama Embedding
-    ollama:
-      base-url: http://localhost:11434
-      model: bge-m3
-```
-
-### 3. 一键启动源码版
-
-Windows 开发机在仓库根目录运行唯一启动脚本：
+需要安装 JDK 21、Maven、Node.js 20+ 和 npm。Windows 上在仓库根目录运行：
 
 ```bat
 XiaoqingDesktop.bat
 ```
 
-双击脚本后会在同一个命令行窗口中构建 SQLite 后端并启动 Electron。Maven、npm 和 Electron 的输出会直接显示在窗口中；开发进程结束后窗口会暂停，按任意键关闭。Electron 随后自动启动 Java 后端。源码调试需要 JDK 21、Maven、Node.js 20 和 npm。安装版已内置运行环境，用户直接打开应用即可。
+脚本会构建后端；若桌面端依赖目录不存在，会运行 `npm ci`，随后启动 Electron。也可以分步运行：
 
-</details>
-
----
-
-## 📁 项目结构
-
-```
-MINDPET/
-├── MindPet/                  # Electron 桌面客户端
-│   ├── src/
-│   │   ├── main/             # 主进程
-│   │   │   ├── tools/        # 工具系统 (MCP / Office / RPA / Skill)
-│   │   │   ├── rpa/          # RPA 自动化引擎
-│   │   │   └── security/     # 安全与凭据管理
-│   │   └── renderer/         # 渲染进程 (React)
-│   │       └── src/
-│   │           ├── rpa/      # RPA 可视化编辑器
-│   │           └── components/
-│   └── package.json
-├── MindPet-java/             # Spring Boot 后端
-│   ├── src/main/java/.../
-│   │   ├── service/          # 核心服务
-│   │   │   ├── SqliteMemoryService    # 长期记忆和向量检索
-│   │   │   ├── MemoryCuratorService   # 记忆馆长
-│   │   │   ├── EmotionService         # 情感分析
-│   │   │   ├── KnowledgeGraphService  # 知识图谱
-│   │   │   └── McpManager            # MCP 管理器
-│   │   ├── tool/             # LLM 工具实现
-│   │   └── controller/       # REST API
-│   └── pom.xml
-├── scripts/
-│   └── check.bat              # 可选：检查 SQLite 和本地存储 API
-├── XiaoqingDesktop.bat        # 唯一源码启动脚本：显示构建和运行日志并启动 Electron
-└── README.md
+```powershell
+cd MindPet-java
+mvn -DskipTests clean package
+cd ..\MindPet
+npm ci
+npm run dev
 ```
 
-> ⚠️ **使用长期记忆前需验证 Embedding**：后端在 Embedding 不可达时会**静默降级**——
-> `/api/desktop/health` 与聊天均正常，但长期记忆完全不工作。
-> `scripts\check.bat` 检查本地 SQLite 和主要存储 API；Embedding 连通性需在设置页检查，或手动调用 `POST /api/desktop/embedding-test`。
+首次使用前，在应用设置中配置 LLM 服务。配置模板 `MindPet-java/src/main/resources/application-template.yml` 默认使用 Ollama 的 `bge-m3` 做本地 Embedding；使用本地 Embedding 时需安装 Ollama 并运行 `ollama pull bge-m3`。也可按模板改用兼容的远程 Embedding 服务。
 
----
+## 构建桌面安装包
 
-## 🔮 路线图
+在 `MindPet` 目录执行对应平台的构建命令：
 
-| 阶段 | 内容 |
-|------|------|
-| **近期** | 多模态记忆：图片、语音、文件被整理成带时间与来源的事件 |
-| **中期** | 主动陪伴 + 多端连续：结合情绪趋势主动提醒，跨设备无感切换 |
-| **远期** | 开放生态：Skill、MCP、RPA 工作流可复用和社区分享 |
+```powershell
+npm run build:win
+npm run build:mac
+npm run build:linux
+```
 
----
+构建脚本会打包 Java 后端及 `jlink` 生成的运行时；输出位于 `MindPet/release/`。打包配置包含随应用提供 Java 运行时的步骤，正式发布前应在干净机器上验证安装包。
 
-## 📄 许可证
+## 本地数据
 
-本项目采用 [MIT License](LICENSE) 开源。
+桌面端把数据保存在 Electron 的用户数据目录中，数据库路径为 `<userData>/backend/mindpet.db`。打包版会先尝试在可执行文件旁使用 `data/`；无法创建该目录时使用 Electron 默认目录。设置环境变量 `USER_DATA_PATH` 可指定其他目录。独立运行后端时，SQLite 默认路径为 `~/.mindpet/mindpet.db`。
 
----
+## 技术版本
 
-<p align="center">
-  <sub>Made with ❤️ by fyufvcg · 个人项目</sub>
-</p>
+- 桌面端：Electron 39、React 19、TypeScript 5.9
+- 后端：Java 21、Spring Boot 3.5.16、Spring AI 1.1.8
+- 存储：SQLite；向量检索使用 sqlite-vec，并提供 Java 回退实现
+
+更多模块说明见 [桌面端 README](MindPet/README.md) 和 [后端 README](MindPet-java/README.md)。
