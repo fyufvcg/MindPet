@@ -1091,7 +1091,16 @@ body {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
+.recent-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .recent-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -1100,8 +1109,18 @@ body {
   color: inherit;
 }
 
+.recent-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  transition: opacity 150ms ease;
+}
+
 .recent-preview {
-  font-size: 10.5px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--text-muted);
   margin-top: 2px;
   display: flex;
@@ -1132,6 +1151,11 @@ body {
   opacity: 0.85;
 }
 
+.recent-item:hover .recent-time,
+.recent-item:focus-within .recent-time {
+  opacity: 0;
+}
+
 /* 行内重命名输入框 */
 .recent-rename-input {
   width: 100%;
@@ -1146,38 +1170,64 @@ body {
   outline: none;
 }
 
-/* 最近会话的删除按钮 */
-.recent-delete-btn {
+/* 会话行内快捷操作 */
+.recent-item-actions {
   position: absolute;
-  right: 8px;
   top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
   opacity: 0;
   pointer-events: none;
-  transition: all 0.2s ease;
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transform: translateY(-50%);
+  transition: opacity 150ms ease;
 }
 
-.recent-item:hover .recent-delete-btn {
-  opacity: 0.6;
+.recent-item:hover .recent-item-actions,
+.recent-item:focus-within .recent-item-actions {
+  opacity: 1;
   pointer-events: auto;
 }
 
-.recent-delete-btn:hover {
-  opacity: 1 !important;
-  background: var(--ds-color-726762612839362c);
+.recent-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.recent-action-btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.recent-action-btn.is-pinned {
+  color: var(--color-accent-text);
+}
+
+.recent-action-btn.danger:hover {
+  background: color-mix(in srgb, var(--color-status-danger) 12%, transparent);
+  color: var(--color-status-danger);
+}
+
+.recent-action-btn:active {
+  transform: scale(0.94);
 }
 
 .recent-item:hover .recent-meta {
-  padding-right: 18px;
+  padding-right: 52px;
+}
+
+.recent-item:focus-within .recent-meta {
+  padding-right: 52px;
 }
 
 .session-summary-overlay {
@@ -1354,43 +1404,72 @@ body {
 .recent-context-menu {
   position: fixed;
   z-index: 9999;
-  min-width: 120px;
+  min-width: 136px;
   padding: 4px;
   border-radius: 8px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  font-size: 12.5px;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-floating);
   color: var(--text-primary);
+  font-size: 13px;
+  animation: recent-menu-in 150ms var(--motion-standard) both;
+}
+
+.agent-window-container.dark .recent-context-menu {
+  box-shadow: var(--shadow-floating), 0 0 0 1px var(--border-color);
+}
+
+@keyframes recent-menu-in {
+  from { opacity: 0; transform: translateY(-2px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 .recent-context-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   padding: 7px 10px;
-  border-radius: 5px;
-  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   white-space: nowrap;
   user-select: none;
+  cursor: pointer;
+  transition: background 150ms ease;
 }
 
-.recent-context-item:hover {
-  background: var(--bg-menu-hover, var(--ds-color-726762612839362c));
+.recent-context-item:hover,
+.recent-context-item:focus-visible {
+  background: var(--bg-menu-hover);
 }
 
 .recent-context-item.danger {
   color: #ef4444;
 }
 
-.recent-context-item.danger:hover {
-  background: rgba(239, 68, 68, 0.12);
+.recent-context-item.danger:hover,
+.recent-context-item.danger:focus-visible {
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
 }
 
 .recent-context-divider {
   height: 1px;
-  background: var(--border-color, rgba(255, 255, 255, 0.08));
   margin: 4px 2px;
+  background: var(--border-color);
+}
+
+.recent-context-item:focus-visible {
+  outline: 2px solid var(--color-action-primary);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recent-context-menu {
+    animation: none;
+  }
 }
 
 /* 侧边栏菜单折叠头 */
@@ -11766,8 +11845,8 @@ body.session-dragging * {
 }
 
 .message-reasoning {
+  --reasoning-surface: color-mix(in srgb, var(--text-primary) 3.5%, var(--bg-card));
   margin: 0;
-  overflow: hidden;
   color: var(--text-secondary);
   border: 0;
   font-size: 13px;
@@ -11778,25 +11857,52 @@ body.session-dragging * {
 }
 
 .message-reasoning summary {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  padding: 0 2px;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  border-radius: 6px;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   list-style: none;
   user-select: none;
+  transition: color 150ms ease, background-color 150ms ease;
 }
 
 .message-reasoning summary::-webkit-details-marker {
   display: none;
 }
 
-.message-reasoning[open] summary {
-  color: var(--text-secondary);
+.message-reasoning summary:hover {
+  background: var(--bg-menu-hover);
+  color: var(--text-primary);
+}
+
+.message-reasoning-label {
+  font-variant-numeric: tabular-nums;
+}
+
+.message-reasoning-chevron {
+  flex: none;
+  transition: transform 200ms var(--motion-standard);
+}
+
+.message-reasoning[open] .message-reasoning-chevron {
+  transform: rotate(90deg);
+}
+
+.message-reasoning.streaming .message-reasoning-icon,
+.message-reasoning.streaming .message-reasoning-label {
+  color: var(--color-accent-text);
+  animation: reasoning-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes reasoning-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .message-reasoning-live {
@@ -11808,9 +11914,13 @@ body.session-dragging * {
 
 .message-reasoning-text {
   max-height: min(320px, 35vh);
-  padding: 4px 10px 8px;
+  margin-top: 4px;
+  padding: 0 12px 10px;
   overflow: auto;
+  border-radius: 8px;
+  background: var(--reasoning-surface);
   color: var(--text-secondary);
+  font-size: 13px;
   line-height: 1.7;
   user-select: text;
   overscroll-behavior: contain;
@@ -11819,37 +11929,44 @@ body.session-dragging * {
 
 .message-reasoning-toolbar {
   position: sticky;
-  top: -4px;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 0 8px;
-  background: var(--bg-content);
+  padding: 8px 0 6px;
+  background: var(--reasoning-surface);
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 .message-reasoning-toolbar button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 6px;
-  color: var(--text-muted);
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 6px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
+  color: var(--text-muted);
   font: inherit;
   cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease, transform 150ms ease;
 }
 
 .message-reasoning-toolbar button:hover {
-  color: var(--color-action-primary);
-  background: var(--bg-menu-hover);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-primary);
+}
+
+.message-reasoning-toolbar button:active {
+  transform: scale(0.96);
 }
 
 .message-reasoning-original {
-  max-width: 78ch;
+  max-width: 72ch;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -11858,13 +11975,29 @@ body.session-dragging * {
 
 .message-reasoning-placeholder,
 .message-reasoning-notice {
-  padding: 9px 11px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--reasoning-surface);
   color: var(--text-muted);
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .message-reasoning-notice {
+  background: color-mix(in srgb, var(--color-status-warning) 8%, var(--bg-card));
   color: var(--color-status-warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-reasoning.streaming .message-reasoning-icon,
+  .message-reasoning.streaming .message-reasoning-label {
+    animation: none;
+  }
+
+  .message-reasoning-chevron {
+    transition: none;
+  }
 }
 
 .message-process {

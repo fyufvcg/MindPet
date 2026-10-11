@@ -95,10 +95,14 @@ export function useChatStreamEvents({ updateSessionMessages, abortedReplyIdsRef 
             const update = updates.get(message.id)
             if (!update || !message.isThinking || abortedReplyIdsRef.current.has(message.id)) continue
             if (!messages) messages = [...previous]
+            const now = Date.now()
             const updatedMessage = {
               ...message,
               ...(update.text ? { text: (message.text || '') + update.text } : {}),
               ...(update.reasoningText ? { reasoningText: (message.reasoningText || '') + update.reasoningText } : {}),
+              // 记录思考起止时间：首个推理片段开始，首个正文片段到达即视为思考结束
+              ...(update.reasoningText && !message.reasoningStartedAt ? { reasoningStartedAt: now } : {}),
+              ...(update.text && !message.reasoningEndedAt ? { reasoningEndedAt: now } : {}),
               ...(update.status ? { reasoningStatus: update.status.status, reasoningNotice: update.status.message } : {})
             }
             messages[index] = updatedMessage

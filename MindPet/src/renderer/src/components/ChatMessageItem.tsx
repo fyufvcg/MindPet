@@ -1402,6 +1402,11 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
     setReasoningExpanded(Boolean(msg.isThinking && msg.reasoningText !== undefined))
   }, [msg.id])
 
+  // 正文开始输出即思考结束，自动收起思考内容，把注意力交还给回答
+  useEffect(() => {
+    if (msg.reasoningEndedAt) setReasoningExpanded(false)
+  }, [msg.reasoningEndedAt])
+
   const currentCollapsed = userCollapsed
 
   const toolSteps = msg.toolSteps || []
@@ -1434,14 +1439,19 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
       : `${elapsedSeconds}秒`
   const hasReasoning = msg.sender === 'agent' && (msg.reasoningText !== undefined || Boolean(msg.reasoningStatus || msg.reasoningNotice))
   const isStopped = /手动(中断|终止|停止)/.test(String(msg.text || ''))
+  // 思考仍在进行：消息生成中且正文尚未开始（或尚无结束时间）
+  const isReasoningLive = Boolean(msg.isThinking && !msg.reasoningEndedAt && (msg.reasoningStatus === 'thinking' || (msg.reasoningText && !msg.text)))
+  const reasoningSeconds = msg.reasoningStartedAt
+    ? Math.max(1, Math.round(((msg.reasoningEndedAt || (msg.isThinking ? currentTime : Number(msg.completedAt) || currentTime)) - msg.reasoningStartedAt) / 1000))
+    : null
   const reasoningSummary = msg.reasoningStatus === 'unsupported'
     ? '深度思考不可用'
     : msg.reasoningStatus === 'unavailable'
       ? '模型未返回推理内容'
-    : msg.isThinking && msg.reasoningStatus === 'thinking'
-        ? '正在深度思考'
+    : isReasoningLive
+        ? `思考中${reasoningSeconds ? ` · ${reasoningSeconds}秒` : '…'}`
       : msg.reasoningText
-        ? '深度思考'
+        ? reasoningSeconds ? `已思考 ${reasoningSeconds} 秒` : '已深度思考'
         : '深度思考过程'
 
   const processLabel = msg.isThinking
@@ -1648,14 +1658,14 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({ msg, curren
               <div className="message-process-content">
                 {hasReasoning && (
                   <details
-                    className={`message-reasoning ${msg.isThinking ? 'streaming' : ''}`}
+                    className={`message-reasoning ${isReasoningLive ? 'streaming' : ''}`}
                     open={reasoningExpanded}
                     onToggle={event => setReasoningExpanded(event.currentTarget.open)}
                   >
                     <summary>
-                      <Brain size={14} strokeWidth={1.9} aria-hidden="true" />
-                      <span>{reasoningSummary}</span>
-                      {msg.isThinking && reasoningTextForRender.length > 0 && <span className="message-reasoning-live">实时更新</span>}
+                      <Brain size={14} strokeWidth={1.9} aria-hidden="true" className="message-reasoning-icon" />
+                      <span className="message-reasoning-label">{reasoningSummary}</span>
+                      <ChevronRight size={14} strokeWidth={1.8} aria-hidden="true" className="message-reasoning-chevron" />
                     </summary>
                     {msg.reasoningNotice && (msg.reasoningStatus === 'unsupported' || msg.reasoningStatus === 'unavailable') && (
                       <div className="message-reasoning-notice">{msg.reasoningNotice}</div>

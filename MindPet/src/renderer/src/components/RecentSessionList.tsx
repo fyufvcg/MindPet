@@ -27,6 +27,28 @@ function parseSessionDate(time: string): Date | null {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function formatSessionTime(s: Session): string {
+  const raw = s.createdAt || s.time
+  if (!raw || raw.length < 10) return ''
+  const full = new Date(raw.replace(/-/g, '/'))
+  if (isNaN(full.getTime())) return ''
+  const day = new Date(full.getFullYear(), full.getMonth(), full.getDate())
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((today.getTime() - day.getTime()) / 86400000)
+  if (diffDays <= 0) {
+    return `${String(full.getHours()).padStart(2, '0')}:${String(full.getMinutes()).padStart(2, '0')}`
+  }
+  if (diffDays === 1) return '昨天'
+  if (diffDays < 7) return WEEKDAY_LABELS[full.getDay()]
+  if (full.getFullYear() !== now.getFullYear()) {
+    return `${full.getFullYear()}/${full.getMonth() + 1}/${full.getDate()}`
+  }
+  return `${full.getMonth() + 1}月${full.getDate()}日`
+}
+
 function getGroupKey(s: Session): GroupKey {
   if (s.pinned) return 'pinned'
   const d = parseSessionDate(s.createdAt || s.time)
@@ -107,6 +129,10 @@ interface Props {
 }
 
 type DragPlacement = 'before' | 'after'
+
+function getPortalRoot(): HTMLElement {
+  return document.querySelector<HTMLElement>('.agent-window-container') || document.body
+}
 
 export function RecentSessionList(props: Props): React.JSX.Element {
   const { sessions, activeSessionId, onSelect, onDelete, onTogglePin, onRename, onReorder } = props
@@ -278,11 +304,14 @@ export function RecentSessionList(props: Props): React.JSX.Element {
   useEffect(() => {
     if (!contextMenu) return
     const close = () => setContextMenu(null)
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
     window.addEventListener('click', close)
     window.addEventListener('scroll', close, true)
+    window.addEventListener('keydown', closeOnEscape)
     return () => {
       window.removeEventListener('click', close)
       window.removeEventListener('scroll', close, true)
+      window.removeEventListener('keydown', closeOnEscape)
     }
   }, [contextMenu])
 
@@ -330,13 +359,10 @@ export function RecentSessionList(props: Props): React.JSX.Element {
 
   const getContextMenuPosition = (): { left: number; top: number } => {
     if (!contextMenu) return { left: 8, top: 8 }
-    const bounds = containerRef.current?.getBoundingClientRect()
-    const menuWidth = 136
+    const menuWidth = 148
     const menuHeight = 180
-    const minLeft = bounds ? bounds.left + 4 : 8
-    const maxLeft = bounds
-      ? Math.max(minLeft, bounds.right - menuWidth)
-      : Math.max(minLeft, window.innerWidth - menuWidth - 8)
+    const minLeft = 8
+    const maxLeft = Math.max(minLeft, window.innerWidth - menuWidth - 8)
     const minTop = 8
     const maxTop = Math.max(minTop, window.innerHeight - menuHeight - 8)
     return {
@@ -369,6 +395,9 @@ export function RecentSessionList(props: Props): React.JSX.Element {
     const preview = getPreview(s)
     const hasSummary = Boolean(getSummaryMarkdown(s))
     const isThinking = checkIsThinking(s)
+    const channel = getRemoteSessionChannel(s.id)
+    const isRemote = isRemoteSessionId(s.id)
+    const timeLabel = formatSessionTime(s)
     const groupItemPosition = row.groupKey
       ? rows.slice(0, index).filter(candidate => candidate.type === 'item' && candidate.groupKey === row.groupKey).length
       : 0
@@ -430,41 +459,60 @@ export function RecentSessionList(props: Props): React.JSX.Element {
             />
           ) : (
             <>
-              <span className="recent-title" title={s.name}>
-                {getRemoteSessionChannel(s.id) && (
-                  <span style={{
-                    display: 'inline-block',
-                    fontSize: '10px',
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                    background: getRemoteSessionChannel(s.id) === 'wechat' ? 'rgba(16, 185, 129, 0.15)' : 'color-mix(in srgb, var(--color-action-primary) 16%, var(--bg-card))',
-                    color: getRemoteSessionChannel(s.id) === 'wechat' ? '#10b981' : 'var(--ds-color-23313239366462)',
-                    marginRight: '6px',
-                    fontWeight: 600,
-                    verticalAlign: 'middle',
-                    lineHeight: '1.2'
-                  }}>
-                    {getRemoteSessionChannel(s.id) === 'wechat' ? '微信' : 'QQ'}
-                  </span>
-                )}
-                {s.name}
+              <span className="recent-title-row">
+                <span className="recent-title" title={s.name}>
+                  {channel && (
+                    <span style={{
+                      display: 'inline-block',
+                      fontSize: '10px',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: channel === 'wechat' ? 'rgba(16, 185, 129, 0.15)' : 'color-mix(in srgb, var(--color-action-primary) 16%, var(--bg-card))',
+                      color: channel === 'wechat' ? '#10b981' : 'var(--ds-color-23313239366462)',
+                      marginRight: '6px',
+                      fontWeight: 600,
+                      verticalAlign: 'middle',
+                      lineHeight: '1.2'
+                    }}>
+                      {channel === 'wechat' ? '微信' : 'QQ'}
+                    </span>
+                  )}
+                  {s.name}
+                </span>
+                {timeLabel && <span className="recent-time">{timeLabel}</span>}
               </span>
               <span className={`recent-preview ${hasSummary ? 'summary' : ''}`} title={preview}>
-                {hasSummary && <BookOpen size={11} strokeWidth={2} aria-hidden="true" />}
+                {hasSummary && <BookOpen size={12} strokeWidth={2} aria-hidden="true" />}
                 <span className="recent-preview-text">{preview || '暂无消息'}</span>
               </span>
             </>
           )}
         </div>
         {!isRenaming && (
-          <button
-            className="recent-delete-btn"
-            onPointerDown={e => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onDelete(s.id) }}
-            title="删除会话"
-          >
-            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-          </button>
+          <div className="recent-item-actions" onPointerDown={event => event.stopPropagation()}>
+            {!isRemote && (
+              <button
+                type="button"
+                className={`recent-action-btn ${s.pinned ? 'is-pinned' : ''}`}
+                onClick={event => { event.stopPropagation(); onTogglePin(s.id) }}
+                title={s.pinned ? '取消置顶' : '置顶会话'}
+                aria-label={s.pinned ? '取消置顶' : '置顶会话'}
+              >
+                {s.pinned
+                  ? <PinOff size={14} strokeWidth={2} aria-hidden="true" />
+                  : <Pin size={14} strokeWidth={2} aria-hidden="true" />}
+              </button>
+            )}
+            <button
+              type="button"
+              className="recent-action-btn danger"
+              onClick={event => { event.stopPropagation(); onDelete(s.id) }}
+              title="删除会话"
+              aria-label="删除会话"
+            >
+              <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
         )}
       </div>
     )
@@ -517,22 +565,25 @@ export function RecentSessionList(props: Props): React.JSX.Element {
             </div>
           </div>
         )
-      })(), document.body)}
+      })(), getPortalRoot())}
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="recent-context-menu"
+          role="menu"
           style={getContextMenuPosition()}
           onClick={(e) => e.stopPropagation()}
         >
           {(() => {
             const target = sessions.find(s => s.id === contextMenu.sessionId)
             if (!target) return null
-            const isRemote = isRemoteSessionId(target.id)
+            const isRemoteTarget = isRemoteSessionId(target.id)
             return (
               <>
-                {!isRemote && (
-                  <div
+                {!isRemoteTarget && (
+                  <button
+                    type="button"
+                    role="menuitem"
                     className="recent-context-item"
                     onClick={() => { onTogglePin(target.id); setContextMenu(null) }}
                   >
@@ -540,36 +591,43 @@ export function RecentSessionList(props: Props): React.JSX.Element {
                       ? <PinOff size={14} strokeWidth={2} aria-hidden="true" />
                       : <Pin size={14} strokeWidth={2} aria-hidden="true" />}
                     {target.pinned ? '取消置顶' : '置顶'}
-                  </div>
+                  </button>
                 )}
                 {getSummaryMarkdown(target) && (
-                  <div
+                  <button
+                    type="button"
+                    role="menuitem"
                     className="recent-context-item"
                     onClick={() => { setSummarySessionId(target.id); setContextMenu(null) }}
                   >
                     <BookOpen size={14} strokeWidth={2} aria-hidden="true" />
                     查看摘要
-                  </div>
+                  </button>
                 )}
-                <div
+                <button
+                  type="button"
+                  role="menuitem"
                   className="recent-context-item"
                   onClick={() => startRename(target)}
                 >
                   <Pencil size={14} strokeWidth={2} aria-hidden="true" />
                   重命名
-                </div>
-                <div className="recent-context-divider"></div>
-                <div
+                </button>
+                <div className="recent-context-divider" role="separator"></div>
+                <button
+                  type="button"
+                  role="menuitem"
                   className="recent-context-item danger"
                   onClick={() => { onDelete(target.id); setContextMenu(null) }}
                 >
                   <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
                   删除
-                </div>
+                </button>
               </>
             )
           })()}
-        </div>
+        </div>,
+        getPortalRoot()
       )}
 
       {summarySessionId && createPortal((() => {
@@ -605,7 +663,7 @@ export function RecentSessionList(props: Props): React.JSX.Element {
             </section>
           </div>
         )
-      })(), document.body)}
+      })(), getPortalRoot())}
     </div>
   )
 }

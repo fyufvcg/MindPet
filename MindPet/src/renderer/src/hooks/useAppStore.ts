@@ -1225,7 +1225,9 @@ export function useAppStore() {
                     toolSteps: pm.toolSteps,
                     reasoningText: pm.reasoningText ?? lm.reasoningText,
                     reasoningStatus: pm.reasoningStatus ?? lm.reasoningStatus,
-                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice
+                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice,
+                    reasoningStartedAt: pm.reasoningStartedAt ?? lm.reasoningStartedAt,
+                    reasoningEndedAt: pm.reasoningEndedAt ?? lm.reasoningEndedAt
                   }
                 }
                 // 竞态保护：如果内存中当前消息已完成生成(isThinking=false)，但 DB 读出来的还是 loading(isThinking=true)
@@ -1241,7 +1243,9 @@ export function useAppStore() {
                     toolSteps: pm.toolSteps || lm.toolSteps,
                     reasoningText: pm.reasoningText ?? lm.reasoningText,
                     reasoningStatus: pm.reasoningStatus ?? lm.reasoningStatus,
-                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice
+                    reasoningNotice: pm.reasoningNotice ?? lm.reasoningNotice,
+                    reasoningStartedAt: pm.reasoningStartedAt ?? lm.reasoningStartedAt,
+                    reasoningEndedAt: pm.reasoningEndedAt ?? lm.reasoningEndedAt
                   }
                 }
                 return lm

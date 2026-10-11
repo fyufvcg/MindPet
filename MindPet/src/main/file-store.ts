@@ -45,6 +45,8 @@ interface Message {
   reasoningText?: string
   reasoningStatus?: string
   reasoningNotice?: string
+  reasoningStartedAt?: number
+  reasoningEndedAt?: number
   isSuperseded?: boolean
   toolSteps?: any[]
   fileInfos?: string
