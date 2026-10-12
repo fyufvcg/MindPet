@@ -20,14 +20,14 @@ import java.util.regex.Pattern;
 public final class SensitivePersistenceGuard {
     public static final String REDACTED = "[REDACTED_ACCOUNT]";
     private static final Pattern DURABLE = Pattern.compile("(?is)^\\s*(?:insert(?:\\s+or\\s+\\w+)?\\s+into|replace\\s+into|update)\\s+[\"`\\[]?"
-        + "(?:long_term_memory|memory_fact|user_profile|user_profile_current|user_insight|kg_entity|kg_entity_alias|kg_relation|kg_fact_event|kg_evidence)\\b");
+        + "(?:long_term_memory|memory_fact|memory_retrieval_unit|memory_retrieval_source|memory_compaction_snapshot|conversation_memory|sessions|session_messages|curator_turns|curator_state|curator_runs|curator_proposal_item|curator_accepted_event|user_profile|user_profile_current|user_insight|llm_growth|kg_entity|kg_entity_alias|kg_relation|kg_fact_event|kg_evidence|kg_turn_task)\\b");
     private static final ThreadLocal<List<String>> SOURCES = ThreadLocal.withInitial(List::of);
     private SensitivePersistenceGuard() {}
 
     public static Scope context(String... sourceTexts) {
         List<String> previous=SOURCES.get();
         List<String> values=new ArrayList<>(previous);
-        for(String text:sourceTexts) for(var s:V3SensitiveAccount.identifiers(text)) if(!values.contains(s.value())) values.add(s.value());
+        for(String text:sourceTexts) for(String value:SecretSanitizer.values(text)) if(!values.contains(value)) values.add(value);
         SOURCES.set(List.copyOf(values));
         return () -> { if(previous.isEmpty()) SOURCES.remove(); else SOURCES.set(previous); };
     }
@@ -43,7 +43,7 @@ public final class SensitivePersistenceGuard {
     }
     private static final class GuardedDataSource extends TransactionAwareDataSourceProxy implements AutoCloseable {
         // The target remains the master transaction resource. The outer connection proxy
-        // applies the frozen redaction rules to statements on that same transaction.
+        // applies secret redaction to statements on that same transaction.
         GuardedDataSource(DataSource source){super(source);}
         @Override public Connection getConnection() throws SQLException {return connection(super.getConnection());}
         @Override public Connection getConnection(String user,String password) throws SQLException {return connection(super.getConnection(user,password));}
@@ -73,7 +73,7 @@ public final class SensitivePersistenceGuard {
             }
             if(DURABLE.matcher(sql).find() && (name.startsWith("execute") || name.equals("addBatch"))) {
                 List<String> values=new ArrayList<>(SOURCES.get());
-                for(String text:strings.values()) for(var s:V3SensitiveAccount.identifiers(text)) values.add(s.value());
+                for(String text:strings.values()) values.addAll(SecretSanitizer.values(text));
                 // Profile key/value is a split semantic payload. Never join identity/UUID bindings
                 // with evidence text: that could mistake source identifiers for account values.
                 if(sql.toLowerCase(java.util.Locale.ROOT).contains("into user_profile")) {
@@ -84,6 +84,7 @@ public final class SensitivePersistenceGuard {
                         for(int i=0;i<columns.length;i++) if(columns[i].trim().matches("category|prop_key|prop_value"))
                             fields.add(strings.getOrDefault(i+1,"").replaceAll("(?i)(account|login|user)_id", "$1 id"));
                         for(var s:V3SensitiveAccount.identifiers(String.join(" ",fields))) values.add(s.value());
+                        values.addAll(SecretSanitizer.values(String.join(" ",fields)));
                     }
                 }
                 for(var entry:strings.entrySet()) {
@@ -100,15 +101,13 @@ public final class SensitivePersistenceGuard {
                     && (method.getName().startsWith("execute") || method.getName().equals("addBatch"))) {
                 List<String> values=new ArrayList<>(SOURCES.get());
                 var literals=Pattern.compile("'(?:''|[^'])*'").matcher(sql);
-                while(literals.find()) for(var s:V3SensitiveAccount.identifiers(literals.group())) values.add(s.value());
+                while(literals.find()) values.addAll(SecretSanitizer.values(literals.group()));
                 args=args.clone();args[0]=redact(sql,values);
             }
             return invoke(actual,method,args);
         });
     }
     private static String redact(String text,List<String> values) {
-        String clean=text;
-        for(String value:values) clean=Pattern.compile(Pattern.quote(value),Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(clean).replaceAll(REDACTED);
-        return clean;
+        return SecretSanitizer.sanitize(text, values);
     }
 }

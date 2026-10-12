@@ -24,7 +24,7 @@ public class SqliteSessionStore implements SessionStore {
     private final Logger logger;
 
     public SqliteSessionStore(JdbcTemplate jdbc, ObjectMapper mapper, Logger logger) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.mapper = mapper;
         this.logger = logger;
     }

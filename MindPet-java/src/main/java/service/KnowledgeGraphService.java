@@ -45,6 +45,9 @@ import java.util.regex.Pattern;
 @Service
 public class KnowledgeGraphService {
 
+    private record TurnTaskPayload(String userId, String sessionId, String userMessage,
+                                   String assistantMessage, String emotion, Instant occurredAt) {}
+
     private static final double RETENTION_MIN = 0.1;
     private static final double LTM_IMPORTANCE_THRESHOLD = 0.35;
     private static final double LTM_CONFIDENCE_THRESHOLD = 0.45;
@@ -263,6 +266,13 @@ public class KnowledgeGraphService {
     private final Logger logger;
     private KnowledgeGraphRetrievalService retrieval;
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    private org.springframework.transaction.support.TransactionTemplate taskTransaction;
+    private final ThreadLocal<Map<String, float[]>> taskEntityVectors = new ThreadLocal<>();
+
+    @Autowired
+    public void configureTaskTransactions(org.springframework.transaction.PlatformTransactionManager manager) {
+        taskTransaction = new org.springframework.transaction.support.TransactionTemplate(manager);
+    }
 
     public KnowledgeGraphService(
             JdbcTemplate jdbc,
@@ -305,25 +315,182 @@ public class KnowledgeGraphService {
     public boolean onCompletedTurn(String userId, String sessionId,
                                    String userMessage, String assistantMessage,
                                    String emotion, Instant occurredAt) {
-        if (isBlank(userId) || isBlank(userMessage) || !chatClientFactory.isConfigured()) return false;
+        return onCompletedTurnWithId(userId, null, sessionId, userMessage, assistantMessage, emotion, occurredAt);
+    }
+
+    public boolean onCompletedTurnWithId(String userId, String turnId, String sessionId,
+                                         String userMessage, String assistantMessage,
+                                         String emotion, Instant occurredAt) {
+        if (isBlank(userId) || isBlank(userMessage)) return false;
         String safeSessionId = sessionId == null ? "" : sessionId;
-        String turnHash = sha256(userId + "\n" + safeSessionId + "\n" + userMessage + "\n" + assistantMessage);
-        if (isIngested(turnHash) || !inFlight.add(turnHash)) return false;
+        String turnHash = sha256(userId + "\n" + safeSessionId + "\n" + (isBlank(turnId)
+            ? userMessage + "\n" + assistantMessage : "turn:" + turnId));
+        List<String> secrets = service.v3.SecretSanitizer.values(userMessage);
+        String cleanUser = service.v3.SecretSanitizer.sanitize(userMessage, secrets);
+        String cleanAssistant = service.v3.SecretSanitizer.sanitize(assistantMessage, secrets);
+        Instant taskOccurredAt = occurredAt == null ? Instant.now() : occurredAt;
+        jdbc.update("INSERT INTO kg_turn_task(turn_hash,user_id,session_id,user_message,assistant_message,emotion,occurred_at,status,stage,next_attempt_at) "
+                + "VALUES(?,?,?,?,?,?,?,'pending','EXTRACTION',?) ON CONFLICT(turn_hash) DO NOTHING",
+            turnHash, userId, safeSessionId, cleanUser, cleanAssistant, emotion,
+            taskOccurredAt.toString(), Instant.now().toString());
+        return submitTurnTask(turnHash, new TurnTaskPayload(userId, safeSessionId, cleanUser,
+            cleanAssistant, emotion, taskOccurredAt));
+    }
+
+    private boolean submitTurnTask(String turnHash) {
+        return submitTurnTask(turnHash, null);
+    }
+
+    private boolean submitTurnTask(String turnHash, TurnTaskPayload fallbackPayload) {
+        if (!chatClientFactory.isConfigured()) return false;
+        if (!inFlight.add(turnHash)) return false;
         try {
             executor.execute(() -> {
-                try {
-                    processCompletedTurn(userId, safeSessionId, turnHash, userMessage,
-                        assistantMessage, emotion, occurredAt, false);
-                } catch (Exception e) {
-                    logger.log("WARN", "Knowledge graph extraction failed: " + e.getMessage());
-                } finally {
-                    inFlight.remove(turnHash);
-                }
+                try { runTurnTask(turnHash, fallbackPayload); }
+                finally { inFlight.remove(turnHash); }
             });
             return true;
-        } catch (Exception e) {
+        } catch (Exception error) {
             inFlight.remove(turnHash);
-            logger.log("WARN", "Knowledge graph task submission failed: " + e.getMessage());
+            // Submission did not start execution; retain the persisted pending job.
+            logger.log("WARN", "KG task submission deferred: " + error.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${memory.kg.task-retry-interval-ms:10000}")
+    public void recoverDueTurnTasks() {
+        if (!chatClientFactory.isConfigured()) return;
+        List<String> due = jdbc.query("SELECT turn_hash FROM kg_turn_task WHERE status IN ('pending','retry_wait') "
+                + "AND attempts<3 AND julianday(next_attempt_at)<=julianday(?) ORDER BY next_attempt_at LIMIT 8",
+            (rs, row) -> rs.getString(1), Instant.now().toString());
+        for (String hash : due) submitTurnTask(hash);
+    }
+
+    public Map<String, Object> turnTaskStatus(String userId) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        for (String state : List.of("pending", "running", "retry_wait", "completed", "failed")) {
+            status.put(state, jdbc.queryForObject("SELECT COUNT(*) FROM kg_turn_task WHERE user_id=? AND status=?", Long.class, userId, state));
+        }
+        status.put("failures", jdbc.queryForList("SELECT turn_hash,stage,attempts,error_code FROM kg_turn_task WHERE user_id=? AND status='failed' ORDER BY updated_at", userId));
+        return status;
+    }
+
+    public int pendingTurnTaskCount(String userId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM kg_turn_task WHERE user_id=? AND status IN ('pending','running','retry_wait')", Integer.class, userId);
+        return count == null ? 0 : count;
+    }
+
+    private void runTurnTask(String hash, TurnTaskPayload fallbackPayload) {
+        int claimed = jdbc.update("UPDATE kg_turn_task SET status='running',attempts=attempts+1,updated_at=? "
+                + "WHERE turn_hash=? AND status IN ('pending','retry_wait') AND attempts<3 AND julianday(next_attempt_at)<=julianday(?)",
+            Instant.now().toString(), hash, Instant.now().toString());
+        if (claimed == 0) return;
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(180);
+        String stage = "EXTRACTION";
+        String userId = fallbackPayload == null ? null : fallbackPayload.userId();
+        String session = fallbackPayload == null ? null : fallbackPayload.sessionId();
+        String user = fallbackPayload == null ? null : fallbackPayload.userMessage();
+        String assistant = fallbackPayload == null ? null : fallbackPayload.assistantMessage();
+        String emotion = fallbackPayload == null ? null : fallbackPayload.emotion();
+        Instant occurred = fallbackPayload == null ? null : fallbackPayload.occurredAt();
+        int attemptsUsed = 1;
+        String extractionJson = null;
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM kg_turn_task WHERE turn_hash=?", hash);
+            if (rows.isEmpty()) throw new IllegalStateException("KG task record missing after claim");
+            Map<String, Object> row = rows.get(0);
+            userId = String.valueOf(row.get("user_id"));
+            session = String.valueOf(row.get("session_id"));
+            user = String.valueOf(row.get("user_message"));
+            assistant = String.valueOf(row.get("assistant_message"));
+            emotion = row.get("emotion") == null ? "neutral" : String.valueOf(row.get("emotion"));
+            occurred = Instant.parse(String.valueOf(row.get("occurred_at")));
+            attemptsUsed = row.get("attempts") instanceof Number n ? n.intValue() : attemptsUsed;
+            TurnTaskPayload taskPayload = new TurnTaskPayload(userId, session, user, assistant, emotion, occurred);
+            stage = String.valueOf(row.get("stage"));
+            extractionJson = row.get("extraction_json") == null ? null : String.valueOf(row.get("extraction_json"));
+            Extraction extraction;
+            if (extractionJson == null) {
+                extraction = extract(userId, user, assistant, deadline);
+                extractionJson = mapper.writeValueAsString(extraction);
+                int saved = jdbc.update("UPDATE kg_turn_task SET extraction_json=?,stage='KG_PERSISTENCE',updated_at=? WHERE turn_hash=?",
+                    extractionJson, Instant.now().toString(), hash);
+                if (saved == 0) throw new IllegalStateException("KG task record disappeared after extraction");
+                stage = "KG_PERSISTENCE";
+            } else extraction = mapper.readValue(extractionJson, Extraction.class);
+            if (!"LTM_PERSISTENCE".equals(stage)) {
+                stage = "KG_PERSISTENCE";
+                if (taskTransaction == null) throw new IllegalStateException("KG transaction manager unavailable");
+                Extraction accepted = extraction;
+                // Prepare network-dependent vectors before taking SQLite's write transaction.
+                Map<String, float[]> entityVectors = new HashMap<>();
+                for (EntityCandidate entity : extraction.entities()) {
+                    if (System.nanoTime() >= deadline) break;
+                    if (!"user".equals(normalizeName(entity.name())))
+                        entityVectors.put(normalizeName(entity.name()), embeddingService.embed(entity.name() + " " + entity.summary()));
+                }
+                taskEntityVectors.set(entityVectors);
+                // A partially written graph cannot acquire an ingest marker. Commit stage and graph together.
+                try {
+                    taskTransaction.executeWithoutResult(tx -> {
+                        persist(taskPayload.userId(), taskPayload.sessionId(), hash,
+                            taskPayload.userMessage(), taskPayload.assistantMessage(), accepted, taskPayload.occurredAt());
+                        int moved = jdbc.update("UPDATE kg_turn_task SET stage='LTM_PERSISTENCE',updated_at=? WHERE turn_hash=?",
+                            Instant.now().toString(), hash);
+                        if (moved == 0) throw new IllegalStateException("KG task record disappeared during persistence");
+                    });
+                } finally { taskEntityVectors.remove(); }
+            }
+            stage = "LTM_PERSISTENCE";
+            if (System.nanoTime() >= deadline) throw new IllegalStateException("KG task execution budget reached");
+            if (extraction.shouldPersistMemory()) memoryService.appendTurnOnce(userId, session, user,
+                extraction.importance(), extraction.confidence(), emotion, occurred, hash);
+            int completed = jdbc.update("UPDATE kg_turn_task SET status='completed',stage='DONE',error_code='',updated_at=? WHERE turn_hash=?",
+                Instant.now().toString(), hash);
+            if (completed == 0) throw new IllegalStateException("KG task record disappeared before completion");
+        } catch (Exception error) {
+            TurnTaskPayload payload = userId == null ? fallbackPayload
+                : new TurnTaskPayload(userId, session, user, assistant, emotion, occurred);
+            boolean recorded = recordTurnTaskFailure(hash, payload, stage, attemptsUsed, extractionJson, error);
+            logger.log("WARN", "KG task stage failed: " + stage + "; " + error.getClass().getSimpleName()
+                + "; failure_recorded=" + recorded);
+        }
+    }
+
+    private boolean recordTurnTaskFailure(String hash, TurnTaskPayload payload, String stage,
+            int attemptsUsed, String extractionJson, Exception error) {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT status,attempts FROM kg_turn_task WHERE turn_hash=?", hash);
+            if (!rows.isEmpty() && "completed".equals(String.valueOf(rows.get(0).get("status")))) return true;
+            int used = attemptsUsed;
+            if (!rows.isEmpty() && rows.get(0).get("attempts") instanceof Number n) {
+                used = Math.max(used, n.intValue());
+            }
+            String nextStatus = used >= 3 ? "failed" : "retry_wait";
+            String errorCode = error.getClass().getSimpleName();
+            Throwable cause=error;
+            while(cause.getCause()!=null && cause.getCause()!=cause) cause=cause.getCause();
+            if(cause instanceof java.sql.SQLException sql) errorCode += ":sql_state="+sql.getSQLState()+":code="+sql.getErrorCode();
+            Instant now = Instant.now();
+            String nextAttempt = now.plusSeconds(Math.min(120, 10L << Math.min(used, 3))).toString();
+            if (rows.isEmpty()) {
+                if (payload == null) return false;
+                int inserted = jdbc.update("INSERT INTO kg_turn_task(turn_hash,user_id,session_id,user_message,assistant_message,emotion,occurred_at,status,stage,attempts,extraction_json,next_attempt_at,error_code,updated_at) "
+                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(turn_hash) DO NOTHING",
+                    hash, payload.userId(), payload.sessionId(), payload.userMessage(), payload.assistantMessage(),
+                    payload.emotion(), payload.occurredAt().toString(), nextStatus, stage, used,
+                    extractionJson, nextAttempt, errorCode, now.toString());
+                if (inserted > 0) return true;
+            }
+            int updated = jdbc.update("UPDATE kg_turn_task SET status=?,stage=?,attempts=?,extraction_json=?,error_code=?,next_attempt_at=?,updated_at=? "
+                    + "WHERE turn_hash=? AND status<>'completed'",
+                nextStatus, stage, used, extractionJson, errorCode, nextAttempt, now.toString(), hash);
+            return updated > 0;
+        } catch (Exception recordingError) {
+            logger.log("WARN", "KG task failure state could not be recorded: "
+                + recordingError.getClass().getSimpleName());
             return false;
         }
     }
@@ -356,8 +523,8 @@ public class KnowledgeGraphService {
         boolean ltmAttempted = extraction.shouldPersistMemory();
         if (ltmAttempted) {
             try {
-                memoryService.appendTurn(userId, sessionId, userMessage,
-                    extraction.importance(), extraction.confidence(), emotion, occurredAt);
+                memoryService.appendTurnOnce(userId, sessionId, userMessage,
+                    extraction.importance(), extraction.confidence(), emotion, occurredAt, turnHash);
             } catch (Exception exception) {
                 throw new CompletedTurnFailure(
                     "LTM_PERSISTENCE", "LTM_APPEND_FAILED", "Long-term memory append failed", exception);
@@ -452,12 +619,17 @@ public class KnowledgeGraphService {
     }
 
     private Extraction extract(String userId, String userMessage, String assistantMessage) throws Exception {
-        V3ReferenceResolution.Plan referencePlan = resolveReferences(userId, userMessage);
+        return extract(userId, userMessage, assistantMessage, 0);
+    }
+
+    private Extraction extract(String userId, String userMessage, String assistantMessage,
+            long deadlineNanos) throws Exception {
+        V3ReferenceResolution.Plan referencePlan = resolveReferences(userId, userMessage, deadlineNanos);
         String data = "USER MESSAGE:\n" + truncate(userMessage, 5000)
             + "\n\nASSISTANT REPLY (context only):\n" + truncate(assistantMessage, 3000)
             + resolutionCandidateContext(userId, userMessage)
             + referencePlan.extractionContext();
-        var spec = chatClientFactory.build().prompt()
+        var spec = chatClientFactory.buildBackground(backgroundTimeoutMillis(deadlineNanos)).prompt()
             .system(EXTRACTION_PROMPT).user(data);
         spec = chatClientFactory.applyCurrentModel(spec);
         String raw = spec.call().content();
@@ -465,11 +637,11 @@ public class KnowledgeGraphService {
         if (!isBlank(userId) && V3ReferenceResolution.needsResolution(userMessage)) {
             primary.kgFilterDiagnostics().diagnosticReasonCodes().add("REFERENCE_RESOLUTION_CALLED");
         }
-        return recoverOmittedRelations(raw, primary, referencePlan, userMessage);
+        return recoverOmittedRelations(raw, primary, referencePlan, userMessage, deadlineNanos);
     }
 
     private Extraction recoverOmittedRelations(String primaryRaw, Extraction primary,
-            V3ReferenceResolution.Plan plan, String currentMessage) throws Exception {
+            V3ReferenceResolution.Plan plan, String currentMessage, long deadlineNanos) throws Exception {
         Map<String, V3RelationRecovery.Endpoint> universe = new LinkedHashMap<>();
         universe.put("user", new V3RelationRecovery.Endpoint("user", "person", List.of()));
         for (EntityCandidate entity : primary.entities()) {
@@ -490,7 +662,8 @@ public class KnowledgeGraphService {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("currentMessage", truncate(currentMessage, 5000));
         request.put("endpoints", endpoints);
-        var spec = chatClientFactory.build().prompt().system(V3RelationRecovery.PROMPT)
+        var spec = chatClientFactory.buildBackground(backgroundTimeoutMillis(deadlineNanos)).prompt()
+            .system(V3RelationRecovery.PROMPT)
             .user(mapper.writeValueAsString(request));
         spec = chatClientFactory.applyCurrentModel(spec);
         // Infrastructure failures propagate; only malformed recovery output falls back to the primary result.
@@ -532,11 +705,20 @@ public class KnowledgeGraphService {
             recovered.semanticEvents());
     }
 
+    private long backgroundTimeoutMillis(long deadlineNanos) throws java.util.concurrent.TimeoutException {
+        if (deadlineNanos <= 0) return 60_000;
+        long remaining = deadlineNanos - System.nanoTime();
+        if (remaining <= 0) throw new java.util.concurrent.TimeoutException("KG task execution budget reached");
+        return Math.max(1, Math.min(60_000,
+            java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining)));
+    }
+
     /**
      * A second model call is deliberately conditional: ordinary turns retain the original one-call path.
      * An unavailable resolver must not turn an otherwise valid memory write into an infrastructure failure.
      */
-    private V3ReferenceResolution.Plan resolveReferences(String userId, String userMessage) {
+    private V3ReferenceResolution.Plan resolveReferences(String userId, String userMessage,
+            long deadlineNanos) throws Exception {
         if (isBlank(userId) || !V3ReferenceResolution.needsResolution(userMessage)) {
             return V3ReferenceResolution.Plan.empty();
         }
@@ -545,13 +727,16 @@ public class KnowledgeGraphService {
             Map<String, Object> request = new LinkedHashMap<>();
             request.put("userMessage", truncate(userMessage, 5000));
             request.put("candidates", candidates);
-            var spec = chatClientFactory.build().prompt().system(REFERENCE_RESOLUTION_PROMPT)
+            var spec = chatClientFactory.buildBackground(backgroundTimeoutMillis(deadlineNanos))
+                .prompt().system(REFERENCE_RESOLUTION_PROMPT)
                 .user(mapper.writeValueAsString(request));
             spec = chatClientFactory.applyCurrentModel(spec);
+            String resolutionRaw = spec.call().content();
             V3ReferenceResolution.Plan plan =
-                V3ReferenceResolution.parse(mapper, spec.call().content(), userMessage, candidates);
+                V3ReferenceResolution.parse(mapper, resolutionRaw, userMessage, candidates);
             return V3ReferenceResolution.completeTypedReferences(plan, userMessage, candidates);
         } catch (Exception exception) {
+            if (deadlineNanos > 0 && System.nanoTime() >= deadlineNanos) throw exception;
             // Do not include provider text here: it can contain request metadata. Extraction can safely continue.
             logger.log("WARN", "Reference-resolution stage unavailable; continuing without identity bindings");
             return V3ReferenceResolution.Plan.empty();
@@ -1428,8 +1613,8 @@ public class KnowledgeGraphService {
         }
 
         String id = UUID.randomUUID().toString();
-        float[] vector = "user".equals(normalized) ? null
-            : embeddingService.embed(candidate.name() + " " + candidate.summary());
+        float[] vector = "user".equals(normalized) ? null : taskEntityVectors.get() != null
+            ? taskEntityVectors.get().get(normalized) : embeddingService.embed(candidate.name() + " " + candidate.summary());
         jdbc.update(
             "INSERT INTO kg_entity(id,user_id,normalized_name,display_name,entity_type,summary,embedding,importance) "
                 + "VALUES (?,?,?,?,?,?,?,?)",
@@ -1471,6 +1656,7 @@ public class KnowledgeGraphService {
             (rs, rowNum) -> rs.getString("id"), userId, sourceId, targetId, candidate.predicate());
         if (!existing.isEmpty()) {
             String id = existing.get(0);
+            // Reinforcement of an existing identical edge is independent of lifecycle retirement.
             jdbc.update(
                 "UPDATE kg_relation SET confidence=((confidence*mention_count)+?)/(mention_count+1), "
                     + "importance=((importance*mention_count)+?)/(mention_count+1), "
@@ -1499,6 +1685,7 @@ public class KnowledgeGraphService {
                                    String targetId, RelationCandidate candidate, String turnHash,
                                    String sessionId, String userMessage, String assistantMessage,
                                    Instant referenceTime) {
+
         // An event-conditioned transition is not a completed replacement of the current fact.
         if ("FUTURE".equals(candidate.temporalStatus())) return;
         String priorStatus = switch (candidate.factResolution()) {
@@ -1729,10 +1916,17 @@ public class KnowledgeGraphService {
 
     private void initializeSchema() {
         try {
+            jdbc.execute("CREATE TABLE IF NOT EXISTS kg_turn_task (turn_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,session_id TEXT NOT NULL,"
+                + "user_message TEXT NOT NULL,assistant_message TEXT,emotion TEXT,occurred_at TEXT NOT NULL,"
+                + "status TEXT NOT NULL,stage TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,extraction_json TEXT,"
+                + "next_attempt_at TEXT NOT NULL,error_code TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL DEFAULT '')");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_kg_task_due ON kg_turn_task(status,next_attempt_at)");
+            // Process restart releases the old worker; completed stages remain durable and resumable.
+            jdbc.update("UPDATE kg_turn_task SET status=CASE WHEN attempts>=3 THEN 'failed' ELSE 'retry_wait' END,next_attempt_at=? WHERE status='running'", Instant.now().toString());
             jdbc.queryForObject("SELECT COUNT(*) FROM kg_entity", Integer.class);
             logger.log("INFO", "Knowledge graph storage ready -> SQLite");
         } catch (Exception e) {
-            logger.log("ERROR", "Knowledge graph schema initialization failed: " + e.getMessage());
+            throw new IllegalStateException("Knowledge graph schema initialization failed", e);
         }
     }
 
@@ -1758,7 +1952,7 @@ public class KnowledgeGraphService {
     }
 
     private boolean looksSensitive(String value) {
-        if (V3SensitiveAccount.containsIdentifier(value)) return true;
+        if (MemoryContentSafety.looksSensitive(value)) return true;
         String lower = value.toLowerCase(Locale.ROOT);
         return lower.contains("api key") || lower.contains("apikey") || lower.contains("password")
             || lower.contains("token") || lower.contains("cookie") || lower.matches(".*\\bsk-[a-z0-9_-]{12,}.*");

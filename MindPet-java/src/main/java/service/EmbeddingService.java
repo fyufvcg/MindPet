@@ -170,6 +170,7 @@ public class EmbeddingService {
 
     public float[] embed(String text) {
         if (text == null || text.isBlank()) return null;
+        text = service.v3.SecretSanitizer.sanitize(text);
         String provider = activeProvider;
         if (provider == null) {
             logger.log("ERROR", "Embedding 不可用（无 provider）: " + hint());

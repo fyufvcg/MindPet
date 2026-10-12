@@ -70,12 +70,36 @@ public class DynamicChatClientFactory {
         return builder.build();
     }
 
+    /** Background work has a finite HTTP deadline and delegates retries to persisted tasks. */
+    public ChatClient buildBackground() {
+        return buildBackground(60_000);
+    }
+
+    /** Builds a background client whose total HTTP call timeout fits the caller's remaining budget. */
+    public ChatClient buildBackground(long timeoutMillis) {
+        long boundedTimeoutMs = Math.max(1, Math.min(60_000, timeoutMillis));
+        okhttp3.OkHttpClient http = new okhttp3.OkHttpClient.Builder()
+            .connectTimeout(Math.min(10_000, boundedTimeoutMs), java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(Math.min(50_000, boundedTimeoutMs), java.util.concurrent.TimeUnit.MILLISECONDS)
+            .writeTimeout(Math.min(15_000, boundedTimeoutMs), java.util.concurrent.TimeUnit.MILLISECONDS)
+            .callTimeout(boundedTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+        var rest = org.springframework.web.client.RestClient.builder()
+            .requestFactory(new org.springframework.http.client.OkHttp3ClientHttpRequestFactory(http));
+        OpenAiApi api = OpenAiApi.builder().baseUrl(effectiveBaseUrl()).apiKey(effectiveApiKey())
+            .completionsPath(completionsPath).restClientBuilder(rest).build();
+        var options = OpenAiChatOptions.builder().model(effectiveModel());
+        if (effectiveModel().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) options.temperature(null);
+        var model = OpenAiChatModel.builder().openAiApi(api).defaultOptions(options.build())
+            .retryTemplate(org.springframework.retry.support.RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build();
+        return ChatClient.builder(model).defaultAdvisors(new ToolCallLimitAdvisor(logger)).build();
+    }
+
     public ChatClient build() {
         if (!dynamicConfig.hasOverride()) return staticBuilder.build();
 
         String key = dynamicConfig.getApiKey();
         String url = effectiveBaseUrl();
-        String fingerprint = url + "|" + key;
+        String fingerprint = url + "|" + key + "|" + effectiveModel();
         ChatClient current = cachedDynamicClient;
         if (current != null && fingerprint.equals(cachedFingerprint)) return current;
 
@@ -86,11 +110,15 @@ public class DynamicChatClientFactory {
                     .apiKey(key)
                     .completionsPath(completionsPath)
                     .build();
-                OpenAiChatModel model = OpenAiChatModel.builder().openAiApi(api).build();
+                var options = OpenAiChatOptions.builder().model(effectiveModel());
+                if (effectiveModel().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) {
+                    options.temperature(null);
+                }
+                OpenAiChatModel model = OpenAiChatModel.builder().openAiApi(api)
+                    .defaultOptions(options.build()).build();
                 cachedDynamicClient = ChatClient.builder(model)
                     .defaultAdvisors(new org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor(),
-                        new ToolCallLimitAdvisor(logger))
-                    .build();
+                        new ToolCallLimitAdvisor(logger)).build();
                 cachedFingerprint = fingerprint;
             }
             return cachedDynamicClient;

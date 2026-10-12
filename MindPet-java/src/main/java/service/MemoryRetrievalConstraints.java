@@ -89,6 +89,7 @@ public final class MemoryRetrievalConstraints {
         // case identifiers improve ranking but must not filter the other requested facts.
         if (Pattern.compile("(?:另外|此外|同时|以及|还有|并且|和|与).*(?:偏好|习惯|工具|负责人|通知|阅读|集合|标记)")
                 .matcher(q).find()) return false;
+        if (q.matches("(?s).*[，,；;？?].*(?:时间|空闲|有空|后来|有效|到期|工作|职责|谁|什么).*")) return false;
         return !anchors(q).isEmpty() || q.contains("另一项");
     }
 }

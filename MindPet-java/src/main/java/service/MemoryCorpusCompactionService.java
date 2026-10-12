@@ -47,6 +47,18 @@ public class MemoryCorpusCompactionService {
     public record RoutedUnit(RetrievalUnit unit, int vectorRank, int keywordRank, double lexical,
                              double distance, double preference) { }
 
+    public long missingVectorCount(String userId) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM memory_retrieval_unit WHERE user_id=? AND searchable=1 "
+            + "AND status IN ('active','historical') AND unit_type IN ('fact','insight','growth') AND embedding IS NULL", Long.class, userId);
+        return count == null ? 0 : count;
+    }
+
+    public List<String> usersWithMissingVectors(int limit) {
+        return jdbc.query("SELECT DISTINCT user_id FROM memory_retrieval_unit WHERE searchable=1 "
+            + "AND status IN ('active','historical') AND unit_type IN ('fact','insight','growth') AND embedding IS NULL ORDER BY user_id LIMIT ?",
+            (rs,row) -> rs.getString(1), limit);
+    }
+
     public MemoryCorpusCompactionService(JdbcTemplate jdbc, VectorSearchService vectorSearch, Logger logger) {
         this(jdbc, vectorSearch, logger, MemoryRetrievalPolicy.defaults());
     }
@@ -54,7 +66,7 @@ public class MemoryCorpusCompactionService {
     @Autowired
     public MemoryCorpusCompactionService(JdbcTemplate jdbc, VectorSearchService vectorSearch, Logger logger,
                                          MemoryRetrievalPolicy retrievalPolicy) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.vectorSearch = vectorSearch;
         this.logger = logger;
         this.retrievalPolicy = retrievalPolicy;

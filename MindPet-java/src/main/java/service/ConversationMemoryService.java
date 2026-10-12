@@ -24,7 +24,7 @@ public class ConversationMemoryService {
     private record StoredMemoryRow(long id, Map<String, Object> payload) {}
 
     public ConversationMemoryService(JdbcTemplate jdbc, ObjectMapper mapper, Logger logger) {
-        this.jdbc = jdbc;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc);
         this.mapper = mapper;
         this.logger = logger;
     }

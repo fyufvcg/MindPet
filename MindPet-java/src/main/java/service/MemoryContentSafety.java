@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 public final class MemoryContentSafety {
 
     private static final Pattern SECRET_LABEL = Pattern.compile(
-        "(?i)(api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passwd|cookie|验证码|短信码|密码|密钥|访问令牌|身份证|银行卡|卡号)"
+        "(?i)(api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passwd|cookie|验证码|短信码|口令|passphrase|密码|密钥|访问令牌|身份证|银行卡|卡号)"
     );
     private static final Pattern SECRET_TOKEN = Pattern.compile(
         "(?i)(?:\\bsk-[a-z0-9_-]{12,}\\b|\\bbearer\\s+[a-z0-9._-]{12,}\\b)"
@@ -38,7 +38,8 @@ public final class MemoryContentSafety {
     public static boolean looksSensitive(String value) {
         if (value == null || value.isBlank()) return false;
         String normalized = value.toLowerCase(Locale.ROOT);
-        return service.v3.V3SensitiveAccount.containsIdentifier(value)
+        return !service.v3.SecretSanitizer.values(value).isEmpty()
+            || service.v3.V3SensitiveAccount.containsIdentifier(value)
             || SECRET_LABEL.matcher(normalized).find()
             || SECRET_TOKEN.matcher(normalized).find()
             || NATIONAL_ID.matcher(normalized).find()

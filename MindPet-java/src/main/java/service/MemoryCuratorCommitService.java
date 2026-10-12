@@ -75,8 +75,30 @@ public class MemoryCuratorCommitService {
             if (details.stream().anyMatch(d -> section.equals(d.get("section")) && itemIndex==((Number)d.get("item_index")).intValue()
                     && sourceIndex==((Number)d.get("source_index")).intValue() && reason.equals(d.get("reason_code")))) return;
             values.merge(reason, 1, Integer::sum);
-            details.add(Map.of("section",section,"item_index",itemIndex,"source_index",sourceIndex,
+            Map<String,Object> detail = new LinkedHashMap<>(Map.of("section",section,"item_index",itemIndex,"source_index",sourceIndex,
                 "turn_id",turnId,"quote",MemoryContentSafety.looksSensitive(quote)?"[redacted]":quote,"reason_code",reason));
+            if (Set.of("fact_value_not_in_evidence", "ambiguous_value_occurrence", "polarity_mismatch_or_uncertainty",
+                    "predicate_evidence_insufficient", "dependency_slot_pending").contains(reason))
+                detail.put("support_rule_version", MemoryCuratorFactSupport.RULE_VERSION);
+            details.add(detail);
+        }
+
+        void supportFailure(String subreason) {
+            add("predicate_evidence_insufficient");
+            if (!details.isEmpty()) {
+                Map<String,Object> detail = new LinkedHashMap<>(details.get(details.size()-1));
+                detail.put("support_subreason", subreason);
+                detail.put("support_rule_version", MemoryCuratorFactSupport.RULE_VERSION);
+                details.set(details.size()-1, detail);
+            }
+        }
+
+        void dependency(List<String> blockers, String slot) {
+            add("dependency_slot_pending");
+            Map<String,Object> detail = new LinkedHashMap<>(details.get(details.size()-1));
+            detail.put("blocking_item_ids", List.copyOf(new LinkedHashSet<>(blockers)));
+            detail.put("transition_slot", slot);
+            details.set(details.size()-1, detail);
         }
 
         Map<String, Integer> snapshot() { return new LinkedHashMap<>(values); }
@@ -226,7 +248,7 @@ public class MemoryCuratorCommitService {
                         start, end, sourceTime.precision(), sourceTime.status(), observed.turnId(),
                         MemoryContentSafety.normalizeEvidence(mention.evidence()), sequenceById.getOrDefault(observed.turnId(), 0L));
                     preparedFacts.add(new PreparedFact(candidate, List.of(mention), proposedAction, replacesUnitIds,
-                        text(fact.get("retrieval_text"))));
+                        text(fact.get("retrieval_text")), ((Number)fact.get("_item_index")).intValue()));
                 }
             }
         } else if (factsValue != null) {
@@ -234,25 +256,38 @@ public class MemoryCuratorCommitService {
         }
         saveInsights(userId, proposal.get("insights"), byId, embeddings, rejectionCounts, targetSequence, false);
         saveGrowth(userId, proposal.get("growth"), byId, embeddings, rejectionCounts, targetSequence, false);
-        // Do not apply only half of an unresolved transition in the same state slot.
+        // Block only other items sharing an unresolved transition. A rejected item is already
+        // diagnosed; labelling it as its own dependency hides the actual validation failure.
         if (allowPartial.get() && factsValue instanceof List<?> facts) {
-            Set<String> blockedSlots=new LinkedHashSet<>();
-            for(Map<String,Object> detail:rejectionCounts.details()) {
-                int at=((Number)detail.get("item_index")).intValue();
-                if (!"facts".equals(detail.get("section")) || at<0 || at>=facts.size() || !(facts.get(at) instanceof Map<?,?> raw)) continue;
-                String predicate=text(raw.get("predicate")), scope=text(raw.get("scope"));
-                String val=MemoryCuratorFactSupport.canonicalValue(predicate,text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value")));
-                boolean hasSupportedSource=preparedFacts.stream().anyMatch(p->p.candidate().predicate().equals(predicate)
-                    && p.candidate().value().equals(val) && p.candidate().scope().equals(scope));
-                if(!hasSupportedSource && (MemoryFactOntology.isProfileSlot(predicate) || Set.of("plan","event").contains(predicate)))
-                    blockedSlots.add(predicate+"|"+(Set.of("plan","event").contains(predicate)?val:scope));
+            Map<String,List<String>> blockers = new LinkedHashMap<>();
+            Set<Integer> invalidItems = new LinkedHashSet<>();
+            for (Map<String,Object> detail : rejectionCounts.details()) {
+                int at = ((Number) detail.get("item_index")).intValue();
+                if (!"facts".equals(detail.get("section")) || at < 0 || at >= facts.size()
+                        || !(facts.get(at) instanceof Map<?,?> raw)) continue;
+                String predicate = text(raw.get("predicate")), scope = text(raw.get("scope"));
+                String val = MemoryCuratorFactSupport.canonicalValue(predicate,
+                    text(raw.get("canonical_value") == null ? raw.get("value") : raw.get("canonical_value")));
+                boolean hasSupportedSource = preparedFacts.stream().anyMatch(p -> p.itemIndex() == at);
+                String slot = MemoryCuratorFactSupport.transitionSlot(predicate, scope, val);
+                if (!hasSupportedSource && !slot.isBlank()) {
+                    invalidItems.add(at);
+                    String key = text(raw.get("proposal_item_id"));
+                    if (key.isBlank()) key = "facts:" + targetSequence + ":" + at;
+                    blockers.computeIfAbsent(slot, k -> new ArrayList<>()).add(key);
+                }
             }
-            preparedFacts.removeIf(p->blockedSlots.contains(p.candidate().predicate()+"|"+
-                (Set.of("plan","event").contains(p.candidate().predicate())?p.candidate().value():p.candidate().scope())));
-            for(int at=0;at<facts.size();at++) if(facts.get(at) instanceof Map<?,?> raw
-                    && blockedSlots.contains(text(raw.get("predicate"))+"|"+(Set.of("plan","event").contains(text(raw.get("predicate")))
-                        ?MemoryCuratorFactSupport.canonicalValue(text(raw.get("predicate")),text(raw.get("canonical_value")==null?raw.get("value"):raw.get("canonical_value"))):text(raw.get("scope"))))) {
-                rejectionCounts.item("facts",at);rejectionCounts.add("dependency_slot_pending");
+            preparedFacts.removeIf(p -> blockers.containsKey(MemoryCuratorFactSupport.transitionSlot(
+                p.candidate().predicate(), p.candidate().scope(), p.candidate().value())));
+            for (int at = 0; at < facts.size(); at++) if (!invalidItems.contains(at)
+                    && facts.get(at) instanceof Map<?,?> raw) {
+                String predicate = text(raw.get("predicate"));
+                String slot = MemoryCuratorFactSupport.transitionSlot(predicate, text(raw.get("scope")),
+                    text(raw.get("canonical_value") == null ? raw.get("value") : raw.get("canonical_value")));
+                if (blockers.containsKey(slot)) {
+                    rejectionCounts.item("facts", at);
+                    rejectionCounts.dependency(blockers.get(slot), slot);
+                }
             }
         }
         preparedFacts.sort(Comparator.comparing((PreparedFact fact) -> fact.candidate().observedAt())
@@ -423,7 +458,9 @@ public class MemoryCuratorCommitService {
         String lastTurnId = turns.get(turns.size() - 1).turnId();
         long lastSequence = turnStore.sequenceFor(userId, lastTurnId);
         if (lastSequence <= 0) throw new IllegalStateException("馆长批次的末尾回合已不存在");
-        boolean unresolved=turnStore.pendingItems(userId).stream().anyMatch(item->((Number)item.get("batch_sequence")).longValue()==targetSequence);
+        boolean unresolved=turnStore.proposalItems(userId).stream().anyMatch(item ->
+            ((Number)item.get("batch_sequence")).longValue()==targetSequence
+                && Set.of("pending","failed").contains(String.valueOf(item.get("status"))));
         turnStore.markProcessed(userId, turns, unresolved?"partial":"success");
         if(targetSequence>=turnStore.checkpoint(userId))turnStore.saveCheckpoint(userId,Math.max(targetSequence,lastSequence),lastTurnId);
         if (corpusCompactionService != null) corpusCompactionService.completeBatch(userId, targetSequence);
@@ -660,31 +697,30 @@ public class MemoryCuratorCommitService {
                 continue;
             }
             String predicate=text(fact.get("predicate"));
-            String surface=MemoryValueNormalizer.findSurface(predicate,value,evidence);
-            if (fact.get("surface_values") instanceof List<?> surfaces && index<surfaces.size()) {
-                String specified=text(surfaces.get(index));
-                if (!specified.isBlank() && evidence.contains(specified)
-                        && MemoryCuratorFactSupport.equivalentSurface(predicate,value,specified)) surface=specified;
-                else surface="";
-            }
+            String hint = fact.get("surface_values") instanceof List<?> surfaces && index < surfaces.size()
+                ? text(surfaces.get(index)) : "";
+            String surface = MemoryCuratorFactSupport.sourceSurface(predicate, value, evidence, hint);
             if (surface.isBlank()) {
                 rejectionCounts.add("fact_value_not_in_evidence");
                 continue;
             }
-            if(evidence.indexOf(surface)!=evidence.lastIndexOf(surface)) {
+            if(!MemoryCuratorFactSupport.repeatedSurfaceSupported(predicate,evidence,surface,assertion,scope)) {
                 rejectionCounts.add("ambiguous_value_occurrence");continue;
             }
-            if (!MemoryEvidenceCoverage.hasPredicateCue(evidence,predicate)) {
-                String expanded=MemoryEvidenceCoverage.supportingSentence(turn.userMessage(),surface);
+            if (!MemoryCuratorFactSupport.hasPredicateCue(evidence,predicate)
+                    || (Set.of("plan", "event").contains(predicate) && !MemoryCuratorFactSupport.hasOpenDecision(evidence))) {
+                String expanded=MemoryCuratorFactSupport.supportingStatement(turn.userMessage(),surface);
                 if (!expanded.isBlank() && MemoryContentSafety.supportsExactEvidence(turn.userMessage(),expanded)) evidence=expanded;
             }
             rejectionCounts.source(index,turnId,evidence);
-            if (!MemoryContentSafety.polarityConsistent(evidence, surface, assertion, scope)) {
+            if (!MemoryCuratorFactSupport.polarityConsistent(evidence, surface, assertion, scope, predicate)) {
                 rejectionCounts.add("polarity_mismatch_or_uncertainty");
                 continue;
             }
-            if (!MemoryCuratorFactSupport.supports(evidence,new MemoryEvidenceCoverage.Evidence(predicate,value,scope,assertion,evidence,surface))) {
-                rejectionCounts.add("predicate_evidence_insufficient"); continue;
+            String supportReason = MemoryCuratorFactSupport.rejectionReason(evidence,
+                new MemoryEvidenceCoverage.Evidence(predicate,value,scope,assertion,evidence,surface));
+            if (!supportReason.isBlank()) {
+                rejectionCounts.supportFailure(supportReason); continue;
             }
             sources.add(new FactSource(turn, evidence,surface));
         }
@@ -781,7 +817,7 @@ public class MemoryCuratorCommitService {
 
     private record FactSource(CuratorTurnStore.CompletedTurn turn, String evidence,String surfaceValue) {}
     private record PreparedFact(MemoryFactService.FactCandidate candidate, List<FactSource> sources,
-                                String proposedAction, List<String> replacesUnitIds, String retrievalText) {}
+                                String proposedAction, List<String> replacesUnitIds, String retrievalText, int itemIndex) {}
 
     private static Double confidence(Object value) {
         if (value instanceof Number number) return number.doubleValue();

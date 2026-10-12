@@ -28,10 +28,10 @@ public class CuratorTurnStore {
     public record CompletedTurn(String turnId, String sessionId, String source,
                                 String userMessage, String assistantReply, String completedAt,
                                 String occurredAt, String eventTimezone) {}
-    private record LockValue(String token, long expiresAt) {}
+    private record LockValue(String token, long startedNanos) {}
 
     public CuratorTurnStore(JdbcTemplate jdbc, ObjectMapper mapper, Logger logger) {
-        this.jdbc = jdbc; this.mapper = mapper; this.logger = logger;
+        this.jdbc = service.v3.SensitivePersistenceGuard.protect(jdbc); this.mapper = mapper; this.logger = logger;
     }
 
     @Transactional
@@ -70,7 +70,7 @@ public class CuratorTurnStore {
                 userId, userId, MAX_STORED_TURNS);
             Long sequence = sequences.isEmpty() ? null : sequences.get(0);
             return sequence == null ? 0 : sequence;
-        } catch (Exception e) { logger.log("WARN", "记忆馆长回合写入失败: " + e.getMessage()); return 0; }
+        } catch (Exception e) { throw new IllegalStateException("Curator turn persistence failed", e); }
     }
 
     public long count(String userId) {
@@ -79,7 +79,7 @@ public class CuratorTurnStore {
     }
 
     public long pendingCount(String userId) {
-        Long value = jdbc.queryForObject("SELECT COUNT(*) FROM curator_turns WHERE user_id=? AND consolidation_status NOT IN ('success','partial')", Long.class, userId);
+        Long value = jdbc.queryForObject("SELECT COUNT(*) FROM curator_turns WHERE user_id=? AND consolidation_status NOT IN ('success','partial','failed')", Long.class, userId);
         return value == null ? 0 : value;
     }
 
@@ -110,10 +110,61 @@ public class CuratorTurnStore {
 
     public List<CompletedTurn> recentPending(String userId, int limit) {
         List<CompletedTurn> turns = jdbc.query("SELECT turn_id,session_id,source,user_message,assistant_reply,completed_at,occurred_at,event_timezone FROM curator_turns "
-                + "WHERE user_id=? AND consolidation_status NOT IN ('success','partial') ORDER BY sequence ASC LIMIT ?",
+                + "WHERE user_id=? AND consolidation_status NOT IN ('success','partial','failed') ORDER BY sequence ASC LIMIT ?",
             (rs, row) -> new CompletedTurn(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)), userId, limit);
         return turns;
+    }
+
+    /** Repairs read their actual sources, including sources outside the recent review window. */
+    public List<CompletedTurn> repairSources(String userId, long sequence, java.util.Collection<String> sourceIds) {
+        Map<String,CompletedTurn> selected = new java.util.LinkedHashMap<>();
+        for (CompletedTurn turn : recentAt(userId, sequence, 20)) selected.put(turn.turnId(), turn);
+        for (String id : sourceIds) {
+            List<CompletedTurn> source = jdbc.query("SELECT turn_id,session_id,source,user_message,assistant_reply,completed_at,occurred_at,event_timezone "
+                + "FROM curator_turns WHERE user_id=? AND turn_id=? AND sequence<=?",
+                (rs,row)->new CompletedTurn(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),
+                    rs.getString(5),rs.getString(6),rs.getString(7),rs.getString(8)),userId,id,sequence);
+            for (CompletedTurn turn : source) selected.put(turn.turnId(),turn);
+        }
+        return selected.values().stream().sorted(java.util.Comparator.comparingLong(t->sequenceFor(userId,t.turnId()))).toList();
+    }
+
+    /** Reopen old support failures once per rule version. Preserve content, diagnostics and retry history. */
+    @Transactional
+    public int reopenSupportFailures(String userId) {
+        int recovered=0;
+        for (Map<String,Object> row : jdbc.queryForList("SELECT item_key,diagnostics_json,attempts FROM curator_proposal_item "
+                + "WHERE user_id=? AND status='failed' AND (diagnostics_json LIKE '%predicate_evidence_insufficient%' "
+                + "OR diagnostics_json LIKE '%fact_value_not_in_evidence%' OR diagnostics_json LIKE '%ambiguous_value_occurrence%' "
+                + "OR diagnostics_json LIKE '%polarity_mismatch_or_uncertainty%')",userId)) {
+            try {
+                List<Map<String,Object>> diagnostics=mapper.readValue(String.valueOf(row.get("diagnostics_json")),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String,Object>>>(){});
+                boolean supportedFailure=diagnostics.stream().allMatch(d->List.of("predicate_evidence_insufficient","fact_value_not_in_evidence","ambiguous_value_occurrence",
+                    "polarity_mismatch_or_uncertainty","dependency_slot_pending").contains(String.valueOf(d.get("reason_code"))));
+                boolean currentVersion=diagnostics.stream().anyMatch(d->MemoryCuratorFactSupport.RULE_VERSION.equals(d.get("support_rule_version"))
+                    || MemoryCuratorFactSupport.RULE_VERSION.equals(d.get("recovery_rule_version")));
+                if (!supportedFailure || currentVersion) continue;
+                List<Map<String,Object>> updated=new java.util.ArrayList<>();
+                for(Map<String,Object> old:diagnostics) {
+                    Map<String,Object> d=new java.util.LinkedHashMap<>(old);
+                    d.put("recovery_rule_version",MemoryCuratorFactSupport.RULE_VERSION);
+                    d.put("previous_content_attempts",row.get("attempts"));updated.add(d);
+                }
+                recovered+=jdbc.update("UPDATE curator_proposal_item SET status='pending',attempts=0,diagnostics_json=?,updated_at=CURRENT_TIMESTAMP "
+                    + "WHERE user_id=? AND item_key=? AND status='failed'",mapper.writeValueAsString(updated),userId,row.get("item_key"));
+            } catch(Exception error) { throw new IllegalStateException("馆长规则版本恢复失败",error); }
+        }
+        return recovered;
+    }
+
+    public List<String> supportFailureUsers(int limit) {
+        return jdbc.query("SELECT DISTINCT user_id FROM curator_proposal_item WHERE status='failed' "
+            + "AND (diagnostics_json LIKE '%predicate_evidence_insufficient%' OR diagnostics_json LIKE '%fact_value_not_in_evidence%' "
+            + "OR diagnostics_json LIKE '%ambiguous_value_occurrence%' OR diagnostics_json LIKE '%polarity_mismatch_or_uncertainty%') "
+            + "AND diagnostics_json NOT LIKE ? LIMIT ?",
+            (rs,n)->rs.getString(1),"%"+MemoryCuratorFactSupport.RULE_VERSION+"%",limit);
     }
 
     public long sequenceFor(String userId, String turnId) {
@@ -141,7 +192,7 @@ public class CuratorTurnStore {
 
     public List<String> idlePendingUsers(Instant completedBefore, int limit) {
         return jdbc.query("SELECT t.user_id FROM curator_turns t LEFT JOIN curator_state s ON s.user_id=t.user_id "
-                + "WHERE t.consolidation_status NOT IN ('success','partial') AND julianday(t.completed_at)<=julianday(?) "
+                + "WHERE t.consolidation_status NOT IN ('success','partial','failed') AND julianday(t.completed_at)<=julianday(?) "
                 + "AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) "
                 + "GROUP BY t.user_id ORDER BY MIN(t.completed_at) LIMIT ?",
             (rs, row) -> rs.getString(1), completedBefore.toString(), Instant.now().toString(), limit);
@@ -166,16 +217,34 @@ public class CuratorTurnStore {
                     List<Map<String,Object>> problems = diagnostics.stream()
                         .filter(d -> section.equals(d.get("section")) && ((Number)d.getOrDefault("item_index",-1)).intValue()==at).toList();
                     String payload = mapper.writeValueAsString(items.get(index));
-                    // Sensitive items retain a reason and hash only; raw turns already retain their source.
+                    // Keep diagnostics without retaining sensitive proposal content.
                     if (MemoryContentSafety.looksSensitive(payload)) payload = "{\"redacted\":true}";
                     String key = items.get(index) instanceof Map<?,?> m && m.get("proposal_item_id") instanceof String id
                         ? id : section + ":" + sequence + ":" + index;
                     boolean terminal = !problems.isEmpty() && problems.stream().allMatch(d ->
                         String.valueOf(d.get("reason_code")).contains("sensitive") || String.valueOf(d.get("reason_code")).contains("oversized"));
-                    jdbc.update("INSERT INTO curator_proposal_item(user_id,item_key,batch_sequence,section,payload_json,status,diagnostics_json) "
-                        + "VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,item_key) DO UPDATE SET payload_json=excluded.payload_json,"
-                        + "status=excluded.status,diagnostics_json=excluded.diagnostics_json,attempts=curator_proposal_item.attempts+1,updated_at=CURRENT_TIMESTAMP",
-                        userId,key,sequence,section,payload,problems.isEmpty()?"accepted":terminal?"rejected":"pending",mapper.writeValueAsString(problems));
+                    // A valid transition blocked by another item has not failed its own content repair.
+                    boolean dependencyOnly = !problems.isEmpty() && problems.stream().allMatch(d ->
+                        "dependency_slot_pending".equals(String.valueOf(d.get("reason_code"))));
+                    int contentAttempt = dependencyOnly || problems.isEmpty() || terminal ? 0 : 1;
+                    List<Map<String,Object>> storedProblems = new java.util.ArrayList<>();
+                    // Retain the one-time rule recovery audit when fresh validation diagnostics replace old ones.
+                    Map<String,Object> recovery = new java.util.LinkedHashMap<>();
+                    for (String oldJson : jdbc.query("SELECT diagnostics_json FROM curator_proposal_item WHERE user_id=? AND item_key=?",
+                            (rs,n) -> rs.getString(1),userId,key))
+                        for (Map<String,Object> old : mapper.readValue(oldJson,new TypeReference<List<Map<String,Object>>>(){})) {
+                            if (old.containsKey("recovery_rule_version")) recovery.put("recovery_rule_version",old.get("recovery_rule_version"));
+                            if (old.containsKey("previous_content_attempts")) recovery.put("previous_content_attempts",old.get("previous_content_attempts"));
+                        }
+                    for (Map<String,Object> problem : problems) {
+                        Map<String,Object> enriched = new java.util.LinkedHashMap<>(problem);
+                        enriched.putAll(recovery);storedProblems.add(enriched);
+                    }
+                    jdbc.update("INSERT INTO curator_proposal_item(user_id,item_key,batch_sequence,section,payload_json,status,diagnostics_json,attempts) "
+                        + "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,item_key) DO UPDATE SET payload_json=excluded.payload_json,"
+                        + "status=CASE WHEN excluded.status='pending' AND ? > 0 AND curator_proposal_item.attempts+? >=3 THEN 'failed' ELSE excluded.status END,diagnostics_json=excluded.diagnostics_json,attempts=curator_proposal_item.attempts+?,updated_at=CURRENT_TIMESTAMP",
+                        userId,key,sequence,section,payload,problems.isEmpty()?"accepted":terminal?"rejected":"pending",mapper.writeValueAsString(storedProblems),
+                        problems.isEmpty()||terminal?0:contentAttempt,contentAttempt,contentAttempt,contentAttempt);
                 }
             }
         } catch (Exception e) { throw new IllegalStateException("保存馆长条目状态失败",e); }
@@ -221,29 +290,152 @@ public class CuratorTurnStore {
 
     public List<String> repairUsers(int limit) {
         return jdbc.query("SELECT DISTINCT p.user_id FROM curator_proposal_item p LEFT JOIN curator_state s ON s.user_id=p.user_id "
-            + "WHERE p.status='pending' AND p.attempts<3 AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) LIMIT ?",
+            + "WHERE p.status='pending' AND (p.attempts<3 OR p.diagnostics_json LIKE '%dependency_slot_pending%') AND (s.retry_after IS NULL OR julianday(s.retry_after)<=julianday(?)) LIMIT ?",
             (rs,row)->rs.getString(1),Instant.now().toString(),limit);
     }
 
     public List<Map<String,Object>> repairItems(String userId, boolean force) {
         return jdbc.queryForList("SELECT item_key,batch_sequence,section,payload_json,diagnostics_json,attempts FROM curator_proposal_item "
-            + "WHERE user_id=? AND status='pending'" + (force?"":" AND attempts<3") + " ORDER BY batch_sequence,item_key",userId);
+            + "WHERE user_id=? AND status='pending'" + (force?"":" AND (attempts<3 OR diagnostics_json LIKE '%dependency_slot_pending%')") + " ORDER BY batch_sequence,item_key",userId);
     }
 
-    public void recordRepairFailure(String userId,long sequence) {
-        jdbc.update("UPDATE curator_proposal_item SET attempts=attempts+1,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND batch_sequence=? AND status='pending'",userId,sequence);
+    /** Revalidate a dependency-only item once every actual blocker has committed. */
+    public boolean dependenciesReady(String userId, Map<String,Object> row) {
+        try {
+            List<Map<String,Object>> diagnostics = mapper.readValue(textValue(row.get("diagnostics_json")),
+                new TypeReference<List<Map<String,Object>>>(){});
+            Map<String,Object> payload = parseMap(textValue(row.get("payload_json")));
+            String predicate = textValue(payload.get("predicate"));
+            String slot = MemoryCuratorFactSupport.transitionSlot(predicate, textValue(payload.get("scope")),
+                textValue(payload.get("canonical_value") == null ? payload.get("value") : payload.get("canonical_value")));
+            java.util.Set<String> blockingIds = new java.util.LinkedHashSet<>();
+            for (Map<String,Object> d : diagnostics) if (d.get("blocking_item_ids") instanceof List<?> ids)
+                for (Object id : ids) blockingIds.add(textValue(id));
+            java.util.Set<String> found = new java.util.LinkedHashSet<>();
+            for (Map<String,Object> otherRow : jdbc.queryForList("SELECT item_key,status,payload_json FROM curator_proposal_item "
+                    + "WHERE user_id=? AND batch_sequence=? AND item_key<>?",userId,row.get("batch_sequence"),row.get("item_key"))) {
+                Map<String,Object> other = parseMap(textValue(otherRow.get("payload_json")));
+                String otherPredicate = textValue(other.get("predicate"));
+                boolean blocks = !blockingIds.isEmpty() ? blockingIds.contains(textValue(otherRow.get("item_key")))
+                    : !slot.isBlank() && slot.equals(MemoryCuratorFactSupport.transitionSlot(otherPredicate,
+                        textValue(other.get("scope")),textValue(other.get("canonical_value") == null ? other.get("value") : other.get("canonical_value"))));
+                if (blocks) {
+                    found.add(textValue(otherRow.get("item_key")));
+                    if (!"accepted".equals(textValue(otherRow.get("status")))) return false;
+                }
+            }
+            return blockingIds.isEmpty() || found.containsAll(blockingIds);
+        } catch (Exception error) { throw new IllegalStateException("读取馆长依赖状态失败",error); }
+    }
+
+    public void recordRepairFailure(String userId, String itemKey) {
+        // A malformed repair response does not charge a valid blocked item a content attempt.
+        for (String raw : jdbc.query("SELECT diagnostics_json FROM curator_proposal_item WHERE user_id=? AND item_key=?",
+                (rs,n) -> rs.getString(1),userId,itemKey)) {
+            try {
+                List<Map<String,Object>> diagnostics = mapper.readValue(raw,new TypeReference<List<Map<String,Object>>>(){});
+                if (!diagnostics.isEmpty() && diagnostics.stream().allMatch(d ->
+                        "dependency_slot_pending".equals(textValue(d.get("reason_code"))))) return;
+            } catch (Exception error) { throw new IllegalStateException("读取馆长内容重试状态失败",error); }
+        }
+        jdbc.update("UPDATE curator_proposal_item SET attempts=attempts+1,"
+            + "status=CASE WHEN attempts+1>=3 THEN 'failed' ELSE 'pending' END,updated_at=CURRENT_TIMESTAMP "
+            + "WHERE user_id=? AND item_key=? AND status='pending'", userId, itemKey);
+    }
+
+    /** Compatibility for callers that explicitly requested failure of a whole batch. */
+    public void recordRepairFailure(String userId, long sequence) {
+        for (Map<String,Object> row : repairItems(userId,false))
+            if (((Number)row.get("batch_sequence")).longValue() == sequence)
+                recordRepairFailure(userId,String.valueOf(row.get("item_key")));
+    }
+
+    public long failedItemCount(String userId) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM curator_proposal_item WHERE user_id=? AND status='failed'", Long.class, userId);
+        return count == null ? 0 : count;
+    }
+
+    public long failedTurnCount(String userId) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM curator_turns WHERE user_id=? AND consolidation_status='failed'", Long.class,userId);
+        return count == null ? 0 : count;
+    }
+
+    public void recordTurnContentFailure(String userId, List<CompletedTurn> turns) {
+        for (CompletedTurn turn : turns) jdbc.update("UPDATE curator_turns SET content_attempts=content_attempts+1,"
+            + "consolidation_status=CASE WHEN content_attempts+1>=3 THEN 'failed' ELSE consolidation_status END "
+            + "WHERE user_id=? AND turn_id=?",userId,turn.turnId());
+    }
+
+    public void finishExhaustedItems(String userId) {
+        for (Map<String,Object> row : jdbc.queryForList("SELECT item_key,diagnostics_json FROM curator_proposal_item "
+                + "WHERE user_id=? AND status='pending' AND attempts>=3",userId)) {
+            try {
+                List<Map<String,Object>> details = mapper.readValue(textValue(row.get("diagnostics_json")),
+                    new TypeReference<List<Map<String,Object>>>(){});
+                if (details.isEmpty() || details.stream().anyMatch(d ->
+                        !"dependency_slot_pending".equals(textValue(d.get("reason_code")))))
+                    jdbc.update("UPDATE curator_proposal_item SET status='failed',updated_at=CURRENT_TIMESTAMP "
+                        + "WHERE user_id=? AND item_key=? AND status='pending'",userId,row.get("item_key"));
+            } catch (Exception error) { throw new IllegalStateException("馆长重试收敛失败",error); }
+        }
+        // Resolve dependency outcomes against explicit blockers in the same transition slot.
+        // Another failed event in the batch cannot fail an unrelated profile or activity.
+        for (Map<String,Object> row : repairItems(userId, true)) {
+            try {
+                List<Map<String,Object>> diagnostics = mapper.readValue(textValue(row.get("diagnostics_json")),
+                    new TypeReference<List<Map<String,Object>>>(){});
+                if (diagnostics.isEmpty() || diagnostics.stream().anyMatch(d ->
+                        !"dependency_slot_pending".equals(textValue(d.get("reason_code"))))) continue;
+                Map<String,Object> payload = parseMap(textValue(row.get("payload_json")));
+                String predicate = textValue(payload.get("predicate"));
+                String slot = MemoryCuratorFactSupport.transitionSlot(predicate, textValue(payload.get("scope")),
+                    textValue(payload.get("canonical_value") == null ? payload.get("value") : payload.get("canonical_value")));
+                List<String> blockingIds = new java.util.ArrayList<>();
+                for (Map<String,Object> d : diagnostics) if (d.get("blocking_item_ids") instanceof List<?> ids)
+                    for (Object id : ids) blockingIds.add(textValue(id));
+                List<Map<String,Object>> blockers = new java.util.ArrayList<>();
+                for (Map<String,Object> candidate : jdbc.queryForList("SELECT item_key,status,payload_json FROM curator_proposal_item "
+                        + "WHERE user_id=? AND batch_sequence=? AND item_key<>?", userId, row.get("batch_sequence"), row.get("item_key"))) {
+                    if (!blockingIds.isEmpty()) {
+                        if (blockingIds.contains(textValue(candidate.get("item_key")))) blockers.add(candidate);
+                    } else { // Legacy diagnostics: infer a real blocker by exact slot and value only.
+                        Map<String,Object> other = parseMap(textValue(candidate.get("payload_json")));
+                        String otherPredicate = textValue(other.get("predicate"));
+                        if (!slot.isBlank() && slot.equals(MemoryCuratorFactSupport.transitionSlot(otherPredicate,
+                                textValue(other.get("scope")), textValue(other.get("canonical_value") == null
+                                    ? other.get("value") : other.get("canonical_value"))))) blockers.add(candidate);
+                    }
+                }
+                boolean exhausted = blockers.stream().anyMatch(b -> List.of("failed", "rejected").contains(textValue(b.get("status"))));
+                if (exhausted) jdbc.update("UPDATE curator_proposal_item SET status='failed',updated_at=CURRENT_TIMESTAMP "
+                    + "WHERE user_id=? AND item_key=? AND status='pending'",userId,row.get("item_key"));
+            } catch (Exception error) { throw new IllegalStateException("馆长依赖状态收敛失败",error); }
+        }
+    }
+
+    private static String textValue(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
+
+    public double processingSeconds(String userId) {
+        LockValue value = locks.get(userId);
+        return value == null ? 0 : (System.nanoTime() - value.startedNanos()) / 1_000_000_000.0;
     }
 
     public void resetRepairAttempts(String userId) {
-        jdbc.update("UPDATE curator_proposal_item SET attempts=0 WHERE user_id=? AND status='pending'",userId);
+        jdbc.update("UPDATE curator_proposal_item SET attempts=0,status='pending' WHERE user_id=? AND status IN ('pending','failed')",userId);
+        jdbc.update("UPDATE curator_turns SET consolidation_status='pending',content_attempts=0 WHERE user_id=? AND consolidation_status='failed'",userId);
+    }
+
+    public boolean isProcessing(String userId) {
+        return locks.containsKey(userId);
     }
 
     public String tryLock(String userId) {
-        long now = System.currentTimeMillis();
         String token = UUID.randomUUID().toString();
-        LockValue next = new LockValue(token, now + 600_000);
-        LockValue value = locks.compute(userId, (key, existing) -> existing == null || existing.expiresAt < now ? next : existing);
-        return value == next ? token : null;
+        LockValue next = new LockValue(token, System.nanoTime());
+        // A live owner must release in finally. A clock jump cannot steal a running job.
+        LockValue value = locks.putIfAbsent(userId, next);
+        if (value == null) return token;
+        return null;
     }
 
     public void unlock(String userId, String token) { locks.computeIfPresent(userId, (key, value) -> value.token.equals(token) ? null : value); }

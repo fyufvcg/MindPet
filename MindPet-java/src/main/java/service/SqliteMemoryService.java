@@ -66,15 +66,28 @@ public class SqliteMemoryService {
         appendOne(userId, sessionId, userContent, "user", importance, confidence, emotion, occurredAt);
     }
 
+    /** Stable source identity prevents duplicate writes after a crash between append and task completion. */
+    public void appendTurnOnce(String userId, String sessionId, String userContent,
+                               double importance, double confidence, String emotion, Instant occurredAt, String turnHash) {
+        Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM long_term_memory WHERE source_turn_hash=?", Integer.class, turnHash);
+        if (existing != null && existing > 0) return;
+        appendOne(userId, sessionId, userContent, "user", importance, confidence, emotion, occurredAt, turnHash);
+    }
+
     private void appendOne(String userId, String sessionId, String content, String role,
                            double importance, double confidence, String emotion,
                            Instant occurredAt) {
+        appendOne(userId, sessionId, content, role, importance, confidence, emotion, occurredAt, null);
+    }
+
+    private void appendOne(String userId, String sessionId, String content, String role,
+                           double importance, double confidence, String emotion, Instant occurredAt, String turnHash) {
         if (userId == null || userId.isBlank() || content == null || content.isBlank()) return;
+        content = service.v3.SecretSanitizer.sanitize(content);
         try {
             float[] vec = embedService.embed(content);
             if (vec == null) {
-                logger.log("ERROR", "Embedding返回空: " + content.substring(0, Math.min(20, content.length())));
-                return;
+                throw new IllegalStateException("Long-term memory embedding unavailable");
             }
             double safeImportance = clamp(importance);
             double safeConfidence = clamp(confidence);
@@ -83,10 +96,10 @@ public class SqliteMemoryService {
             Date eventDate = temporal.eventDate() == null ? null : Date.valueOf(temporal.eventDate());
             Timestamp eventAt = temporal.eventAt() == null ? null : Timestamp.valueOf(temporal.eventAt());
             jdbc.update(
-                "INSERT INTO long_term_memory (user_id,session_id,content,role,embedding,importance,confidence,layer,emotion,event_date,event_at,event_timezone,event_precision,access_count,last_accessed) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)",
+                "INSERT INTO long_term_memory (user_id,session_id,content,role,embedding,importance,confidence,layer,emotion,event_date,event_at,event_timezone,event_precision,source_turn_hash,access_count,last_accessed) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP) ON CONFLICT(source_turn_hash) DO NOTHING",
                 userId, sessionId, content, role, VectorSearchService.encode(vec), safeImportance,
-                safeConfidence, layer, emotion, eventDate, eventAt, temporal.timezone(), temporal.precision());
+                safeConfidence, layer, emotion, eventDate, eventAt, temporal.timezone(), temporal.precision(), turnHash);
             // 超过阈值时触发自动清理
             try {
                 Integer total = jdbc.queryForObject(
@@ -97,7 +110,8 @@ public class SqliteMemoryService {
                 }
             } catch (Exception ignored) {}
         } catch (Exception e) {
-            logger.log("WARN", "SQLite memory append failed: " + e.getMessage());
+            logger.log("WARN", "SQLite memory append failed: " + e.getClass().getSimpleName());
+            throw new IllegalStateException("Long-term memory write failed", e);
         }
     }
 

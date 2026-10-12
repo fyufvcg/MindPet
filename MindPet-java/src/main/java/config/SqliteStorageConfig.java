@@ -63,6 +63,11 @@ public class SqliteStorageConfig {
         migrateMemoryConsolidation(dataSource);
         migrateMemoryRetrievalCorpus(dataSource);
         migrateV3MemoryWriteSchema(dataSource);
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            addColumnIfMissing(statement, "long_term_memory", tableColumns(statement, "long_term_memory"), "source_turn_hash", "TEXT");
+            statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ltm_source_turn_hash ON long_term_memory(source_turn_hash)");
+            addColumnIfMissing(statement, "curator_turns", tableColumns(statement, "curator_turns"), "content_attempts", "INTEGER NOT NULL DEFAULT 0");
+        }
         return service.v3.SensitivePersistenceGuard.wrap(dataSource);
     }
 

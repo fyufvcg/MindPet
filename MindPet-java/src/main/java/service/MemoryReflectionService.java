@@ -98,12 +98,12 @@ public class MemoryReflectionService {
         RunState previous = runStates.get(userId);
         long lastAttempt = lastAttemptAt.getOrDefault(userId, 0L);
         if (previous != null && "failed".equals(previous.status())
-                && System.currentTimeMillis() - lastAttempt < 60_000L) {
+                && System.nanoTime() - lastAttempt < java.util.concurrent.TimeUnit.SECONDS.toNanos(60)) {
             return status(userId);
         }
         if (!activeUsers.add(userId)) return status(userId);
 
-        lastAttemptAt.put(userId, System.currentTimeMillis());
+        lastAttemptAt.put(userId, System.nanoTime());
         runStates.put(userId, new RunState("pending", missing.size(), ""));
         try {
             executor.execute(() -> generateMissing(userId, missing));
@@ -204,8 +204,10 @@ public class MemoryReflectionService {
     }
 
     private void generateMissing(String userId, List<ReflectionSource> missing) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(180);
         try {
             for (int start = 0; start < missing.size(); start += BATCH_SIZE) {
+                if (System.nanoTime() >= deadline) break;
                 List<ReflectionSource> batch = missing.subList(start, Math.min(start + BATCH_SIZE, missing.size()));
                 generateBatch(userId, batch);
                 int remaining = countMissing(userId, missing);
@@ -244,7 +246,7 @@ public class MemoryReflectionService {
         }
 
         String request = mapper.writeValueAsString(Map.of("memories", inputSources));
-        ChatClient.ChatClientRequestSpec spec = chatClientFactory.build()
+        ChatClient.ChatClientRequestSpec spec = chatClientFactory.buildBackground()
             .prompt().system(REFLECTION_PROMPT).user(request);
         spec = chatClientFactory.applyCurrentModel(spec);
         String response = spec.call().content();
@@ -302,6 +304,12 @@ public class MemoryReflectionService {
         result.put("status", state.status());
         result.put("remaining", state.remaining());
         result.put("message", state.message());
+        return result;
+    }
+
+    public Map<String, Object> maintenanceStatus(String userId) {
+        Map<String, Object> result = new LinkedHashMap<>(status(userId));
+        result.put("active", activeUsers.contains(userId));
         return result;
     }
 

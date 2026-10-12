@@ -116,14 +116,14 @@ public class EmotionService {
     private static final Duration HISTORY_TTL = Duration.ofDays(7);
     private static final int HISTORY_MAX_SIZE = 50;
 
-    private final ChatClient.Builder chatClientBuilder;
+    private final DynamicChatClientFactory chatClientFactory;
     private final JdbcTemplate jdbc;
     private final Logger logger;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Autowired
-    public EmotionService(ChatClient.Builder chatClientBuilder, JdbcTemplate jdbc, Logger logger) {
-        this.chatClientBuilder = chatClientBuilder;
+    public EmotionService(DynamicChatClientFactory chatClientFactory, JdbcTemplate jdbc, Logger logger) {
+        this.chatClientFactory = chatClientFactory;
         this.jdbc = jdbc;
         this.logger = logger;
     }
@@ -150,13 +150,12 @@ public class EmotionService {
         // 第2层：LLM 情感分析
         EmotionResult llmResult;
         try {
-            String result = chatClientBuilder.build()
+            var spec = chatClientFactory.build()
                 .prompt()
                 .system(EMOTION_PROMPT)
-                .user(userMessage)
-                .call()
-                .content();
-
+                .user(userMessage);
+            spec = chatClientFactory.applyCurrentModel(spec);
+            String result = spec.call().content();
             if (result == null || result.isBlank()) return EmotionResult.NEUTRAL;
 
             String json = result.trim();

@@ -11,11 +11,15 @@ public final class MemoryQueryIntent {
             "搬家前", "搬迁前", "原先", "曾任", "曾住", "旧址", "曾想", "打算过",
             "有效期内", "有效期限内", "有效时段内", "仍在有效期", "还在有效期", "仍在有效时段", "还在有效时段",
             "到期了吗", "已到期", "是否到期", "仍有效", "还有效", "仍然有效", "已失效", "是否失效",
-            "处于有效期", "处在有效期", "有效期吗", "回到", "已完成", "结束的");
+            "处于有效期", "处在有效期", "有效期吗", "回到", "已完成", "结束的") || lifecycle(query);
     }
     public static boolean planned(String query) {
         return contains(query, "计划", "打算", "准备", "想要", "将来", "以后", "未来", "安排", "考虑",
-            "曾想", "预期", "会不会", "打算过", "下一步", "届时", "尚未", "取消", "决定");
+            "曾想", "预期", "会不会", "打算过", "下一步", "届时", "尚未", "取消", "决定") || lifecycle(query);
+    }
+    public static boolean lifecycle(String query) {
+        return contains(query, "后来", "后续", "取消", "改期", "延期", "还进行", "还参加", "还有效", "仍有效",
+            "能用", "可用", "到期", "失效", "有效期", "什么状态", "是否完成", "完成了吗", "进行了吗", "最终", "有没有决定");
     }
     public static boolean requiresGraph(String query) {
         return !predicates(query).isEmpty() || contains(query, "关系", "和谁", "跟谁", "认识", "朋友", "家人", "同事", "同学", "一起",

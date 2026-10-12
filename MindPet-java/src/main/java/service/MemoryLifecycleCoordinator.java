@@ -163,9 +163,15 @@ public final class MemoryLifecycleCoordinator {
 
     /** Rebuild only missing vectors using the final text. Missing provider leaves text and source recoverable. */
     public int repairMissingEmbeddings(String userId, java.util.function.Function<String,byte[]> prepare) {
+        return repairMissingEmbeddings(userId, prepare, 40, Long.MAX_VALUE);
+    }
+
+    public int repairMissingEmbeddings(String userId, java.util.function.Function<String,byte[]> prepare,
+                                       int limit, long deadlineNanos) {
         int repaired=0;
         for(Map<String,Object> row:jdbc.queryForList("SELECT id,content FROM memory_retrieval_unit WHERE user_id=? "
-                +"AND searchable=1 AND status IN ('active','historical') AND unit_type='fact' AND embedding IS NULL ORDER BY id LIMIT 40",userId)) {
+                +"AND searchable=1 AND status IN ('active','historical') AND unit_type IN ('fact','insight','growth') AND embedding IS NULL ORDER BY id LIMIT ?",userId,Math.max(1,limit))) {
+            if (System.nanoTime() >= deadlineNanos) break;
             String content=text(row.get("content"));
             byte[] vector=prepare.apply(content);
             if(vector==null||vector.length==0||vector.length%Float.BYTES!=0)continue;

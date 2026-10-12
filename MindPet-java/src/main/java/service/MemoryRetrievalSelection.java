@@ -13,9 +13,13 @@ import java.util.function.ToIntFunction;
 public final class MemoryRetrievalSelection {
     private MemoryRetrievalSelection() {}
     public record Item(String id, String kind, String meaning, double score, List<String> required,
-                       Set<String> graphFacts, boolean selectable) {
+                       Set<String> graphFacts, boolean selectable, Set<String> facets) {
+        public Item(String id, String kind, String meaning, double score, List<String> required,
+                    Set<String> graphFacts, boolean selectable) {
+            this(id, kind, meaning, score, required, graphFacts, selectable, Set.of());
+        }
         public Item {
-            required = List.copyOf(required); graphFacts = Set.copyOf(graphFacts);
+            required = List.copyOf(required); graphFacts = Set.copyOf(graphFacts); facets = Set.copyOf(facets);
         }
         boolean graph() { return kind.equals("kg"); }
     }
@@ -27,9 +31,23 @@ public final class MemoryRetrievalSelection {
         State state = new State(byId, options, tokenCount);
         List<Item> ranked = items.stream().filter(Item::selectable)
             .sorted(Comparator.comparingDouble(Item::score).reversed().thenComparing(Item::id)).toList();
-        // Select each path atomically. Exact RAG source coverage can represent a path edge.
-        for (Item item : ranked) if (item.graph()) state.add(item);
-        for (Item item : ranked) if (!item.graph()) state.add(item);
+        // Reserve coverage for each requested facet, subject to the same atomic path and token budget.
+        Set<String> coveredFacets = new LinkedHashSet<>(), tried = new LinkedHashSet<>();
+        while (true) {
+            Item best = ranked.stream().filter(item -> !tried.contains(item.id()))
+                .filter(item -> item.facets().stream().anyMatch(facet -> !coveredFacets.contains(facet)))
+                .max(Comparator.comparingDouble((Item item) -> item.score()
+                    + 0.2 * item.facets().stream().filter(facet -> !coveredFacets.contains(facet)).count())
+                    .thenComparing(Item::id)).orElse(null);
+            if (best == null) break;
+            tried.add(best.id());
+            if (state.add(best)) {
+                coveredFacets.clear();
+                for (Item selected : state.selected.values()) coveredFacets.addAll(selected.facets());
+            }
+        }
+        // Scores, rather than a channel-wide KG preference, govern remaining budget.
+        for (Item item : ranked) state.add(item);
         return List.copyOf(state.selected.keySet());
     }
 
