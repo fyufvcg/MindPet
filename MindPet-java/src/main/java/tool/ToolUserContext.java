@@ -17,6 +17,8 @@ public final class ToolUserContext {
     private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
     private static final ThreadLocal<byte[]> IMAGE_DATA = new ThreadLocal<>();
     private static final ThreadLocal<Consumer<Map<String, Object>>> TOOL_EVENT_EMITTER = new ThreadLocal<>();
+    private static final ThreadLocal<Map<String, String>> EXECUTION = new ThreadLocal<>();
+    private static final ThreadLocal<java.util.function.Consumer<Runnable>> CANCEL_REGISTRAR = new ThreadLocal<>();
     private static final ConcurrentHashMap<String, List<GeneratedFile>> GENERATED_FILES = new ConcurrentHashMap<>();
 
     public static void set(String userId) {
@@ -53,6 +55,8 @@ public final class ToolUserContext {
         IMAGE_DATA.remove();
         REQUEST_ID.remove();
         TOOL_EVENT_EMITTER.remove();
+        EXECUTION.remove();
+        CANCEL_REGISTRAR.remove();
     }
 
     public static void markToolsUsed() { TOOLS_USED.set(true); }
@@ -69,6 +73,36 @@ public final class ToolUserContext {
     }
 
     public static String getRequestId() { return REQUEST_ID.get(); }
+
+    public static void setExecution(Map<String, String> execution) { EXECUTION.set(Map.copyOf(execution)); }
+    public static Map<String, String> getExecution() {
+        return EXECUTION.get() == null ? Map.of() : EXECUTION.get();
+    }
+    public static void setCancelRegistrar(java.util.function.Consumer<Runnable> registrar) { CANCEL_REGISTRAR.set(registrar); }
+    public static void registerCancellation(Runnable cancel) {
+        if (CANCEL_REGISTRAR.get() != null) CANCEL_REGISTRAR.get().accept(cancel);
+    }
+
+    /** Spring AI may execute callbacks on either a Reactor worker or the request thread. */
+    public static Runnable restoreAfterScope() {
+        String user = CURRENT.get(), session = SESSION_ID.get(), request = REQUEST_ID.get();
+        Boolean used = TOOLS_USED.get();
+        byte[] image = IMAGE_DATA.get();
+        Consumer<Map<String, Object>> emitter = TOOL_EVENT_EMITTER.get();
+        Map<String, String> execution = EXECUTION.get();
+        java.util.function.Consumer<Runnable> registrar = CANCEL_REGISTRAR.get();
+        return () -> {
+            clear();
+            if (user != null) CURRENT.set(user);
+            if (session != null) SESSION_ID.set(session);
+            if (request != null) REQUEST_ID.set(request);
+            if (used != null) TOOLS_USED.set(used);
+            if (image != null) IMAGE_DATA.set(image);
+            if (emitter != null) TOOL_EVENT_EMITTER.set(emitter);
+            if (execution != null) EXECUTION.set(execution);
+            if (registrar != null) CANCEL_REGISTRAR.set(registrar);
+        };
+    }
 
     public static void setToolEventEmitter(Consumer<Map<String, Object>> emitter) {
         if (emitter == null) TOOL_EVENT_EMITTER.remove();

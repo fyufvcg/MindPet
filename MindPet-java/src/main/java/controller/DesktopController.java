@@ -43,13 +43,17 @@ public class DesktopController {
     private final config.EmbeddingConfig embeddingConfig;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Logger logger;
+    private final service.agent.AgentTaskService agentTasks;
+    private final service.agent.AgentTaskStore agentTaskStore;
 
     @Autowired
     public DesktopController(AiService aiService, DynamicLlmConfig dynamicLlmConfig,
                              service.McpManager mcpManager, config.SkillStore skillStore,
                              DynamicChatClientFactory chatClientFactory,
                              service.EmbeddingService embeddingService,
-                             config.EmbeddingConfig embeddingConfig, Logger logger) {
+                             config.EmbeddingConfig embeddingConfig, Logger logger,
+                             service.agent.AgentTaskService agentTasks,
+                             service.agent.AgentTaskStore agentTaskStore) {
         this.aiService = aiService;
         this.dynamicLlmConfig = dynamicLlmConfig;
         this.mcpManager = mcpManager;
@@ -58,6 +62,8 @@ public class DesktopController {
         this.embeddingService = embeddingService;
         this.embeddingConfig = embeddingConfig;
         this.logger = logger;
+        this.agentTasks = agentTasks;
+        this.agentTaskStore = agentTaskStore;
     }
 
     /**
@@ -102,6 +108,7 @@ public class DesktopController {
         OutputStream out = null;
         try {
             out = response.getOutputStream();
+            ToolUserContext.setExecution(executionOptions(body, userId, sessionId, message));
             logger.log("INFO", "[Desktop] 收到请求 userId=" + userId + " sessionId=" + (sessionId.isBlank() ? "(空)" : sessionId) + " 消息长度=" + message.length()
                 + (activeSkills.isEmpty() ? "" : " 技能=" + String.join(",", activeSkills)));
             if (message.isBlank() && images.isEmpty()) {
@@ -225,6 +232,57 @@ public class DesktopController {
         }
     }
 
+    @GetMapping("/agent/tasks")
+    public Map<String, Object> agentTasks(@RequestParam(defaultValue = "desktop-user") String userId,
+                                          @RequestParam(defaultValue = "") String sessionId) {
+        return Map.of("tasks", agentTaskStore.list(userId, sessionId));
+    }
+
+    @GetMapping("/agent/tasks/{taskId}")
+    public Map<String, Object> agentTask(@PathVariable String taskId,
+                                        @RequestParam(defaultValue = "desktop-user") String userId) {
+        var row = new LinkedHashMap<>(agentTaskStore.get(userId, taskId));
+        row.put("snapshot", agentTaskStore.snapshot(row));
+        return row;
+    }
+
+    @PostMapping("/agent/tasks/cancel")
+    public Map<String, Object> cancelAgentTask(@RequestBody Map<String, Object> body) {
+        String user = String.valueOf(body.getOrDefault("userId", "desktop-user"));
+        String task = String.valueOf(body.getOrDefault("taskId", ""));
+        boolean cancelled = task.isBlank()
+            ? agentTasks.cancel(user, String.valueOf(body.getOrDefault("sessionId", "")),
+                String.valueOf(body.getOrDefault("messageId", "")))
+            : agentTasks.cancelTask(user, task);
+        return Map.of("cancelled", cancelled);
+    }
+
+    @PostMapping("/agent/tasks/{taskId}/resume")
+    public void resumeAgentTask(@PathVariable String taskId, @RequestBody Map<String, Object> body,
+                                HttpServletResponse response) {
+        String user = String.valueOf(body.getOrDefault("userId", "desktop-user"));
+        Map<String, Object> row = agentTaskStore.get(user, taskId);
+        Map<String, Object> request = new LinkedHashMap<>(body);
+        request.put("sessionId", row.get("session_id"));
+        request.put("message", row.get("goal"));
+        request.put("resumeTaskId", taskId);
+        request.put("messageId", UUID.randomUUID().toString());
+        chatStream(request, response);
+    }
+
+    private Map<String, String> executionOptions(Map<String, Object> body, String user, String session, String message) {
+        String resume = String.valueOf(body.getOrDefault("resumeTaskId", ""));
+        if (resume.isBlank() && message.strip().matches("(?:继续|接着|恢复)(?:上次|刚才|之前|这个)?(?:的)?(?:任务|执行|处理|做)?[。！!]?")) {
+            resume = agentTaskStore.list(user, session).stream()
+                .filter(row -> Set.of("failed", "interrupted", "cancelled", "budget_exhausted", "needs_input").contains(row.get("status")))
+                .map(row -> (String) row.get("id")).findFirst().orElse("");
+        }
+        String workspace = String.valueOf(body.getOrDefault("workspacePath", ""));
+        if (!resume.isBlank() && workspace.isBlank())
+            workspace = String.valueOf(agentTaskStore.snapshot(agentTaskStore.get(user, resume)).getOrDefault("workspacePath", ""));
+        return Map.of("workspacePath", workspace, "resumeTaskId", resume);
+    }
+
     /**
      * 非流式聊天 — 直接返回完整 JSON 回复。
      * 用于 AgentPet 的快捷聊天窗口等非流式场景。
@@ -241,6 +299,7 @@ public class DesktopController {
         ToolUserContext.set(userId, sessionId);
         ToolUserContext.setRequestId(requestId);
         try {
+            ToolUserContext.setExecution(executionOptions(body, userId, sessionId, message));
             if (message.isBlank()) {
                 return Map.of("reply", "", "status", "empty_message");
             }

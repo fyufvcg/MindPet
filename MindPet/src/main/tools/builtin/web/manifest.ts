@@ -92,7 +92,7 @@ export const webManifest: ToolManifest = {
     },
     {
       name: 'web_search',
-      description: '在互联网上搜索指定关键词，返回相关的网页标题、链接及正文片段。',
+      description: '在互联网上搜索，返回网页标题、链接及片段。仅用于明确涉及最新、易变信息，或用户要求联网核实、查找来源的问题；常识、概念解释、推理和一般建议优先用已有知识回答。空结果不代表工具不可用。',
       parameters: {
         type: 'object',
         properties: {

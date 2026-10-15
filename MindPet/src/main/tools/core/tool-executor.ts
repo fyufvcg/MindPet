@@ -22,6 +22,7 @@ export class UnifiedToolExecutor {
     args: any,
     context: ToolContext
   ): Promise<ToolResult> {
+    if (context.abortSignal?.aborted) throw new Error('UserAborted')
     const manifest = toolRegistry.getManifest(name)
     const executor = toolRegistry.getExecutor(name)
 
@@ -71,8 +72,10 @@ export class UnifiedToolExecutor {
           ? resolveSessionPath(args.cwd, context.sessionId)
           : getSessionFilesDir(context.sessionId),
         sessionId: context.sessionId,
+        approvalScopeId: context.messageId ? `${context.sessionId}::${context.messageId}` : undefined,
         warning: auditResult.warning,
-        sender: context.event?.sender
+        sender: context.event?.sender,
+        abortSignal: context.abortSignal
       })
 
       if (!approved) {
@@ -82,6 +85,8 @@ export class UnifiedToolExecutor {
         }
       }
     }
+
+    if (context.abortSignal?.aborted) throw new Error('UserAborted')
 
     // 2. 执行工具（带超时控制）
     const api = manifest.api.find(a => a.name === name)

@@ -1,7 +1,6 @@
 package config;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -29,8 +28,7 @@ public class AiConfig {
 
     @Bean
     public ChatClient.Builder chatClientBuilder(ChatModel chatModel, Logger logger) {
-        return ChatClient.builder(chatModel)
-            .defaultAdvisors(new SimpleLoggerAdvisor(), new ToolCallLimitAdvisor(logger));
+        return ChatClient.builder(chatModel);
     }
 
     @Bean(name = "memoryCuratorExecutor")

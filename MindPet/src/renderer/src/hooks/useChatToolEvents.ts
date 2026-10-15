@@ -55,6 +55,12 @@ function appendToolSteps(existingSteps: any[] | undefined, events: any[]): any[]
     else if (type === 'tool_call') toolSteps.push({ id, sequence, timestamp, startedAt: timestamp, type: 'call', callId, name, detail: args, status: 'running' })
     else if (type === 'tool_result') toolSteps.push({ id, sequence, timestamp, finishedAt: timestamp, type: 'result', callId, name, detail: result, contextTokens, status: /失败|错误|error|failed/i.test(String(result || '')) ? 'failed' : 'completed' })
     else if (type === 'think') toolSteps.push({ id, sequence, timestamp, type: 'think', name, detail })
+    else if (type === 'task_plan' || type === 'task_status' || type === 'task_progress') {
+      const existing = toolSteps.findLastIndex(step => step.agentTaskEvent === type)
+      const step = { id, sequence, timestamp, type: 'think', name, detail, status, agentTaskEvent: type }
+      if (existing >= 0) toolSteps[existing] = { ...step, id: toolSteps[existing].id, sequence: toolSteps[existing].sequence }
+      else toolSteps.push(step)
+    }
     else if (type === 'context_compaction') {
       const existing = toolSteps.findIndex(step => step.type === 'compaction')
       const compactionStep = {

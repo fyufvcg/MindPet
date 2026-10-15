@@ -1207,8 +1207,7 @@
   color: var(--text-primary);
 }
 .kg-edit-field input:not([type='range']),
-.kg-edit-field textarea,
-.kg-edit-field select {
+.kg-edit-field textarea {
   width: 100%;
   box-sizing: border-box;
   min-width: 0;
@@ -1229,7 +1228,7 @@
 .kg-edit-field textarea::placeholder {
   color: var(--text-muted);
 }
-.kg-edit-field :is(input, textarea, select):focus-visible {
+.kg-edit-field :is(input, textarea):focus-visible {
   outline: 2px solid var(--color-action-primary);
   outline-offset: 2px;
 }
@@ -1239,8 +1238,7 @@
   align-self: flex-end;
   font-weight: 400;
 }
-.kg-edit-field input[readonly],
-.kg-edit-field select:disabled {
+.kg-edit-field input[readonly] {
   background: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -1332,6 +1330,234 @@
   font-size: 11px;
   cursor: pointer;
 }
+
+.kg-select {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.kg-select__control {
+  position: relative;
+  min-width: 0;
+}
+.kg-edit-field .kg-select__input {
+  padding-right: 34px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.kg-edit-field .kg-select.is-open .kg-select__input {
+  border-color: color-mix(in srgb, var(--color-action-primary) 54%, var(--border-card));
+  background: var(--bg-card);
+}
+.kg-edit-field .kg-select__input:disabled {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: wait;
+}
+.kg-select__chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  pointer-events: none;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+  transition: transform 150ms var(--motion-standard), color 150ms var(--motion-standard);
+}
+.kg-select.is-open .kg-select__chevron {
+  color: var(--color-action-primary);
+  transform: translateY(-50%) rotate(180deg);
+}
+.kg-select__menu {
+  max-height: min(230px, 34vh);
+  margin-top: 5px;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--border-card);
+  border-radius: var(--kg-radius-control);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-floating);
+  overscroll-behavior: contain;
+}
+.kg-select__option {
+  width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--kg-text-control);
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 130ms var(--motion-standard),
+    background 130ms var(--motion-standard);
+}
+.kg-select__option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.kg-select__option.is-active,
+.kg-select__option:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.kg-select__option.is-selected {
+  color: var(--color-action-primary);
+  font-weight: 650;
+}
+.kg-select__option.is-selected.is-active,
+.kg-select__option.is-selected:hover {
+  background: var(--color-action-primary-soft);
+}
+.kg-select__option.is-disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.kg-select__option > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--color-action-primary);
+}
+.kg-select__empty {
+  padding: 11px 9px;
+  color: var(--text-muted);
+  font-size: var(--kg-text-label);
+  text-align: center;
+}
+
+.kg-confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  margin: auto;
+  padding: 22px;
+  border: 1px solid var(--border-card);
+  border-radius: 14px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-floating);
+  font: inherit;
+}
+.kg-confirm-dialog::backdrop {
+  background: color-mix(in srgb, #0b1220 46%, transparent);
+}
+.kg-confirm-dialog__icon {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 13px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--color-action-primary);
+  background: var(--color-action-primary-soft);
+}
+.kg-confirm-dialog__icon.is-danger {
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 13%, transparent);
+}
+.kg-confirm-dialog h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.kg-confirm-dialog p {
+  margin: 8px 0 20px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.kg-confirm-dialog p.kg-confirm-dialog__error {
+  margin-top: -9px;
+  color: var(--color-status-danger);
+}
+.kg-confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border-card);
+}
+.kg-confirm-dialog__actions button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 140ms var(--motion-standard),
+    border-color 140ms var(--motion-standard),
+    transform 140ms var(--motion-standard);
+}
+.kg-confirm-dialog__actions button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.kg-confirm-dialog__actions button:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+.kg-confirm-dialog__actions .kg-confirm-dialog__confirm:disabled {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.kg-confirm-dialog__actions .kg-confirm-dialog__confirm.is-danger:disabled {
+  color: var(--text-secondary);
+}
+.kg-confirm-dialog__cancel {
+  border-color: var(--border-card) !important;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.kg-confirm-dialog__cancel:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.kg-confirm-dialog__confirm {
+  color: var(--color-text-on-action);
+  background: var(--color-action-primary);
+}
+.kg-confirm-dialog__confirm:hover:not(:disabled) {
+  background: var(--color-action-primary-hover);
+  transform: translateY(-1px);
+}
+.kg-confirm-dialog__confirm.is-danger {
+  color: var(--bg-card);
+  background: var(--color-status-danger);
+}
+.kg-confirm-dialog__confirm.is-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-status-danger) 88%, var(--text-primary));
+}
+
+@media (max-width: 420px) {
+  .kg-confirm-dialog {
+    padding: 18px;
+  }
+  .kg-confirm-dialog__actions button {
+    flex: 1 1 0;
+  }
+}
+
 .kg-related-row {
   display: flex;
   align-items: center;

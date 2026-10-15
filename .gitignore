@@ -84,6 +84,8 @@ ehthumbs.db
 Desktop.ini
 
 # === 临时文件 ===
+.codex-code-qa/
+tmp_doc_inspect/
 tmp/
 temp/
 *.tmp

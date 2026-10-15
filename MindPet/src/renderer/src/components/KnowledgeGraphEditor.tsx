@@ -1,5 +1,7 @@
 import React from 'react'
 import { ArrowRight, LoaderCircle, Trash2, X } from 'lucide-react'
+import { KnowledgeGraphConfirmDialog } from './KnowledgeGraphConfirmDialog'
+import { KnowledgeGraphSelect } from './KnowledgeGraphSelect'
 
 export interface EditableGraphEntity {
   id: string
@@ -60,6 +62,7 @@ export function KnowledgeGraphEditor({
   const [optionsLoading, setOptionsLoading] = React.useState(edit.kind === 'relation')
   const [error, setError] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false)
   const isEntity = edit.kind === 'entity'
   const isExisting = isEntity ? Boolean(edit.entity) : Boolean(edit.id)
   const lockedUser = isEntity && edit.entity?.label.toLowerCase() === 'user'
@@ -95,6 +98,10 @@ export function KnowledgeGraphEditor({
   const save = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     setError('')
+    if (!isEntity && (!source || !target)) {
+      setError('请选择起点和终点')
+      return
+    }
     if (!isEntity && source === target) {
       setError('请选择两个不同节点')
       return
@@ -123,24 +130,21 @@ export function KnowledgeGraphEditor({
     }
   }
 
-  const remove = async (): Promise<void> => {
-    if (
-      edit.kind !== 'relation' ||
-      !edit.id ||
-      !confirm('删除这条事实关系及其来源记录吗？节点会保留。')
-    )
-      return
+  const remove = async (): Promise<boolean> => {
+    if (edit.kind !== 'relation' || !edit.id) return false
     setSaving(true)
     setError('')
     try {
       const result = await window.api.deleteKnowledgeGraphRelation(edit.id)
       if (result.status !== 'ok' || !result.deleted) {
         setError(result.message || '删除失败，请重试')
-        return
+        return false
       }
       await onSaved(source)
+      return true
     } catch {
       setError('删除失败，请确认本地后端已启动后重试')
+      return false
     } finally {
       setSaving(false)
     }
@@ -181,20 +185,19 @@ export function KnowledgeGraphEditor({
                   placeholder="例如：摄影计划"
                 />
               </label>
-              <label className="kg-edit-field">
-                实体类型
-                <select
+              <div className="kg-edit-field">
+                <span id="kg-entity-type-label">实体类型</span>
+                <KnowledgeGraphSelect
                   value={type}
-                  onChange={(event) => setType(event.target.value)}
+                  options={Object.entries(typeNames).map(([key, name]) => ({
+                    value: key,
+                    label: name
+                  }))}
+                  labelledBy="kg-entity-type-label"
                   disabled={lockedUser}
-                >
-                  {Object.entries(typeNames).map(([key, name]) => (
-                    <option key={key} value={key}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setType}
+                />
+              </div>
               {lockedUser && (
                 <p className="kg-edit-help">User 用于识别中心用户，可以修改说明和重要度。</p>
               )}
@@ -212,23 +215,25 @@ export function KnowledgeGraphEditor({
             </>
           ) : (
             <>
-              <label className="kg-edit-field">
-                起点
-                <select
+              <div className="kg-edit-field">
+                <span id="kg-relation-source-label">起点</span>
+                <KnowledgeGraphSelect
                   autoFocus
-                  required
                   value={source}
-                  onChange={(event) => setSource(event.target.value)}
+                  options={[
+                    { value: '', label: '选择起点节点' },
+                    ...options.map((entity) => ({
+                      value: entity.id,
+                      label: entity.label + ' · ' + (typeNames[entity.type] || entity.type)
+                    }))
+                  ]}
+                  labelledBy="kg-relation-source-label"
+                  placeholder="选择起点节点"
+                  required
                   disabled={optionsLoading}
-                >
-                  <option value="">选择起点节点</option>
-                  {options.map((entity) => (
-                    <option key={entity.id} value={entity.id}>
-                      {entity.label} · {typeNames[entity.type] || entity.type}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setSource}
+                />
+              </div>
               <div className="kg-edit-direction">
                 <ArrowRight size={16} /> 从起点指向终点{' '}
                 <button
@@ -241,32 +246,37 @@ export function KnowledgeGraphEditor({
                   交换方向
                 </button>
               </div>
-              <label className="kg-edit-field">
-                终点
-                <select
-                  required
+              <div className="kg-edit-field">
+                <span id="kg-relation-target-label">终点</span>
+                <KnowledgeGraphSelect
                   value={target}
-                  onChange={(event) => setTarget(event.target.value)}
+                  options={[
+                    { value: '', label: '选择终点节点' },
+                    ...options.map((entity) => ({
+                      value: entity.id,
+                      label: entity.label + ' · ' + (typeNames[entity.type] || entity.type),
+                      disabled: entity.id === source
+                    }))
+                  ]}
+                  labelledBy="kg-relation-target-label"
+                  placeholder="选择终点节点"
+                  required
                   disabled={optionsLoading}
-                >
-                  <option value="">选择终点节点</option>
-                  {options.map((entity) => (
-                    <option key={entity.id} value={entity.id} disabled={entity.id === source}>
-                      {entity.label} · {typeNames[entity.type] || entity.type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="kg-edit-field">
-                事实关系
-                <select value={label} onChange={(event) => setLabel(event.target.value)}>
-                  {Object.entries(relationNames).map(([key, name]) => (
-                    <option key={key} value={key}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setTarget}
+                />
+              </div>
+              <div className="kg-edit-field">
+                <span id="kg-relation-kind-label">事实关系</span>
+                <KnowledgeGraphSelect
+                  value={label}
+                  options={Object.entries(relationNames).map(([key, name]) => ({
+                    value: key,
+                    label: name
+                  }))}
+                  labelledBy="kg-relation-kind-label"
+                  onChange={setLabel}
+                />
+              </div>
               <p className="kg-relation-preview">
                 {options.find((entity) => entity.id === source)?.label || '起点'}{' '}
                 <b>{relationNames[label]}</b>{' '}
@@ -305,13 +315,31 @@ export function KnowledgeGraphEditor({
             </button>
           </div>
           {edit.kind === 'relation' && edit.id && (
-            <button type="button" className="kg-edit-delete" onClick={() => void remove()}>
+            <button
+              type="button"
+              className="kg-edit-delete"
+              onClick={() => {
+                setError('')
+                setDeleteConfirmationOpen(true)
+              }}
+            >
               <Trash2 size={14} />
               删除这条关系
             </button>
           )}
         </fieldset>
       </form>
+      {deleteConfirmationOpen && (
+        <KnowledgeGraphConfirmDialog
+          title="删除这条关系？"
+          description="删除后，这条事实关系及其来源记录会一并移除；两个实体节点会保留。"
+          errorMessage={error || undefined}
+          confirmLabel="删除关系"
+          intent="danger"
+          onConfirm={remove}
+          onCancel={() => setDeleteConfirmationOpen(false)}
+        />
+      )}
     </aside>
   )
 }

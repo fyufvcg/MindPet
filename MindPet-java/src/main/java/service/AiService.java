@@ -3,7 +3,8 @@ package service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import config.DynamicLlmConfig;
-import config.ToolCallLimitAdvisor;
+import service.agent.AgentTaskService;
+import service.agent.AgentPolicy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -138,6 +139,7 @@ public class AiService {
 
     private final Logger logger;
     private final DynamicLlmConfig dynamicConfig;
+    private final AgentTaskService agentTasks;
     private final DynamicChatClientFactory chatClientFactory;
     private final MemoryRetrievalService memoryRetrieval;
     private final UserProfileService profileService;
@@ -153,6 +155,7 @@ public class AiService {
     @Autowired
     public AiService(
             DynamicLlmConfig dynamicConfig,
+            AgentTaskService agentTasks,
             DynamicChatClientFactory chatClientFactory,
             MemoryRetrievalService memoryRetrieval,
             UserProfileService profileService,
@@ -166,6 +169,7 @@ public class AiService {
             ApplicationContext appCtx,
             Logger logger) {
         this.dynamicConfig = dynamicConfig;
+        this.agentTasks = agentTasks;
         this.chatClientFactory = chatClientFactory;
         this.memoryRetrieval = memoryRetrieval;
         this.profileService = profileService;
@@ -237,7 +241,7 @@ public class AiService {
                 + emotionHint
                 + routingOnlyInstruction
                 + "可用分组：\n" + GROUPS_SUMMARY + "\n"
-                + "只返回 JSON，不要加任何解释。";
+                + "只返回 JSON，不要加任何解释。\n" + AgentPolicy.SEARCH;
 
             var chatSpec = buildChatClient()
                 .prompt()
@@ -342,13 +346,17 @@ public class AiService {
         String toolNames = Arrays.stream(callbacks)
             .map(tc -> tc.getToolDefinition().name())
             .collect(java.util.stream.Collectors.joining("、"));
-        if (groups.contains("search") && !groups.contains("browser")) {
-            return "【系统指令】用户消息涉及搜索功能。需要实时或外部信息时，先使用联网搜索；若搜索报错或无结果，可换关键词重试一次。"
-                + "若重试后仍报错或没有有效结果，停止搜索，基于已有知识尽力回答，并明确说明未能联网核实。"
-                + "对实时或可能变化的信息要标注不确定，不得编造来源、日期或具体数据。可用工具：" + toolNames;
-        }
-        return "【系统指令】用户消息涉及 " + String.join("、", groups)
-            + " 功能。你必须调用工具获取真实数据，严禁凭空编造。可用工具：" + toolNames;
+        return "可用工具组：" + String.join("、", groups)
+            + "。根据任务需要选择工具，不因路由命中就强制调用。可用工具：" + toolNames
+            + "\n" + AgentPolicy.SEARCH;
+    }
+
+    /** Initial routing is a hint; discovery can add tools during execution. */
+    private ToolCallback[] discoverableCallbacks(String userMessage) {
+        Set<String> groups = new LinkedHashSet<>(TOOL_GROUPS.keySet());
+        if (!isExplicitBrowserControlRequest(agentTasks.taskGoal(userMessage).toLowerCase(Locale.ROOT))) groups.remove("browser");
+        groups.add("search");
+        return collectToolCallbacks(groups, true);
     }
 
     private double parseDouble(Object obj) {
@@ -376,20 +384,12 @@ public class AiService {
         return chatSpec.options(options.build());
     }
 
-    /** Flatten group names to filtered ToolCallback array. MCP tools always included. */
+    /** Route the initial tools; other MCP capabilities remain discoverable on demand. */
     private ToolCallback[] getToolCallbacks(Set<String> groups) {
-        return getToolCallbacks(groups, null);
+        return collectToolCallbacks(groups, false);
     }
 
-    /** Streaming callbacks may run on Reactor threads, so carry request context explicitly. */
-    private ToolCallback[] getToolCallbacks(Set<String> groups, AtomicBoolean streamedToolsUsed) {
-        String requestUserId = tool.ToolUserContext.get();
-        String requestSessionId = tool.ToolUserContext.getSessionId();
-        String requestId = tool.ToolUserContext.getRequestId();
-        byte[] requestImageData = tool.ToolUserContext.getImageData();
-        Consumer<Map<String, Object>> requestToolEventEmitter = tool.ToolUserContext.getToolEventEmitter();
-        Map<String, AtomicInteger> streamedToolCounts = streamedToolsUsed == null
-            ? null : new ConcurrentHashMap<>();
+    private ToolCallback[] collectToolCallbacks(Set<String> groups, boolean discovery) {
         List<ToolCallback> allCallbacks = new ArrayList<>();
         Map<String, ToolCallbackProvider> providers = appCtx.getBeansOfType(ToolCallbackProvider.class);
         logger.log("INFO", "ToolCallbackProvider beans: " + providers.keySet());
@@ -442,59 +442,9 @@ public class AiService {
                         dtMatched.incrementAndGet();
                         return true;
                     }
-                    return true;
+                    return discovery || neededNames.stream().anyMatch(expected -> matchesToolName(name, expected));
                 }
                 return neededNames.stream().anyMatch(expected -> matchesToolName(name, expected));
-            })
-            .map(tc -> new org.springframework.ai.tool.ToolCallback() {
-                @Override
-                public String call(String request) {
-                    boolean installContext = !Objects.equals(requestUserId, tool.ToolUserContext.get())
-                        || !Objects.equals(requestSessionId, tool.ToolUserContext.getSessionId())
-                        || !Objects.equals(requestId, tool.ToolUserContext.getRequestId());
-                    if (installContext) {
-                        tool.ToolUserContext.set(requestUserId, requestSessionId);
-                        tool.ToolUserContext.setRequestId(requestId);
-                        if (requestImageData != null) tool.ToolUserContext.setImageData(requestImageData);
-                        if (requestToolEventEmitter != null) tool.ToolUserContext.setToolEventEmitter(requestToolEventEmitter);
-                    }
-                    String toolName = tc.getToolDefinition().name();
-                    String callId = UUID.randomUUID().toString();
-                    long startedAt = System.currentTimeMillis();
-                    try {
-                        tool.ToolUserContext.markToolsUsed();
-                        if (streamedToolsUsed != null) {
-                            streamedToolsUsed.set(true);
-                            int invocation = streamedToolCounts
-                                .computeIfAbsent(toolName, ignored -> new AtomicInteger())
-                                .incrementAndGet();
-                            if (invocation > 2) {
-                                AiService.this.logger.log("WARN", "  [限流] " + toolName + " 已达到本次请求最多2次调用");
-                                emitToolLifecycleEvent("tool_started", toolName, callId, startedAt, summarizeToolTarget(request), null);
-                                emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), "skipped");
-                                return "该工具已达到本次请求最多2次调用限制，请使用已有结果回答。";
-                            }
-                        }
-                        AiService.this.logger.log("INFO", "  -> 调用工具: " + toolName);
-                        emitToolLifecycleEvent("tool_started", toolName, callId, startedAt, summarizeToolTarget(request), null);
-                        String result = tc.call(request);
-                        String preview = result == null ? "null"
-                            : result.replace("\r", " ").replace("\n", " ");
-                        if (preview.length() > 200) preview = preview.substring(0, 200) + "...";
-                        AiService.this.logger.log("INFO", "  <- 工具结果: " + preview);
-                        emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), toolResultStatus(result));
-                        return result;
-                    } catch (RuntimeException | Error toolError) {
-                        emitToolLifecycleEvent("tool_finished", toolName, callId, startedAt, summarizeToolTarget(request), "failed");
-                        throw toolError;
-                    } finally {
-                        if (installContext) tool.ToolUserContext.clear();
-                    }
-                }
-                @Override
-                public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
-                    return tc.getToolDefinition();
-                }
             })
             .toArray(org.springframework.ai.tool.ToolCallback[]::new);
         if (dtTotal.get() > 0) {
@@ -510,58 +460,6 @@ public class AiService {
     private boolean matchesToolName(String actual, String expected) {
         return actual != null && expected != null
             && (actual.equals(expected) || actual.endsWith("_" + expected));
-    }
-
-    private void emitToolLifecycleEvent(String type, String name, String callId, long startedAt,
-                                        String detail, String status) {
-        Map<String, Object> event = new LinkedHashMap<>();
-        event.put("type", type);
-        event.put("name", name);
-        event.put("callId", callId);
-        event.put("timestamp", System.currentTimeMillis());
-        event.put("startedAt", startedAt);
-        event.put("durationMs", Math.max(0, System.currentTimeMillis() - startedAt));
-        if (detail != null && !detail.isBlank()) event.put("detail", detail);
-        if (status != null) event.put("status", status);
-        tool.ToolUserContext.emitToolEvent(event);
-    }
-
-    /** Expose only common file or page targets; tool arguments can contain credentials or private content. */
-    private String summarizeToolTarget(String request) {
-        if (request == null || request.isBlank()) return "";
-        try {
-            JsonNode root = new ObjectMapper().readTree(request);
-            for (String key : List.of("path", "filePath", "file_path", "fileName", "filename",
-                "file_name", "targetPath", "directory", "directoryPath", "dir", "command", "cmd",
-                "url", "query", "searchQuery")) {
-                JsonNode value = root.get(key);
-                if (value == null || !value.isTextual() || value.asText().isBlank()) continue;
-                String target = value.asText().trim();
-                if (target.length() > 180) target = "…" + target.substring(target.length() - 177);
-                return target;
-            }
-        } catch (Exception ignored) {
-            // Keep the action label even when an MCP argument payload is not JSON.
-        }
-        return "";
-    }
-
-    /** Trust structured failure flags from tools; ordinary result prose may mention errors without failing. */
-    private String toolResultStatus(String result) {
-        if (result == null || result.isBlank()) return "completed";
-        try {
-            JsonNode root = new ObjectMapper().readTree(result);
-            if ((root.has("success") && root.get("success").isBoolean() && !root.get("success").asBoolean())
-                || (root.has("ok") && root.get("ok").isBoolean() && !root.get("ok").asBoolean())
-                || (root.has("isError") && root.get("isError").asBoolean(false))) {
-                return "failed";
-            }
-            String status = root.path("status").asText("");
-            if ("failed".equalsIgnoreCase(status) || "error".equalsIgnoreCase(status)) return "failed";
-        } catch (Exception ignored) {
-            // Non-JSON tool output has no structured failure flag.
-        }
-        return "completed";
     }
 
     private boolean isPassiveWebTool(String name) {
@@ -653,25 +551,30 @@ public class AiService {
         AtomicInteger promptTokens = new AtomicInteger();
         AtomicInteger completionTokens = new AtomicInteger();
 
-        chatSpec.stream().chatResponse()
-            .doOnNext(response -> {
-                updateStreamUsage(response, promptTokens, completionTokens);
-                if (response.getResult() == null || response.getResult().getOutput() == null) return;
-                AssistantMessage output = response.getResult().getOutput();
-                Object reasoningValue = output.getMetadata().get("reasoningContent");
-                if (!(reasoningValue instanceof String)) {
-                    reasoningValue = output.getMetadata().get("reasoning_content");
-                }
-                if (reasoningValue instanceof String reasoningDelta && !reasoningDelta.isEmpty()) {
-                    onReasoningDelta.accept(reasoningDelta);
-                }
-                String textDelta = output.getText();
-                if (textDelta != null && !textDelta.isEmpty()) {
-                    reply.append(textDelta);
-                    onDelta.accept(textDelta);
-                }
-            })
-            .blockLast();
+        try {
+            agentTasks.stream(chatSpec)
+                .doOnNext(response -> {
+                    updateStreamUsage(response, promptTokens, completionTokens);
+                    if (response.getResult() == null || response.getResult().getOutput() == null) return;
+                    AssistantMessage output = response.getResult().getOutput();
+                    Object reasoningValue = output.getMetadata().get("reasoningContent");
+                    if (!(reasoningValue instanceof String)) {
+                        reasoningValue = output.getMetadata().get("reasoning_content");
+                    }
+                    if (reasoningValue instanceof String reasoningDelta && !reasoningDelta.isEmpty()) {
+                        onReasoningDelta.accept(reasoningDelta);
+                    }
+                    String textDelta = output.getText();
+                    if (textDelta != null && !textDelta.isEmpty()) {
+                        reply.append(textDelta);
+                        onDelta.accept(textDelta);
+                    }
+                })
+                .blockLast();
+
+        } finally {
+            agentTasks.releaseStreamContext();
+        }
 
         return new StreamedResponse(reply.toString(), promptTokens.get(), completionTokens.get());
     }
@@ -761,7 +664,6 @@ public class AiService {
                 + (activeSkills.isEmpty() ? "" : " | 技能 → " + String.join(", ", activeSkills)));
 
             // Step 2: LLM call
-            ToolCallLimitAdvisor.reset();
             logger.log("INFO", "[2/2] 调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills);
 
@@ -777,23 +679,18 @@ public class AiService {
                 .prompt()
                 .system(systemPrompt)
                 .messages(loadHistory(userId, historyLimit))
-                .user(userMessage)
-                .toolCallbacks(callbacks);
+                .user(userMessage);
             chatSpec = applyChatOptions(chatSpec);
+            chatSpec = agentTasks.attach(chatSpec, userMessage, callbacks, discoverableCallbacks(userMessage));
             // 提取主 LLM 调用的 token 用量
             int mainPrompt = 0, mainCompletion = 0;
             String reply;
-            try {
-                var mainResp = chatSpec.call().chatResponse();
-                reply = mainResp.getResult().getOutput().getText();
-                if (mainResp.getMetadata() != null && mainResp.getMetadata().getUsage() != null) {
-                    var usage = mainResp.getMetadata().getUsage();
-                    mainPrompt = (int) usage.getPromptTokens();
-                    mainCompletion = (int) usage.getCompletionTokens();
-                }
-            } catch (Exception tokenEx) {
-                // 如果获取 token 失败，回退到简单调用
-                reply = chatSpec.call().content();
+            var mainResp = agentTasks.call(chatSpec);
+            reply = mainResp.getResult().getOutput().getText();
+            if (mainResp.getMetadata() != null && mainResp.getMetadata().getUsage() != null) {
+                var usage = mainResp.getMetadata().getUsage();
+                mainPrompt = (int) usage.getPromptTokens();
+                mainCompletion = (int) usage.getCompletionTokens();
             }
 
             // Step 3: post-processing
@@ -839,7 +736,7 @@ public class AiService {
             return model.ChatResult.of(reply, toolsUsed, totalPrompt, totalCompletion);
         } catch (Exception e) {
             logger.log("ERROR", "AI 调用失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-            return model.ChatResult.of("MindPet 暂时有点累，稍后再试试吧~", false);
+            return model.ChatResult.of("任务未完成：" + service.v3.SecretSanitizer.sanitize(e.getMessage()) + " 已执行的操作请以实际结果为准，可继续任务。", false);
         } finally {
             tool.ToolUserContext.clear();
         }
@@ -900,14 +797,13 @@ public class AiService {
             emotionService.saveToHistory(userId, emotion);
             String trend = emotionService.getEmotionTrend(userId, emotion);
 
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups(), streamedToolsUsed);
+            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
             logger.log("INFO", "[1/2] 路由 → " + (pre.groups().isEmpty() ? "NONE" : pre.groups())
                 + (callbacks.length > 0 ? " (" + callbacks.length + "工具)" : "")
                 + " | 情感 → " + emotion.emotion() + "(" + String.format("%.1f", emotion.intensity()) + ")"
                 + (trend.isBlank() ? "" : " | " + trend)
                 + (activeSkills.isEmpty() ? "" : " | 技能 → " + String.join(", ", activeSkills)));
 
-            ToolCallLimitAdvisor.reset();
             logger.log("INFO", "[2/2] 流式调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills, extraSystemPrompt);
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
@@ -920,9 +816,10 @@ public class AiService {
                 .prompt()
                 .system(systemPrompt)
                 .messages(loadHistory(userId, historyLimit))
-                .user(userMessage)
-                .toolCallbacks(callbacks);
+                .user(userMessage);
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
+            chatSpec = agentTasks.attach(chatSpec, userMessage == null ? "分析图片" : userMessage, callbacks,
+                discoverableCallbacks(userMessage == null ? "分析图片" : userMessage));
 
             StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
                 userId, userMessage, emotion.toTag(), turnId, agentMessageId);
@@ -955,7 +852,7 @@ public class AiService {
             logger.log("ERROR", "AI 流式调用失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
             if (checkpoint != null) checkpoint.markIncomplete();
-            if (emitted.get()) {
+            if (emitted.get() || tool.ToolUserContext.getRequestId() != null) {
                 if (e instanceof RuntimeException runtimeException) throw runtimeException;
                 throw new IllegalStateException(e);
             }
@@ -1015,22 +912,18 @@ public class AiService {
                         @Override
                         public String getFilename() { return fileName != null ? fileName : "image.jpg"; }
                     }
-                ))
-                .toolCallbacks(callbacks);
+                ));
             imgChatSpec = applyChatOptions(imgChatSpec);
+            imgChatSpec = agentTasks.attach(imgChatSpec, textPrompt, callbacks, discoverableCallbacks(textPrompt));
             // 提取图片对话的 token 用量
             int imgPrompt = 0, imgCompletion = 0;
             String reply;
-            try {
-                var imgResp = imgChatSpec.call().chatResponse();
-                reply = imgResp.getResult().getOutput().getText();
-                if (imgResp.getMetadata() != null && imgResp.getMetadata().getUsage() != null) {
-                    var usage = imgResp.getMetadata().getUsage();
-                    imgPrompt = (int) usage.getPromptTokens();
-                    imgCompletion = (int) usage.getCompletionTokens();
-                }
-            } catch (Exception tokenEx) {
-                reply = imgChatSpec.call().content();
+            var imgResp = agentTasks.call(imgChatSpec);
+            reply = imgResp.getResult().getOutput().getText();
+            if (imgResp.getMetadata() != null && imgResp.getMetadata().getUsage() != null) {
+                var usage = imgResp.getMetadata().getUsage();
+                imgPrompt = (int) usage.getPromptTokens();
+                imgCompletion = (int) usage.getCompletionTokens();
             }
 
             if (reply == null || reply.isEmpty()) {
@@ -1121,7 +1014,7 @@ public class AiService {
             EmotionService.EmotionResult emotion = emotionService.enrich(textPrompt, pre.emotion());
             emotionService.saveToHistory(userId, emotion);
             String trend = emotionService.getEmotionTrend(userId, emotion);
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups(), streamedToolsUsed);
+            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
 
             String systemPrompt = buildSystemPrompt(userId, textPrompt, emotion, trend, activeSkills);
             if (callbacks.length > 0 && !pre.groups().isEmpty()) {
@@ -1129,7 +1022,6 @@ public class AiService {
                     + "\n\n" + systemPrompt;
             }
 
-            ToolCallLimitAdvisor.reset();
             ChatClient.ChatClientRequestSpec chatSpec = buildChatClient()
                 .prompt()
                 .system(systemPrompt)
@@ -1140,9 +1032,10 @@ public class AiService {
                         @Override
                         public String getFilename() { return fileName != null ? fileName : "image.jpg"; }
                     }
-                ))
-                .toolCallbacks(callbacks);
+                ));
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
+            chatSpec = agentTasks.attach(chatSpec, userMessage == null ? "分析图片" : userMessage, callbacks,
+                discoverableCallbacks(userMessage == null ? "分析图片" : userMessage));
 
             StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
                 userId, textPrompt, emotion.toTag(), turnId, agentMessageId);
@@ -1173,7 +1066,7 @@ public class AiService {
             logger.log("ERROR", "图片流式识别失败: " + e.getMessage());
             StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
             if (checkpoint != null) checkpoint.markIncomplete();
-            if (emitted.get()) {
+            if (emitted.get() || tool.ToolUserContext.getRequestId() != null) {
                 if (e instanceof RuntimeException runtimeException) throw runtimeException;
                 throw new IllegalStateException(e);
             }
@@ -1498,7 +1391,7 @@ public class AiService {
             logger.log("INFO", "[Skill] 已注入技能规约全文 " + extraPrompt.length() + " 字符");
         }
 
-        return prompt + "\n\n" + """
+        return prompt + "\n\n" + AgentPolicy.SEARCH + "\n" + AgentPolicy.EXECUTION + "\n\n" + """
             ## 回答中的事实与不确定性
             把用户的多个子问题逐项回答，逐项核对人物、职责、时间、状态和选择。
             项目名称、工作地点、职业、汇报对象是不同字段，不用地点或领域代替项目名称。仅回答所问字段，勿给用户事实添加没有来源的因果解释。

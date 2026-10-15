@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import { KnowledgeGraphEditor, type GraphEdit } from './KnowledgeGraphEditor'
 import { KnowledgeGraphBackdrop } from './KnowledgeGraphBackdrop'
+import { KnowledgeGraphConfirmDialog } from './KnowledgeGraphConfirmDialog'
 
 interface GraphNode {
   id: string
@@ -598,6 +599,10 @@ interface Props {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
+type PendingGraphConfirmation =
+  | { kind: 'rebuild' }
+  | { kind: 'delete-entity'; entityId: string; entityLabel: string }
+
 export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   const [rawNodes, setRawNodes] = React.useState<GraphNode[]>([])
   const [rawEdges, setRawEdges] = React.useState<GraphEdge[]>([])
@@ -617,6 +622,8 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [rebuilding, setRebuilding] = React.useState(false)
+  const [pendingConfirmation, setPendingConfirmation] =
+    React.useState<PendingGraphConfirmation | null>(null)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [inspectorClosing, setInspectorClosing] = React.useState(false)
   const [evidence, setEvidence] = React.useState<Evidence[]>([])
@@ -968,32 +975,53 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
     })
   }
 
-  const rebuild = async (): Promise<void> => {
-    if (!confirm('将从历史会话中提取知识，可能产生模型调用费用。继续吗？')) return
-    setRebuilding(true)
-    try {
-      const data = await window.api.rebuildKnowledgeGraph(50)
-      showToast(`已提交 ${data.scheduled || 0} 个对话轮次，图谱会在后台逐步更新`, 'success')
-      window.setTimeout(() => void loadGraph(query), 2500)
-    } catch {
-      showToast('历史图谱重建提交失败', 'error')
-    } finally {
-      setRebuilding(false)
-    }
+  const rebuild = (): void => setPendingConfirmation({ kind: 'rebuild' })
+
+  const deleteSelected = (): void => {
+    if (!selected) return
+    setPendingConfirmation({
+      kind: 'delete-entity',
+      entityId: selected.id,
+      entityLabel: selected.label
+    })
   }
 
-  const deleteSelected = async (): Promise<void> => {
-    if (!selected || !confirm(`删除“${selected.label}”及其关系和证据吗？`)) return
-    const result = await window.api.deleteKnowledgeGraphEntity(selected.id)
-    if (!result.deleted) {
-      showToast('节点删除失败', 'error')
-      return
+  const confirmPendingAction = async (): Promise<boolean> => {
+    if (!pendingConfirmation) return false
+    if (pendingConfirmation.kind === 'rebuild') {
+      setRebuilding(true)
+      try {
+        const data = await window.api.rebuildKnowledgeGraph(50)
+        showToast(
+          '已提交 ' + (data.scheduled || 0) + ' 个对话轮次，图谱会在后台逐步更新',
+          'success'
+        )
+        window.setTimeout(() => void loadGraph(query), 2500)
+        return true
+      } catch {
+        showToast('历史图谱重建提交失败', 'error')
+        return false
+      } finally {
+        setRebuilding(false)
+      }
     }
-    setSelectedId(null)
-    setEvidence([])
-    setDetailMenuOpen(false)
-    showToast('节点已删除', 'success')
-    await loadGraph(query)
+
+    try {
+      const result = await window.api.deleteKnowledgeGraphEntity(pendingConfirmation.entityId)
+      if (!result.deleted) {
+        showToast('节点删除失败', 'error')
+        return false
+      }
+      setSelectedId(null)
+      setEvidence([])
+      setDetailMenuOpen(false)
+      showToast('节点已删除', 'success')
+      await loadGraph(query)
+      return true
+    } catch {
+      showToast('节点删除失败，请检查本地后端后重试', 'error')
+      return false
+    }
   }
 
   const openEdit = (value: GraphEdit): void => {
@@ -1169,7 +1197,7 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           <button
             className="btn-secondary kg-rebuild-button"
             type="button"
-            onClick={() => void rebuild()}
+            onClick={rebuild}
             disabled={rebuilding}
           >
             {rebuilding ? <LoaderCircle size={15} className="kg-spin" /> : <RotateCcw size={15} />}
@@ -1460,7 +1488,7 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
                     <button
                       className="kg-delete-action"
                       type="button"
-                      onClick={() => void deleteSelected()}
+                onClick={deleteSelected}
                     >
                       <Trash2 size={14} />
                       删除节点
@@ -1606,6 +1634,26 @@ export function KnowledgeGraphPanel({ showToast }: Props): React.JSX.Element {
           </aside>
         )}
       </div>
+      {pendingConfirmation && (
+        <KnowledgeGraphConfirmDialog
+          title={
+            pendingConfirmation.kind === 'rebuild'
+              ? '从历史会话重建图谱？'
+              : '删除这个记忆实体？'
+          }
+          description={
+            pendingConfirmation.kind === 'rebuild'
+              ? '将从历史会话中提取知识，可能产生模型调用费用。'
+              : '删除“' +
+                pendingConfirmation.entityLabel +
+                '”及其关系和来源记录吗？'
+          }
+          confirmLabel={pendingConfirmation.kind === 'rebuild' ? '开始重建' : '删除实体'}
+          intent={pendingConfirmation.kind === 'delete-entity' ? 'danger' : 'default'}
+          onConfirm={confirmPendingAction}
+          onCancel={() => setPendingConfirmation(null)}
+        />
+      )}
     </div>
   )
 }

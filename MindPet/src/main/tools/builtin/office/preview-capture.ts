@@ -41,7 +41,7 @@ interface PendingCapture {
   timer: NodeJS.Timeout
   abortSignal?: AbortSignal
   abortHandler?: () => void
-  messageId?: number
+  messageId?: number | string
 }
 
 interface CaptureFramePayload {

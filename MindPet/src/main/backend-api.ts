@@ -13,6 +13,8 @@
  */
 
 import { backendUrl } from './backend-endpoint'
+import { randomUUID } from 'crypto'
+import { cancelDesktopTask, registerDesktopTaskContext } from './tools/mcp/mcp-server'
 
 /** Java 后端返回的 NDJSON 事件 */
 interface BackendEvent {
@@ -36,6 +38,7 @@ interface BackendEvent {
   sequence?: number
   sessionId?: string
   messageId?: number | string
+  taskId?: string
 }
 
 export interface BackendGeneratedFile {
@@ -66,12 +69,13 @@ export interface BackendStep {
   sequence?: number
   sessionId?: string
   messageId?: number | string
+  taskId?: string
 }
 
 /** LLM 调用配置 */
 export interface ChatConfig {
   sessionId?: string
-  messageId?: number
+  messageId?: number | string
   apiKey?: string
   provider?: string
   model?: string
@@ -225,6 +229,7 @@ export async function* callJavaBackend(
   messages: any[],
   signal?: AbortSignal
 ): AsyncGenerator<BackendStep> {
+  if (!config.messageId) config.messageId = randomUUID()
   const backendMessages = convertMessages(messages)
   // 所有桌面会话统一使用固定 userId，共享同一套记忆
   const userId = DESKTOP_USER_ID
@@ -243,6 +248,8 @@ export async function* callJavaBackend(
     // 前端注入的技能规约全文（SKILL.md），后端仅用于本次请求
     systemPrompt: (config as any).systemPrompt || '',
     thinkingEnabled: Boolean((config as any).thinkingEnabled),
+    workspacePath: config.workspacePath || '',
+    resumeTaskId: config.resumeTaskId || '',
     history: backendMessages.slice(0, -1)
   })
 
@@ -250,47 +257,95 @@ export async function* callJavaBackend(
 
   console.log('[BackendAPI] POST', url, 'userId:', userId)
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/x-ndjson, text/plain'
-    },
-    body,
-    // Do not impose a wall-clock limit on the whole generation. Long reasoning
-    // streams can legitimately run past two minutes; explicit user abort still
-    // cancels the request through this signal.
-    signal
+  const unregister = registerDesktopTaskContext(config.sessionId || '', String(config.messageId || ''), {
+    workspacePath: config.workspacePath,
+    senderId: config.senderId
   })
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '')
-    throw new Error(`Java backend returned ${response.status}: ${errText}`)
+  const onAbort = (): void => {
+    cancelDesktopTask(config.sessionId || '', String(config.messageId || ''))
+    void fetch(backendUrl('/api/desktop/agent/tasks/cancel'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, sessionId: config.sessionId, messageId: config.messageId }),
+      signal: AbortSignal.timeout(10_000)
+    }).catch(error => console.warn('[BackendAPI] Task cancellation delivery failed:', error.message))
   }
-
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('No response body from Java backend')
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-
+  signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    if (signal?.aborted) { onAbort(); throw new Error('UserAborted') }
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/x-ndjson, text/plain'
+      },
+      body,
+      // Do not impose a wall-clock limit on the whole generation. Long reasoning
+      // streams can legitimately run past two minutes; explicit user abort still
+      // cancels the request through this signal.
+      signal
+    })
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 最后不完整的行保留到下次
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`Java backend returned ${response.status}: ${errText}`)
+    }
 
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body from Java backend')
+    }
 
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 最后不完整的行保留到下次
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+
+          try {
+            const event: BackendEvent = JSON.parse(trimmed)
+            yield {
+              type: event.type,
+              content: event.content,
+              message: event.message,
+              promptTokens: event.promptTokens,
+              completionTokens: event.completionTokens,
+              totalTokens: event.totalTokens,
+              model: event.model,
+              provider: event.provider,
+              files: event.files,
+              name: event.name,
+              callId: event.callId,
+              detail: event.detail,
+              status: event.status,
+              durationMs: event.durationMs,
+              startedAt: event.startedAt,
+              sequence: event.sequence,
+              sessionId: event.sessionId,
+              messageId: event.messageId,
+              taskId: event.taskId
+            }
+          } catch {
+            // NDJSON 每行必须是有效 JSON
+            console.warn('[BackendAPI] Failed to parse NDJSON line:', trimmed.slice(0, 100))
+          }
+        }
+      }
+
+      // 处理最后的 buffer
+      if (buffer.trim()) {
         try {
-          const event: BackendEvent = JSON.parse(trimmed)
+          const event: BackendEvent = JSON.parse(buffer.trim())
           yield {
             type: event.type,
             content: event.content,
@@ -309,45 +364,19 @@ export async function* callJavaBackend(
             startedAt: event.startedAt,
             sequence: event.sequence,
             sessionId: event.sessionId,
-            messageId: event.messageId
+            messageId: event.messageId,
+            taskId: event.taskId
           }
         } catch {
-          // NDJSON 每行必须是有效 JSON
-          console.warn('[BackendAPI] Failed to parse NDJSON line:', trimmed.slice(0, 100))
+          // ignore incomplete last line
         }
       }
-    }
-
-    // 处理最后的 buffer
-    if (buffer.trim()) {
-      try {
-        const event: BackendEvent = JSON.parse(buffer.trim())
-        yield {
-          type: event.type,
-          content: event.content,
-          message: event.message,
-          promptTokens: event.promptTokens,
-          completionTokens: event.completionTokens,
-          totalTokens: event.totalTokens,
-          model: event.model,
-          provider: event.provider,
-          files: event.files,
-          name: event.name,
-          callId: event.callId,
-          detail: event.detail,
-          status: event.status,
-          durationMs: event.durationMs,
-          startedAt: event.startedAt,
-          sequence: event.sequence,
-          sessionId: event.sessionId,
-          messageId: event.messageId
-        }
-      } catch {
-        // ignore incomplete last line
-      }
+    } finally {
+      reader.releaseLock()
     }
   } finally {
-    reader.releaseLock()
+    signal?.removeEventListener('abort', onAbort)
+    unregister()
   }
 }
 

@@ -4377,7 +4377,7 @@ app.whenReady().then(async () => {
 
       try {
         // ===== 转发到 Java 后端（小晴）= =====
-        const stepStream = callJavaBackend(config, messages, thisController.signal)
+        const stepStream = callJavaBackend({ ...config, workspacePath: _workspacePath || config.workspacePath, senderId: event?.sender.id }, messages, thisController.signal)
 
         let finalResponse = ''
         let hasTokenEvent = false
@@ -4439,11 +4439,12 @@ app.whenReady().then(async () => {
             }
             _onToolEvent?.(generatedEvent)
             if (event) event.sender.send('api:llm-tool-event', generatedEvent)
-          } else if (step.type === 'tool_started' || step.type === 'tool_finished') {
+          } else if (step.type === 'tool_started' || step.type === 'tool_finished' || step.type.startsWith('task_')) {
             const toolEvent = {
               type: step.type,
               name: step.name || 'unknown_tool',
               callId: step.callId,
+              taskId: step.taskId,
               detail: step.detail || '',
               status: step.status,
               durationMs: step.durationMs,
@@ -4456,7 +4457,7 @@ app.whenReady().then(async () => {
             _onToolEvent?.(toolEvent)
             if (event) event.sender.send('api:llm-tool-event', toolEvent)
           } else if (step.type === 'error') {
-            throw new Error(step.message || 'Unknown backend error')
+            throw new Error(step.message || step.content || 'Unknown backend error')
           }
         }
 

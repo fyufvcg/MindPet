@@ -67,7 +67,8 @@ export class WebExecutor implements IToolExecutor {
       warning: preview.reason || '该浏览器操作可能改变外部状态，请核对后确认。',
       sender: context.event?.sender,
       forcePrompt: true,
-      allowTurnScope: false
+      allowTurnScope: false,
+      abortSignal: context.abortSignal
     })
   }
 

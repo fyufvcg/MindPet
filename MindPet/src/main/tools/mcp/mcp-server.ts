@@ -10,14 +10,36 @@
  */
 
 import http from 'http'
+import { webContents } from 'electron'
+import * as fs from 'fs/promises'
+import { basename, extname } from 'path'
 import { toolRegistry } from '../core/tool-registry'
 import { unifiedToolExecutor } from '../core/tool-executor'
 import type { ToolContext, ToolApi } from '../core/types'
 import { backendBaseUrl } from '../../backend-endpoint'
+import { getSessionFilesDir, resolveSessionPath } from '../utils/paths'
+import { permissionManager } from '../security/permission-manager'
 
 export const MCP_SERVER_PORT = 9339
 export const MCP_SERVER_ID = 'desktop-tools'
 const SERVER_ID = 'desktop'
+const taskContexts = new Map<string, { workspacePath?: string; senderId?: number }>()
+const activeTools = new Map<string, Set<AbortController>>()
+
+function taskKey(sessionId: string, messageId: string): string { return JSON.stringify([sessionId, messageId]) }
+
+export function registerDesktopTaskContext(sessionId: string, messageId: string, context: { workspacePath?: string; senderId?: number }): () => void {
+  const key = taskKey(sessionId, messageId)
+  taskContexts.set(key, context)
+  return () => {
+    if (taskContexts.get(key) === context) taskContexts.delete(key)
+    permissionManager.clearTurnApproval(`${sessionId}::${messageId}`)
+  }
+}
+
+export function cancelDesktopTask(sessionId: string, messageId: string): void {
+  for (const controller of activeTools.get(taskKey(sessionId, messageId)) || []) controller.abort()
+}
 
 // ── JSON-RPC types ──────────────────────────────────────────────
 
@@ -190,31 +212,110 @@ async function handleRequest(
           return
         }
 
-        // 构造最小 ToolContext（MCP 调用无 Electron IPC 上下文）
+        const metadata = (params as any)?._meta?.['mindpet/context'] || {}
+        const sessionId = typeof metadata.sessionId === 'string' ? metadata.sessionId : undefined
+        const messageId = String(metadata.messageId || '')
+        const key = taskKey(sessionId || '', messageId)
+        const local = taskContexts.get(key)
+        const sender = local?.senderId ? webContents.fromId(local.senderId) : undefined
+        const controller = new AbortController()
+        const running = activeTools.get(key) || new Set<AbortController>()
+        activeTools.set(key, running)
+        running.add(controller)
+        const onClose = (): void => { if (!res.writableEnded) controller.abort() }
+        res.on('close', onClose)
+        const remaining = Number(metadata.deadline) - Date.now()
+        if (Number.isFinite(remaining) && remaining <= 0) controller.abort()
+        const timer = remaining > 0 ? setTimeout(() => controller.abort(), Math.min(remaining, 2147483647)) : undefined
         const context: ToolContext = {
-          workspacePath: process.cwd(),
+          workspacePath: local?.workspacePath || getSessionFilesDir(sessionId),
+          sessionId,
+          messageId,
           isFrontend: false,
           sandboxMode: false,
+          abortSignal: controller.signal,
+          ...(sender && !sender.isDestroyed() ? { event: { sender } as Electron.IpcMainInvokeEvent } : {})
         }
 
-        console.log(`[MCP-Server] tools/call: ${realName}(${JSON.stringify(args).slice(0, 200)})`)
+        console.log(`[MCP-Server] tools/call: ${realName}`)
 
-        const result = await unifiedToolExecutor.execute(realName, args, context)
-
-        // MCP 协议要求返回 content 数组
-        json(
-          res,
-          200,
-          ok(id, {
-            content: [
-              {
-                type: 'text',
-                text: result.success ? result.content : `[错误] ${result.content}`,
-              },
-            ],
-            ...(result.error && { meta: { error: result.error.message } }),
+        try {
+          const result = await unifiedToolExecutor.execute(realName, args, context)
+          let resultState = result.state
+          if (!resultState && result.content.trim().startsWith('{')) {
+            try { resultState = JSON.parse(result.content) } catch { /* Plain text remains valid output. */ }
+          }
+          const producesFile = ['generate_file', 'modify_docx', 'modify_excel'].includes(realName)
+            || (realName === 'run_office_skill' && ['create', 'modify', 'convert'].includes(String(args.action)))
+          if (result.success && producesFile && typeof resultState?.file_path === 'string') {
+            try {
+              const stat = await fs.stat(resultState.file_path)
+              if (!stat.isFile() || stat.size === 0) throw new Error('输出文件为空或不是文件')
+              resultState = { ...resultState, artifact_verification: { exists: true, sizeBytes: stat.size } }
+              if (sender && !sender.isDestroyed()) sender.send('api:llm-tool-event', {
+                type: 'generated_files', sessionId, messageId,
+                files: [{ path: resultState.file_path, name: basename(resultState.file_path), url: `local-file:///${resultState.file_path.replace(/\\/g, '/')}` }]
+              })
+            } catch (error: any) {
+              result.success = false
+              result.content += `\n产物验证失败：${error.message}`
+            }
+          }
+          if (Array.isArray(resultState?.sources) && sender && !sender.isDestroyed()) sender.send('api:llm-tool-event', {
+            type: 'web_sources', sessionId, messageId, sources: resultState.sources
           })
-        )
+          const content: Record<string, unknown>[] = [{ type: 'text', text: result.content }]
+          const imagePaths = [
+            ...(Array.isArray(resultState?.imagePaths) ? resultState.imagePaths : []),
+            ...(realName === 'screenshot' && resultState?.filePath ? [resultState.filePath] : []),
+            ...(realName === 'read_file' && /\.(png|jpe?g|webp|gif)$/i.test(String(args.file_path || '')) ? [resolveSessionPath(args.file_path, sessionId)] : [])
+          ]
+          let imageBytes = 0
+          for (const imagePath of imagePaths.slice(0, 4)) {
+            try {
+              const stat = await fs.stat(imagePath)
+              if (stat.size > 8_000_000 || imageBytes + stat.size > 16_000_000) continue
+              const extension = extname(imagePath).toLowerCase()
+              const mimeType = ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' } as Record<string, string>)[extension]
+              if (!mimeType) continue
+              const bytes = await fs.readFile(imagePath)
+              imageBytes += bytes.length
+              content.push({ type: 'image', mimeType, data: bytes.toString('base64') })
+            } catch { /* A failed preview must not replay a completed operation. */ }
+          }
+
+          // MCP 协议要求返回 content 数组
+          json(
+            res,
+            200,
+            ok(id, {
+              content,
+              isError: !result.success,
+              structuredContent: { success: result.success, content: result.content, state: resultState },
+              ...(result.error && { meta: { error: result.error.message } }),
+            })
+          )
+        } finally {
+          if (timer) clearTimeout(timer)
+          res.removeListener('close', onClose)
+          running.delete(controller)
+          if (running.size === 0) activeTools.delete(key)
+        }
+        break
+      }
+
+      case 'notifications/cancelled': {
+        const metadata = (params as any)?.['mindpet/context'] || {}
+        cancelDesktopTask(String(metadata.sessionId || ''), String(metadata.messageId || ''))
+        json(res, 200, ok(id, {}))
+        break
+      }
+
+      case 'mindpet/task-finished': {
+        const sessionId = String((params as any)?.sessionId || '')
+        const messageId = String((params as any)?.messageId || '')
+        permissionManager.clearTurnApproval(messageId ? `${sessionId}::${messageId}` : sessionId)
+        json(res, 200, ok(id, {}))
         break
       }
 

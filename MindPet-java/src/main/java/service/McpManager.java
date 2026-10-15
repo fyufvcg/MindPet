@@ -145,14 +145,34 @@ public class McpManager implements ToolCallbackProvider {
             ObjectNode params = mapper.createObjectNode();
             params.put("name", toolName);
             params.set("arguments", mapper.valueToTree(arguments != null ? arguments : Map.of()));
+            if (toolName.startsWith("desktop__")) {
+                Map<String, String> execution = tool.ToolUserContext.getExecution();
+                Map<String, String> context = new LinkedHashMap<>(execution);
+                context.put("sessionId", tool.ToolUserContext.getSessionId());
+                context.put("messageId", Objects.toString(tool.ToolUserContext.getRequestId(), ""));
+                params.set("_meta", mapper.valueToTree(Map.of("mindpet/context", context)));
+            }
 
             ObjectNode req = mapper.createObjectNode();
             req.put("jsonrpc", "2.0"); req.put("method", "tools/call"); req.put("id", 3);
             req.set("params", params);
 
             JsonNode resp = sendJsonRpc(cfg, req);
-            if (resp == null) return "MCP 无响应";
-            if (resp.has("error")) return "MCP error: " + resp.get("error");
+            if (resp == null) return toolError("MCP_TRANSPORT_ERROR", "MCP 请求失败或超时，操作结果可能未知。写操作请先检查实际状态，不要直接重试。");
+            if (resp.has("error")) return toolError("MCP_PROTOCOL_ERROR", resp.get("error").toString());
+
+            JsonNode result = resp.path("result");
+            if (toolName.startsWith("desktop__")) {
+                ObjectNode envelope = mapper.createObjectNode();
+                envelope.put("mindpetToolResult", true);
+                envelope.put("success", !result.path("isError").asBoolean(false));
+                envelope.put("content", result.path("content").findValuesAsText("text").stream().collect(java.util.stream.Collectors.joining("\n")));
+                if (result.has("structuredContent")) envelope.set("state", result.path("structuredContent").path("state"));
+                var images = envelope.putArray("images");
+                for (JsonNode item : result.path("content")) if ("image".equals(item.path("type").asText())) images.add(item);
+                return envelope.toString();
+            }
+            if (result.path("isError").asBoolean(false)) return toolError("MCP_TOOL_ERROR", result.path("content").toString());
 
             JsonNode content = resp.path("result").path("content");
             if (content.isArray()) {
@@ -166,22 +186,29 @@ public class McpManager implements ToolCallbackProvider {
             }
             return resp.path("result").toString();
         } catch (Exception e) {
-            return "MCP 异常: " + e.getMessage();
+            return toolError("MCP_TOOL_ERROR", e.getMessage());
         }
     }
 
     // ==================== HTTP ====================
 
     private JsonNode sendJsonRpc(McpServerConfig cfg, ObjectNode request) {
+        HttpURLConnection conn = null;
         try {
             String body = mapper.writeValueAsString(request);
             String method = request.path("method").asText("?");
 
-            HttpURLConnection conn = (HttpURLConnection) URI.create(cfg.url).toURL().openConnection();
+            conn = (HttpURLConnection) URI.create(cfg.url).toURL().openConnection();
+            HttpURLConnection cancellableConnection = conn;
+            if ("tools/call".equals(method)) tool.ToolUserContext.registerCancellation(cancellableConnection::disconnect);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(cfg.timeout > 0 ? cfg.timeout * 1000 : 30000);
+            if (request.path("params").path("name").asText().startsWith("desktop__")) {
+                long deadline = Long.parseLong(tool.ToolUserContext.getExecution().getOrDefault("deadline", Long.toString(System.currentTimeMillis() + 600_000)));
+                conn.setReadTimeout((int)Math.max(1, Math.min(Integer.MAX_VALUE, deadline - System.currentTimeMillis())));
+            }
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json, text/event-stream");
             if (cfg.apiKey != null && !cfg.apiKey.isBlank())
@@ -205,7 +232,7 @@ public class McpManager implements ToolCallbackProvider {
             if (is == null) { logger.log("ERROR", "[MCP] " + cfg.name + " HTTP " + code + " body=null"); return null; }
 
             String raw = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            logger.log("DEBUG", "[MCP] ← " + cfg.name + " body(" + raw.length() + "): " + raw.substring(0, Math.min(200, raw.length())).replace("\n", "\\n"));
+            logger.log("DEBUG", "[MCP] ← " + cfg.name + " body length=" + raw.length());
 
             if (code >= 400) { logger.log("ERROR", "[MCP] " + cfg.name + " HTTP " + code + ": " + raw.substring(0, Math.min(200, raw.length()))); return null; }
 
@@ -225,6 +252,23 @@ public class McpManager implements ToolCallbackProvider {
         } catch (Exception e) {
             logger.log("ERROR", "[MCP] " + cfg.name + " 请求异常: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private String toolError(String code, String message) {
+        try { return mapper.writeValueAsString(Map.of("success", false, "code", code, "message", Objects.toString(message, ""))); }
+        catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    public void finishDesktopTask(String sessionId, String messageId) {
+        for (McpConnection connection : connections.values()) {
+            if (connection.toolCallbacks.stream().noneMatch(callback -> callback instanceof McpToolCallback m && m.mcpName.startsWith("desktop__"))) continue;
+            ObjectNode request = mapper.createObjectNode();
+            request.put("jsonrpc", "2.0"); request.put("method", "mindpet/task-finished"); request.put("id", UUID.randomUUID().toString());
+            request.set("params", mapper.valueToTree(Map.of("sessionId", sessionId, "messageId", messageId)));
+            sendJsonRpc(connection.config, request);
         }
     }
 

@@ -43,8 +43,12 @@ export class PermissionManager {
     sender?: WebContents
     forcePrompt?: boolean
     allowTurnScope?: boolean
+    abortSignal?: AbortSignal
+    approvalScopeId?: string
   }): Promise<boolean> {
-    if (!params.forcePrompt && this.isTurnApprovalGranted(params.sessionId)) {
+    if (params.abortSignal?.aborted) return false
+    const approvalKey = params.approvalScopeId || params.sessionId
+    if (!params.forcePrompt && this.isTurnApprovalGranted(approvalKey)) {
       return true
     }
 
@@ -58,14 +62,21 @@ export class PermissionManager {
 
     const reqId = this.nextPermissionRequestId++
     return new Promise<boolean>((resolve) => {
+      const onAbort = (): void => {
+        this.pendingPermissions.get(reqId)?.({ approved: false, scope: 'once' })
+        this.pendingPermissions.delete(reqId)
+        this.closeNotification(reqId)
+      }
+      params.abortSignal?.addEventListener('abort', onAbort, { once: true })
       this.pendingPermissions.set(reqId, (response) => {
+        params.abortSignal?.removeEventListener('abort', onAbort)
         if (
           response.approved &&
           response.scope === 'turn' &&
-          params.sessionId &&
+          approvalKey &&
           params.allowTurnScope !== false
         ) {
-          this.grantTurnApproval(params.sessionId)
+          this.grantTurnApproval(approvalKey)
         }
         resolve(response.approved)
       })
@@ -87,6 +98,7 @@ export class PermissionManager {
         if (!this.pendingPermissions.has(reqId)) return
         this.pendingPermissions.delete(reqId)
         this.closeNotification(reqId)
+        params.abortSignal?.removeEventListener('abort', onAbort)
         resolve(false)
       }, 300000)
     })
@@ -104,6 +116,8 @@ export class PermissionManager {
 
     return true
   }
+
+  public clearTurnApproval(sessionId: string): void { this.turnApprovals.delete(sessionId) }
 
   public getNextRequestId(): number {
     return this.nextPermissionRequestId++
@@ -146,7 +160,7 @@ export class PermissionManager {
   }
 
   private grantTurnApproval(sessionId: string): void {
-    this.turnApprovals.set(sessionId, Date.now() + 10 * 60 * 1000)
+    this.turnApprovals.set(sessionId, Date.now() + 35 * 60 * 1000)
   }
 }
 

@@ -2,7 +2,6 @@ package service;
 
 import config.DynamicLlmConfig;
 import config.LlmConfig;
-import config.ToolCallLimitAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -91,7 +90,7 @@ public class DynamicChatClientFactory {
         if (effectiveModel().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) options.temperature(null);
         var model = OpenAiChatModel.builder().openAiApi(api).defaultOptions(options.build())
             .retryTemplate(org.springframework.retry.support.RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build();
-        return ChatClient.builder(model).defaultAdvisors(new ToolCallLimitAdvisor(logger)).build();
+        return ChatClient.builder(model).build();
     }
 
     public ChatClient build() {
@@ -117,8 +116,7 @@ public class DynamicChatClientFactory {
                 OpenAiChatModel model = OpenAiChatModel.builder().openAiApi(api)
                     .defaultOptions(options.build()).build();
                 cachedDynamicClient = ChatClient.builder(model)
-                    .defaultAdvisors(new org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor(),
-                        new ToolCallLimitAdvisor(logger)).build();
+                    .build();
                 cachedFingerprint = fingerprint;
             }
             return cachedDynamicClient;
