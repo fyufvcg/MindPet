@@ -14,7 +14,11 @@ async function assertAllowedPath(filePath: string, context: ToolContext, allowMi
   if (!isPathWithinRoots(checkPath, getAllowedFileRoots(context))) {
     throw new Error('该路径不在当前会话已授权的文件夹内。请先上传文件，或在设置中选择允许访问的文件夹。')
   }
-  if (targetExists) return fs.promises.realpath(absolutePath)
+  if (targetExists) {
+    const realPath = await fs.promises.realpath(absolutePath)
+    if (!isPathWithinRoots(realPath, getAllowedFileRoots(context))) throw new Error('文件真实路径不在当前会话已授权目录内。')
+    return realPath
+  }
 
   // Creating a nested path must not follow a pre-existing directory symlink out
   // of an approved root. Validate the nearest existing ancestor's real path.
@@ -58,16 +62,6 @@ export class FileExecutor implements IToolExecutor {
         let { file_path } = args
         if (!file_path) return { content: '错误：缺少必要参数 file_path', success: false }
         file_path = resolveFilePath(file_path, context)
-
-        // 兼容记忆提纯重命名：如果原 md 文件不存在，检查是否存在带 '_已更新.md' 后缀的同名文件
-        if (!fs.existsSync(file_path)) {
-          if (file_path.toLowerCase().endsWith('.md') && !file_path.toLowerCase().endsWith('_已更新.md')) {
-            const updatedPath = file_path.replace(/\.md$/i, '_已更新.md')
-            if (fs.existsSync(updatedPath)) {
-              file_path = updatedPath
-            }
-          }
-        }
 
         if (!fs.existsSync(file_path)) return { content: `错误：文件不存在：${file_path}`, success: false }
         file_path = await assertAllowedPath(file_path, context)
@@ -138,15 +132,15 @@ export class FileExecutor implements IToolExecutor {
         let finalContent = content
         const { start_line, end_line } = args
 
-        const DEFAULT_LIMIT_LINES = 800
+        const DEFAULT_LIMIT_LINES = 300
         const lines = content.split(/\r?\n/)
         let s = Number.isInteger(start_line) ? start_line : undefined
         let e = Number.isInteger(end_line) ? end_line : undefined
 
-        // 如果是 md 文件，且未指定行范围，默认全量读取；其它类型文件依然保持 800 行安全保护
+        // All text formats use bounded defaults, including cached Markdown.
         if (s === undefined && e === undefined) {
           s = 1
-          e = ext === 'md' ? lines.length : Math.min(lines.length, DEFAULT_LIMIT_LINES)
+          e = Math.min(lines.length, DEFAULT_LIMIT_LINES)
         } else {
           s = s ? Math.max(1, s) : 1
           e = e ? Math.min(lines.length, e) : lines.length
@@ -166,11 +160,17 @@ export class FileExecutor implements IToolExecutor {
           }
         }
 
-        const MAX_READ_LEN = 30000
+        const MAX_READ_LEN = 12000
         if (finalContent.length > MAX_READ_LEN) {
-          finalContent = finalContent.slice(0, MAX_READ_LEN) + `\n\n... [警告：内容过长已自动截断，仅展示前 ${MAX_READ_LEN} 个字符。如需阅读后续部分，请在参数中使用 start_line 和 end_line 进行精确的分页读取。]`
+          finalContent = finalContent.slice(0, MAX_READ_LEN) + `\n\n... [警告：内容过长已自动截断，仅展示前 ${MAX_READ_LEN} 个字符。如需阅读后续部分，可用 offset 与 length 按字符分页读取原始正文，长单行也可完整读取。]`
         }
-        return { content: finalContent, success: true }
+        if (Number.isInteger(args.offset) && args.offset >= 0) {
+          const length = Math.min(12000, Math.max(1, Number(args.length) || 8000))
+          const offset = Math.min(content.length, args.offset)
+          const end = Math.min(content.length, offset + length)
+          finalContent = `[字符分页 offset=${offset}, next_offset=${end}, total=${content.length}, has_more=${end < content.length}]\n` + content.slice(offset, end)
+        }
+        return { content: finalContent, success: !(e < s) }
       }
 
       if (api === 'get_file_metadata') {

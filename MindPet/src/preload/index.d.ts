@@ -48,6 +48,7 @@ declare global {
       getSkillsPath: () => Promise<string>
       openSkillsFolder: () => Promise<void>
       uploadSkillPack: () => Promise<any[]>
+      updateSkillDescription: (name: string, description: string) => Promise<any[]>
       getSkillsList: () => Promise<any[]>
       deleteSkill: (name: string) => Promise<any[]>
       getActiveSkillsPrompt: (enabledSkillNames: string[]) => Promise<string>
@@ -198,6 +199,7 @@ declare global {
       createSession: (session: any) => Promise<boolean>
       updateSession: (sessionId: string, updates: any) => Promise<boolean>
       deleteSession: (sessionId: string) => Promise<boolean>
+      clearChatHistory: (sessionId?: string) => Promise<boolean>
       saveMessage: (message: any) => Promise<boolean>
       saveMessages: (messages: any[]) => Promise<boolean>
       deleteMessage: (messageId: string) => Promise<boolean>
@@ -261,6 +263,7 @@ declare global {
       getSandboxMode: () => Promise<boolean>
       setSandboxMode: (enabled: boolean) => Promise<boolean>
       onRequestPermission: (callback: (data: any) => void) => () => void
+      onPermissionSettled: (callback: (data: { requestId: number }) => void) => () => void
       respondPermission: (requestId: number, approved: boolean, scope?: 'once' | 'turn') => void
       respondClarification: (requestId: number, answers: Record<string, string>, cancelled?: boolean) => void
       respondCredential: (requestId: number, token: string, cancelled?: boolean) => void
@@ -268,8 +271,15 @@ declare global {
       installOfficeRuntime: () => Promise<OfficeRuntimeStatus>
       onOfficeRuntimeProgress: (callback: (status: OfficeRuntimeStatus) => void) => () => void
       abortLlm: (sessionId?: string) => Promise<boolean>
+      migrateCronTasks: (tasks: any[]) => Promise<boolean>
+      listAgentTasks: () => Promise<any[]>
+      getAgentTask: (id: string) => Promise<any>
+      cancelAgentTask: (id: string) => Promise<{ cancelled: boolean }>
+      resumeAgentTask: (id: string, instruction: string, servers: string[]) => Promise<{ reply: string }>
+      clearCronLogs: (id: string) => Promise<boolean>
       getCronTasks: () => Promise<any[] | null>
-      saveCronTasks: (tasks: any[]) => Promise<boolean>
+      upsertCronTask: (id: string, task: any) => Promise<any[]>
+      deleteCronTask: (id: string) => Promise<any[]>
       onCronUpdated: (callback: () => void) => () => void
       showNotification: (title: string, body: string) => Promise<boolean>
       onShowBubble: (callback: (text: string, details?: string, taskId?: string, logId?: string) => void) => () => void

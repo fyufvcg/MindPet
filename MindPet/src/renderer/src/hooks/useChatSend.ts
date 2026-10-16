@@ -2,6 +2,7 @@
 import { useCallback } from 'react'
 import type { MutableRefObject } from 'react'
 import { formatDateTime } from '../utils/helpers'
+import { beginTaskMcp, finishTaskMcp, parseMcpCommands } from './useTaskMcp'
 
 interface ChatSendState {
   sessions: any[]
@@ -10,7 +11,6 @@ interface ChatSendState {
   attachedFiles: any[]
   sendingSessionIds: Record<string, boolean>
   llmConfig: any
-  contextRounds: number
   avatarList: any[]
   customModelDir: string
   customModelFile: string
@@ -29,31 +29,6 @@ interface ChatSendOptions {
   finalizeReply: (replyId: number, text: string, sessionId: string, onComplete: () => void) => void
   failReply: (replyId: number, sessionId: string, error: unknown) => void
   triggerSessionSummary: (sessionId: string, sessions: any[]) => Promise<void>
-}
-
-/**
- * 技能 SKILL.md 全文注入缓存。
- * 按「会话 + 启用技能集合」缓存：会话开始时注入一次，之后复用；
- * 切换会话或用户增删技能时自动失效重取。
- */
-const skillsPromptCache = new Map<string, string>()
-
-async function loadSkillsPrompt(sessionId: string, activeSkills: string[]): Promise<string> {
-  if (!sessionId || activeSkills.length === 0) return ''
-  const cacheKey = `${sessionId}::${[...activeSkills].sort().join(',')}`
-  const cached = skillsPromptCache.get(cacheKey)
-  if (cached !== undefined) return cached
-  try {
-    // 主进程会读取已启用技能的 SKILL.md 全文，并顺带同步到后端 SkillStore
-    const prompt = await window.api.getActiveSkillsPrompt(activeSkills)
-    const resolved = prompt || ''
-    skillsPromptCache.set(cacheKey, resolved)
-    return resolved
-  } catch (e) {
-    console.error('[Skills] 读取技能全文失败:', e)
-    skillsPromptCache.set(cacheKey, '')
-    return ''
-  }
 }
 
 function getAvatar(state: ChatSendState): { name: string; style: string; voice: string } {
@@ -131,7 +106,9 @@ export function useChatSend({
     const state = getState() as any
     const sessionId = state.activeSessionId
     const attachedFiles = [...state.attachedFiles]
-    const text = state.inputValue.trim()
+    const externalServers = (state.mcpConfig?.servers || []).filter((server: any) => server.id !== 'desktop-tools')
+    const parsed = parseMcpCommands(state.inputValue.trim(), externalServers)
+    const text = parsed.text
     if (!text && attachedFiles.length === 0) return
     // A send while the model is working is a steering instruction. The main process
     // replaces the active request for this session with one that includes this message.
@@ -139,12 +116,6 @@ export function useChatSend({
 
     const llmConfig = { ...state.llmConfig }
     const avatar = getAvatar(state)
-    // Compute active skills from frontend selector state
-    const disabled: string[] = state.disabledSkillNames || []
-    const allSkills: any[] = state.skillsList || []
-    const activeSkills = allSkills
-      .filter((s: any) => !disabled.includes(s.name))
-      .map((s: any) => s.name.replace(/\.zip$/i, ''))
     // API Key check removed — all LLM calls route to Java backend (小晴)
     // which manages its own API keys
 
@@ -167,6 +138,8 @@ export function useChatSend({
     }
 
     const replyId = Date.now() + 1
+    const selectedMcpServerIds = beginTaskMcp(sessionId, replyId, isSteering, parsed.ids)
+    userMessage.selectedMcpServerIds = selectedMcpServerIds
     const placeholder: any = {
       id: replyId,
       sender: 'agent',
@@ -234,27 +207,18 @@ export function useChatSend({
         console.warn('用户消息或助手占位消息未能落库；继续本次生成。')
       }
       await window.api.updateSession(sessionId, { name: activeSession.name }).catch(console.error)
-      const chatMessages = activeSession.messages
-        .filter((message: any) => (message.sender === 'user' || message.sender === 'agent') && !message.isThinking && !message.isSuperseded)
-        .slice(-state.contextRounds * 2)
-        .map(toLlmMessage)
+      const chatMessages = [toLlmMessage(userMessage)]
 
       if (abortedReplyIdsRef.current.has(replyId)) throw new Error('UserAborted')
-
-      // 技能全文注入：会话开始注入一次，同会话同技能集合复用缓存
-      const skillsPrompt = await loadSkillsPrompt(sessionId, activeSkills)
-      const systemPrompt = skillsPrompt
-        ? [llmConfig.systemPrompt, skillsPrompt].filter(Boolean).join('\n\n')
-        : llmConfig.systemPrompt
 
       const response = await window.api.callLLM(
         {
           ...llmConfig,
-          systemPrompt,
+          systemPrompt: llmConfig.systemPrompt,
           sessionId,
           messageId: replyId,
-          contextRounds: state.contextRounds,
-          activeSkills,
+          userMessageId: userMessage.id,
+          selectedMcpServerIds,
           thinkingEnabled
         },
         chatMessages,
@@ -281,6 +245,8 @@ export function useChatSend({
     } catch (error) {
       console.error(error)
       failReply(replyId, sessionId, error)
+    } finally {
+      finishTaskMcp(sessionId, replyId)
     }
   }, [
     abortedReplyIdsRef,

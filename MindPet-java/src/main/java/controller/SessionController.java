@@ -14,6 +14,12 @@ import java.util.*;
 public class SessionController {
 
     private final SessionService sessionService;
+    private service.agent.AgentContextStore contextStore;
+    private service.agent.AgentTaskService tasks;
+    @Autowired
+    public void setRuntimeContext(service.agent.AgentContextStore contextStore, service.agent.AgentTaskService tasks) {
+        this.contextStore = contextStore; this.tasks = tasks;
+    }
 
     @Autowired
     public SessionController(SessionService sessionService) {
@@ -23,8 +29,14 @@ public class SessionController {
     /** 获取用户的所有会话 */
     @GetMapping
     public Map<String, Object> listSessions(
-            @RequestParam(defaultValue = "desktop-user") String userId) {
+            @RequestParam(defaultValue = "desktop-user") String userId,
+            @RequestParam(defaultValue = "false") boolean includeMessages) {
         List<Map<String, Object>> sessions = sessionService.listSessions(userId);
+        if (includeMessages) for (Map<String,Object> session : sessions) {
+            String id = session.get("id").toString();
+            session.put("messages", sessionService.loadMessages(userId, id, 50));
+            session.put("contextUsage", contextStore == null ? Map.of() : contextStore.latestTrace(userId, id));
+        }
         return Map.of("status", "ok", "sessions", sessions);
     }
 
@@ -49,7 +61,24 @@ public class SessionController {
     public Map<String, Object> deleteSession(
             @RequestParam(defaultValue = "desktop-user") String userId,
             @PathVariable String sessionId) {
-        sessionService.deleteSession(userId, sessionId);
+        tasks.changeSession(userId, sessionId, () -> {
+            if (contextStore != null) contextStore.deleteConversation(userId, sessionId);
+            else sessionService.deleteSession(userId, sessionId);
+        });
+        return Map.of("status", "ok");
+    }
+
+    /** Clear conversation/runtime data only. Long-term memory is independent. */
+    @DeleteMapping("/messages")
+    public Map<String,Object> clearAllMessages(@RequestParam(defaultValue = "desktop-user") String userId) {
+        tasks.changeAllSessions(userId, () -> contextStore.clearAllConversations(userId));
+        return Map.of("status", "ok");
+    }
+
+    @DeleteMapping("/{sessionId}/messages")
+    public Map<String,Object> clearMessages(@RequestParam(defaultValue = "desktop-user") String userId,
+                                            @PathVariable String sessionId) {
+        tasks.changeSession(userId, sessionId, () -> contextStore.clearConversation(userId, sessionId));
         return Map.of("status", "ok");
     }
 
@@ -60,7 +89,8 @@ public class SessionController {
             @PathVariable String sessionId,
             @RequestParam(defaultValue = "50") int limit) {
         List<Map<String, Object>> msgs = sessionService.loadMessages(userId, sessionId, limit);
-        return Map.of("status", "ok", "messages", msgs);
+        return Map.of("status", "ok", "messages", msgs,
+            "contextUsage", contextStore == null ? Map.of() : contextStore.latestTrace(userId, sessionId));
     }
 
     /** 追加消息 */

@@ -33,6 +33,7 @@ export interface ToolResult {
   state?: any
   success: boolean
   error?: { message: string; name?: string }
+  outcome?: 'confirmed' | 'unknown' | 'not_executed'
 }
 
 export interface WebSource {
@@ -51,6 +52,7 @@ export interface ToolContext {
   isFrontend: boolean
   event?: Electron.IpcMainInvokeEvent
   sandboxMode: boolean
+  selectedMcpServerIds?: string[]
   abortSignal?: AbortSignal
 }
 

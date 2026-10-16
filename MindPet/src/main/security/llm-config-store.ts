@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs'
 import { SecretVault, writeTextAtomically } from './secret-vault-core'
+import { sameLlmCredentialScope, validateServiceAddress } from './credential-scope'
 
 export const SYSTEM_LLM_API_KEY_SECRET_ID = 'system-llm-api-key'
 export const SYSTEM_LLM_API_KEY_REF = `secret://${SYSTEM_LLM_API_KEY_SECRET_ID}`
@@ -37,6 +38,7 @@ function withoutRuntimeSecrets(config: JsonObject): JsonObject {
   delete sanitized.hasApiKey
   delete sanitized.secretMigrationPending
   delete sanitized.clearApiKey
+  delete sanitized.backendSync
   return sanitized
 }
 
@@ -86,13 +88,17 @@ export class LlmConfigStore {
 
   save(input: JsonObject): RuntimeLlmConfig {
     if (!isJsonObject(input)) throw new TypeError('LLM configuration must be an object')
+    validateServiceAddress(input.baseUrl)
 
     const stored = this.readStoredConfig()
     const currentWithoutSecrets = withoutRuntimeSecrets(stored)
     const incomingWithoutSecrets = withoutRuntimeSecrets(input)
-    const shouldClear = input.clearApiKey === true
+    const scopeChanged = !sameLlmCredentialScope(
+      { ...DEFAULT_LLM_CONFIG, ...stored }, { ...DEFAULT_LLM_CONFIG, ...stored, ...input }
+    )
+    const shouldClear = input.clearApiKey === true || (scopeChanged && !String(input.apiKey || '').trim())
     const incomingApiKey =
-      typeof input.apiKey === 'string' && input.apiKey.length > 0 ? input.apiKey : ''
+      typeof input.apiKey === 'string' ? input.apiKey.trim() : ''
     const legacyApiKey =
       typeof stored.apiKey === 'string' && stored.apiKey.length > 0 ? stored.apiKey : ''
     let apiKeyRef = stored.apiKeyRef === SYSTEM_LLM_API_KEY_REF ? SYSTEM_LLM_API_KEY_REF : undefined
@@ -101,7 +107,7 @@ export class LlmConfigStore {
       this.vault.deleteSecret(SYSTEM_LLM_API_KEY_SECRET_ID)
       apiKeyRef = undefined
     } else {
-      const keyToPersist = incomingApiKey || legacyApiKey
+      const keyToPersist = incomingApiKey || (scopeChanged ? '' : legacyApiKey)
       if (keyToPersist) {
         this.vault.setSecret(SYSTEM_LLM_API_KEY_SECRET_ID, keyToPersist, 'System LLM API key')
         apiKeyRef = SYSTEM_LLM_API_KEY_REF

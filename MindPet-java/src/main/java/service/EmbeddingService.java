@@ -4,110 +4,71 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import config.EmbeddingConfig;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import util.Logger;
-
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Embedding 服务 — 支持 Ollama（本地）与豆包（云端）双通路，并在运行时自动降级。
- *
- * <h3>为什么需要自动降级</h3>
- * 本服务历史上是启动时决定的布尔开关（{@code use-ollama}），一旦 Ollama 不可用，
- * {@link #embed(String)} 会吞掉异常返回 null —— 后端 {@code /health} 与聊天全正常，
- * 但长期记忆**静默失效**。现在改为：
- * <ol>
- *   <li>启动时探测 Ollama（服务可达 + 模型已拉取）</li>
- *   <li>按 {@link EmbeddingConfig.Mode} 三态决定 provider：AUTO 优先 Ollama 并自动降级，
- *       OLLAMA / DOUBAO 为强制指定</li>
- *   <li>决策结果与原因通过 {@link #status()} 暴露给前端展示</li>
- * </ol>
- *
- * <h3>探测为何直接打 /api/embed 而不是 /api/tags</h3>
- * "服务在但模型没拉取"（未执行 {@code ollama pull bge-m3}）是最常见的失败场景，
- * 查模型列表无法区分它与"完全不可用"，因此直接发起一次极小的 embed 请求。
- */
+/** Provider readiness means a successful, finite 1024-dimensional vector response. */
 @Service
 public class EmbeddingService {
-
-    /** 探测/降级的原因码，供前端展示可读提示 */
     public enum Reason {
-        OK_OLLAMA,
-        OK_DOUBAO,
-        OLLAMA_UNREACHABLE,
-        OLLAMA_MODEL_MISSING,
-        NO_PROVIDER_AVAILABLE,
-        FORCED_OLLAMA_UNAVAILABLE,
-        DOUBAO_KEY_MISSING,
-        UNKNOWN
+        OK_OLLAMA, OK_DOUBAO, OLLAMA_UNREACHABLE, OLLAMA_MODEL_MISSING,
+        NO_PROVIDER_AVAILABLE, FORCED_OLLAMA_UNAVAILABLE, DOUBAO_KEY_MISSING,
+        DOUBAO_REQUEST_FAILED, INVALID_VECTOR, UNKNOWN
     }
-
     private final ObjectMapper mapper = new ObjectMapper();
     private final RestTemplate rest;
+    private final RestTemplate probe;
     private final Logger logger;
     private final EmbeddingConfig config;
-    private final String doubaoEndpointFromYml;
-    private final String doubaoModelFromYml;
-    private final String doubaoApiKeyFromYml;
-    private final String ollamaEndpoint;
-    private final String ollamaModel;
-    private final String ollamaKeepAlive;
-
-    /** 探测结果（启动时与手动刷新时更新，加锁读写） */
+    private final String cloudEndpoint, cloudModel, cloudKey;
+    private final String ollamaEndpoint, ollamaModel, ollamaKeepAlive;
     private final Object probeLock = new Object();
-    private volatile boolean ollamaReachable = false;
-    private volatile boolean ollamaModelPresent = false;
-    private volatile String ollamaProbeDetail = "";
+    private volatile boolean ollamaReachable, ollamaModelPresent, ollamaChecked, doubaoVerified;
+    private volatile String ollamaProbeDetail = "", doubaoDetail = "";
     private volatile Reason reason = Reason.UNKNOWN;
-    /** 当前实际生效的 provider，null 表示两者都不可用 */
-    private volatile String activeProvider = null;
+    private volatile String activeProvider;
+    private volatile long verifiedAt;
+    private String configuredFingerprint = "";
+    private long nextProbeAt;
 
     public EmbeddingService(
         @Value("${app.embedding.ollama.endpoint:http://127.0.0.1:11434/api/embed}") String ollamaEndpoint,
         @Value("${app.embedding.ollama.model:bge-m3}") String ollamaModel,
         @Value("${app.embedding.ollama.keep-alive:30m}") String ollamaKeepAlive,
-        @Value("${app.embedding.doubao.endpoint:https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal}") String doubaoEndpoint,
-        @Value("${app.embedding.doubao.model:doubao-embedding-vision-251215}") String doubaoModel,
-        @Value("${app.embedding.doubao.api-key:}") String doubaoApiKey,
-        @Value("${llm.api.key:}") String llmApiKey,
-        EmbeddingConfig config,
-        Logger logger) {
+        @Value("${app.embedding.doubao.endpoint:https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal}") String endpoint,
+        @Value("${app.embedding.doubao.model:doubao-embedding-vision-251215}") String model,
+        @Value("${app.embedding.doubao.api-key:}") String apiKey,
+        EmbeddingConfig config, Logger logger) {
         this.ollamaEndpoint = ollamaEndpoint;
         this.ollamaModel = ollamaModel;
         this.ollamaKeepAlive = ollamaKeepAlive;
-        this.doubaoEndpointFromYml = doubaoEndpoint;
-        this.doubaoModelFromYml = doubaoModel;
-        // 兜底：豆包 Embedding Key 为空时复用 LLM Key（二者同属方舟平台，通常同一个 Key）
-        this.doubaoApiKeyFromYml =
-            (doubaoApiKey == null || doubaoApiKey.isBlank()) ? llmApiKey : doubaoApiKey;
+        this.cloudEndpoint = endpoint;
+        this.cloudModel = model;
+        // LLM credentials never implicitly cross over to an embedding provider.
+        this.cloudKey = apiKey == null ? "" : apiKey;
         this.config = config;
         this.logger = logger;
-
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2_000);   // 探测要快，本机服务不该等 10 秒
-        factory.setReadTimeout(30_000);
-        this.rest = new RestTemplate(factory);
-
-        resolveProvider(true);
+        this.rest = client(30_000);
+        this.probe = client(10_000);
+        configure(false);
     }
-
-    // ==================== 对外：状态 ====================
-
-    /** 当前生效 provider 描述，例如 "Ollama/bge-m3"、"Doubao/..."、null 表示不可用。 */
+    private static RestTemplate client(int timeout) {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2_000);
+        factory.setReadTimeout(timeout);
+        return new RestTemplate(factory);
+    }
     public String activeProviderDescription() {
         String p = activeProvider;
-        if (p == null) return null;
-        return "ollama".equals(p) ? "Ollama/" + ollamaModel : "Doubao/" + doubaoModel();
+        return p == null ? null : "ollama".equals(p) ? "Ollama/" + ollamaModel : "Doubao/" + doubaoModel();
     }
-
     public String getActiveProvider() { return activeProvider; }
     public boolean isOllamaReachable() { return ollamaReachable; }
     public boolean isOllamaModelPresent() { return ollamaModelPresent; }
@@ -116,266 +77,166 @@ public class EmbeddingService {
     public boolean hasDoubaoApiKey() { return !doubaoApiKey().isBlank(); }
     public String getDoubaoModel() { return doubaoModel(); }
 
-    /** 供 /embedding-status 结构化输出 */
-    public Map<String, Object> status() {
-        Map<String, Object> ollama = new java.util.LinkedHashMap<>();
-        ollama.put("endpoint", ollamaEndpoint);
-        ollama.put("model", ollamaModel);
-        ollama.put("reachable", ollamaReachable);
-        ollama.put("modelPresent", ollamaModelPresent);
-        if (!ollamaProbeDetail.isBlank()) ollama.put("detail", ollamaProbeDetail);
-
-        Map<String, Object> doubao = new java.util.LinkedHashMap<>();
-        doubao.put("endpoint", doubaoEndpoint());
-        doubao.put("model", doubaoModel());
-        doubao.put("configured", hasDoubaoApiKey());
-
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("mode", config.getMode());
-        result.put("activeProvider", activeProvider);
-        result.put("activeProviderDescription", activeProviderDescription());
-        result.put("reason", reason.name());
-        result.put("hint", hint());
-        result.put("ollama", ollama);
-        result.put("doubao", doubao);
-        return result;
+    public Map<String,Object> status() {
+        synchronized (probeLock) {
+            Map<String,Object> local = new LinkedHashMap<>();
+            local.put("endpoint", ollamaEndpoint); local.put("model", ollamaModel);
+            local.put("checked", ollamaChecked); local.put("reachable", ollamaReachable);
+            local.put("modelPresent", ollamaModelPresent); local.put("detail", ollamaProbeDetail);
+            Map<String,Object> cloud = new LinkedHashMap<>();
+            cloud.put("endpoint", doubaoEndpoint()); cloud.put("model", doubaoModel());
+            cloud.put("configured", hasDoubaoApiKey()); cloud.put("verified", doubaoVerified);
+            cloud.put("detail", doubaoDetail);
+            Map<String,Object> result = new LinkedHashMap<>();
+            result.put("mode", config.getMode()); result.put("activeProvider", activeProvider);
+            result.put("activeProviderDescription", activeProviderDescription());
+            result.put("available", activeProvider != null); result.put("verifiedAt", verifiedAt);
+            result.put("dimension", activeProvider == null ? null : 1024);
+            result.put("reason", reason.name()); result.put("hint", hint());
+            result.put("ollama", local); result.put("doubao", cloud);
+            return result;
+        }
     }
-
-    /** 人类可读的处置建议，前端直接显示，避免用户看到裸 reason 码 */
     public String hint() {
         return switch (reason) {
-            case OK_OLLAMA -> "使用本地 Ollama（" + ollamaModel + "），数据不出本机。";
-            case OK_DOUBAO -> "使用豆包云端 Embedding。";
-            case OLLAMA_UNREACHABLE ->
-                "未检测到本地 Ollama 服务，已自动改用豆包 Embedding。"
-                + "若希望使用本地模型：启动 Ollama 后点击「重新检测」。";
-            case OLLAMA_MODEL_MISSING ->
-                "检测到 Ollama 服务，但未下载模型 " + ollamaModel + "，已自动改用豆包 Embedding。"
-                + "下载命令：ollama pull " + ollamaModel;
-            case FORCED_OLLAMA_UNAVAILABLE ->
-                "当前为「强制本地」模式，但 Ollama 不可用"
-                + (ollamaReachable ? "（服务在，模型 " + ollamaModel + " 缺失）" : "（服务未启动）")
-                + "。长期记忆将无法工作。";
-            case DOUBAO_KEY_MISSING ->
-                "当前为「强制云端」模式，但未配置豆包 Embedding API Key。"
-                + "请在设置页填写，否则长期记忆无法工作。";
-            case NO_PROVIDER_AVAILABLE ->
-                "Ollama 与豆包 Embedding 均不可用，长期记忆功能已失效。"
-                + "请启动 Ollama 或填写豆包 Embedding API Key。";
-            case UNKNOWN -> "";
+            case OK_OLLAMA -> "本地向量检测通过，维度为 1024。";
+            case OK_DOUBAO -> "豆包云端向量检测通过，维度为 1024；无需安装 Ollama。";
+            case OLLAMA_UNREACHABLE, OLLAMA_MODEL_MISSING -> activeProvider == null
+                ? "本地向量模型不可用，请选择云端模式并配置豆包 Key，或检查 Ollama。"
+                : "本地向量模型不可用，豆包云端已通过真实向量检测。";
+            case FORCED_OLLAMA_UNAVAILABLE -> "本地向量检测未通过：" + ollamaProbeDetail;
+            case DOUBAO_KEY_MISSING -> "请填写豆包 Embedding API Key；基础对话可独立使用。";
+            case DOUBAO_REQUEST_FAILED -> "云端向量检测未通过：" + doubaoDetail;
+            case INVALID_VECTOR -> "向量响应无效，模型必须返回 1024 维有限数值向量。";
+            case NO_PROVIDER_AVAILABLE -> "向量服务不可用，请配置云端 Embedding 或检查本地 Ollama；基础对话可独立使用。";
+            case UNKNOWN -> "向量服务尚未检测。";
         };
     }
-
-    // ==================== 对外：嵌入 ====================
-
     public float[] embed(String text) {
         if (text == null || text.isBlank()) return null;
-        text = service.v3.SecretSanitizer.sanitize(text);
-        String provider = activeProvider;
-        if (provider == null) {
-            logger.log("ERROR", "Embedding 不可用（无 provider）: " + hint());
-            return null;
-        }
-        try {
-            return "ollama".equals(provider) ? embedWithOllama(text) : embedWithDoubao(text);
-        } catch (Exception e) {
-            logger.log("ERROR", "Embedding failed [" + provider + "]: "
-                + e.getClass().getSimpleName() + " " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** 手动重新探测并决策（前端「重新检测」按钮 / 修改配置后调用） */
-    public Map<String, Object> refresh() {
-        resolveProvider(true);
-        return status();
-    }
-
-    // ==================== provider 决策 ====================
-
-    private void resolveProvider(boolean doProbe) {
         synchronized (probeLock) {
-            if (doProbe) probeOllama();
+            if (activeProvider == null) configure(false);
+            String provider = activeProvider;
+            if (provider == null) return null;
+            try { return requestVector(provider, service.v3.SecretSanitizer.sanitize(text), rest); }
+            catch (Exception e) {
+                if ("doubao".equals(provider)) { doubaoVerified = false; doubaoDetail = failure(e); }
+                else ollamaProbeDetail = failure(e);
+                activeProvider = null;
+                nextProbeAt = System.currentTimeMillis() + 60_000;
+                reason = e instanceof InvalidVectorException ? Reason.INVALID_VECTOR
+                    : "doubao".equals(provider) ? Reason.DOUBAO_REQUEST_FAILED : Reason.FORCED_OLLAMA_UNAVAILABLE;
+                logger.log("ERROR", "Embedding 请求失败 [" + provider + "]: " + failure(e));
+                return null;
+            }
+        }
+    }
+    public Map<String,Object> refresh() { return configure(true); }
 
+    public Map<String,Object> applyConfiguration(String mode, String key, String endpoint, String model, boolean verify) {
+        synchronized (probeLock) {
+            config.update(mode, key, endpoint, model);
+            return configure(verify);
+        }
+    }
+
+    /** Idempotent sync reuses readiness; an explicit check or changed configuration probes once. */
+    public Map<String,Object> configure(boolean verify) {
+        synchronized (probeLock) {
+            String fingerprint = config.getMode() + "|" + doubaoEndpoint() + "|" + doubaoModel() + "|" + doubaoApiKey();
+            if (!verify && fingerprint.equals(configuredFingerprint)
+                && (activeProvider != null || System.currentTimeMillis() < nextProbeAt)) return status();
+            configuredFingerprint = fingerprint;
+            nextProbeAt = System.currentTimeMillis() + 60_000;
+            activeProvider = null; verifiedAt = 0; doubaoVerified = false; doubaoDetail = "";
+            ollamaChecked = false; ollamaReachable = false; ollamaModelPresent = false; ollamaProbeDetail = "";
             EmbeddingConfig.Mode mode = config.modeEnum();
-            boolean doubaoUsable = hasDoubaoApiKey();
-
-            switch (mode) {
-                case OLLAMA -> {
-                    if (ollamaReachable && ollamaModelPresent) {
-                        setActive("ollama", Reason.OK_OLLAMA);
-                    } else {
-                        setActive(null, Reason.FORCED_OLLAMA_UNAVAILABLE);
-                    }
-                }
-                case DOUBAO -> {
-                    if (doubaoUsable) {
-                        setActive("doubao", Reason.OK_DOUBAO);
-                    } else {
-                        setActive(null, Reason.DOUBAO_KEY_MISSING);
-                    }
-                }
-                case AUTO -> {
-                    if (ollamaReachable && ollamaModelPresent) {
-                        setActive("ollama", Reason.OK_OLLAMA);
-                    } else if (doubaoUsable) {
-                        setActive("doubao", ollamaReachable
-                            ? Reason.OLLAMA_MODEL_MISSING : Reason.OLLAMA_UNREACHABLE);
-                    } else {
-                        setActive(null, ollamaReachable
-                            ? Reason.OLLAMA_MODEL_MISSING : Reason.NO_PROVIDER_AVAILABLE);
-                    }
+            // Forced cloud must not wait for or require an Ollama installation.
+            if (mode != EmbeddingConfig.Mode.DOUBAO) probeOllama();
+            if (mode != EmbeddingConfig.Mode.DOUBAO && ollamaModelPresent) {
+                activeProvider = "ollama"; reason = Reason.OK_OLLAMA;
+            } else if (mode == EmbeddingConfig.Mode.OLLAMA) {
+                reason = Reason.FORCED_OLLAMA_UNAVAILABLE;
+            } else if (!hasDoubaoApiKey()) {
+                reason = mode == EmbeddingConfig.Mode.DOUBAO ? Reason.DOUBAO_KEY_MISSING : Reason.NO_PROVIDER_AVAILABLE;
+            } else {
+                try {
+                    requestVector("doubao", "ping", probe);
+                    doubaoVerified = true; activeProvider = "doubao";
+                    reason = mode == EmbeddingConfig.Mode.DOUBAO ? Reason.OK_DOUBAO
+                        : ollamaReachable ? Reason.OLLAMA_MODEL_MISSING : Reason.OLLAMA_UNREACHABLE;
+                } catch (Exception e) {
+                    doubaoDetail = failure(e);
+                    reason = e instanceof InvalidVectorException ? Reason.INVALID_VECTOR : Reason.DOUBAO_REQUEST_FAILED;
                 }
             }
-            logger.log("INFO", "Embedding provider → " + String.valueOf(activeProviderDescription())
-                + " (mode=" + mode + ", reason=" + reason + ")");
+            if (activeProvider != null) verifiedAt = System.currentTimeMillis();
+            logger.log("INFO", "Embedding 检测完成 mode=" + mode + " reason=" + reason);
+            return status();
         }
     }
-
-    private void setActive(String provider, Reason r) {
-        this.activeProvider = provider;
-        this.reason = r;
-    }
-
-    /**
-     * 探测 Ollama：直接发一次极小 embed 请求，能同时判断
-     * "服务是否可达" 与 "模型是否已拉取"。
-     */
     private void probeOllama() {
-        ollamaReachable = false;
-        ollamaModelPresent = false;
-        ollamaProbeDetail = "";
+        ollamaChecked = true;
         try {
-            String body = mapper.writeValueAsString(Map.of(
-                "model", ollamaModel,
-                "input", "ping",
-                "truncate", true,
-                "keep_alive", ollamaKeepAlive
-            ));
-            // 首次加载或冷启动时，embedding 本身可能超过数秒；避免把可用模型误判为离线。
-            JsonNode root = post(ollamaEndpoint, body, null, 10_000);
-            JsonNode embeddings = root.path("embeddings");
-            if (embeddings.isArray() && !embeddings.isEmpty()) {
-                ollamaReachable = true;
-                ollamaModelPresent = true;
-            } else {
-                ollamaReachable = true;
-                ollamaProbeDetail = "响应中没有 embeddings 字段";
-            }
-        } catch (Exception e) {
-            String msg = e.getMessage() == null ? "" : e.getMessage();
-            if (isModelMissing(msg)) {
-                // 服务可达，但模型未拉取
-                ollamaReachable = true;
-                ollamaModelPresent = false;
-                ollamaProbeDetail = "模型未下载";
-            } else {
-                ollamaReachable = false;
-                ollamaProbeDetail = e.getClass().getSimpleName()
-                    + (msg.isBlank() ? "" : ": " + truncate(msg, 160));
-            }
-        }
+            requestVector("ollama", "ping", probe);
+            ollamaReachable = true; ollamaModelPresent = true;
+        } catch (HttpStatusCodeException e) {
+            ollamaReachable = true;
+            ollamaProbeDetail = e.getStatusCode().value() == 404 ? "模型未下载或接口地址不正确" : failure(e);
+        } catch (Exception e) { ollamaProbeDetail = failure(e); }
     }
-
-    /** Ollama 未拉取模型时返回 404 + "model ... not found" */
-    private boolean isModelMissing(String message) {
-        if (message == null) return false;
-        String m = message.toLowerCase();
-        return m.contains("not found") || m.contains("no such model")
-            || m.contains("model") && m.contains("404");
-    }
-
-    // ==================== 两个实现 ====================
-
-    private float[] embedWithOllama(String text) throws Exception {
-        String body = mapper.writeValueAsString(Map.of(
-            "model", ollamaModel,
-            "input", text,
-            "truncate", true,
-            "keep_alive", ollamaKeepAlive
-        ));
-        JsonNode root = post(ollamaEndpoint, body, null, 30_000);
-        JsonNode embeddings = root.path("embeddings");
-        JsonNode embedding = embeddings.isArray() && !embeddings.isEmpty()
-            ? embeddings.get(0)
-            : null;
-        return toVector(embedding, "Ollama");
-    }
-
-    private float[] embedWithDoubao(String text) throws Exception {
-        String body = mapper.writeValueAsString(Map.of(
-            "model", doubaoModel(),
-            "input", List.of(Map.of("type", "text", "text", text)),
-            "dimensions", 1024
-        ));
-        JsonNode root = post(doubaoEndpoint(), body, doubaoApiKey(), 30_000);
-        return toVector(root.path("data").path("embedding"), "Doubao");
-    }
-
-    /** 运行时配置优先于 yml（前端设置页可覆盖） */
-    private String doubaoApiKey() {
-        String fromConfig = config.getDoubaoApiKey();
-        return (fromConfig != null && !fromConfig.isBlank()) ? fromConfig : doubaoApiKeyFromYml;
-    }
-
-    private String doubaoEndpoint() {
-        String fromConfig = config.getDoubaoEndpoint();
-        return (fromConfig != null && !fromConfig.isBlank()) ? fromConfig : doubaoEndpointFromYml;
-    }
-
-    private String doubaoModel() {
-        String fromConfig = config.getDoubaoModel();
-        return (fromConfig != null && !fromConfig.isBlank()) ? fromConfig : doubaoModelFromYml;
-    }
-
-    private JsonNode post(String endpoint, String body, String apiKey, int readTimeoutMs) throws Exception {
+    private float[] requestVector(String provider, String text, RestTemplate client) throws Exception {
+        boolean local = "ollama".equals(provider);
+        Map<String,Object> payload = local
+            ? Map.of("model", ollamaModel, "input", text, "truncate", true, "keep_alive", ollamaKeepAlive)
+            : Map.of("model", doubaoModel(), "input", List.of(Map.of("type", "text", "text", text)), "dimensions", 1024);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (apiKey != null && !apiKey.isBlank()) headers.setBearerAuth(apiKey);
-
-        // 探测需要更短的读超时，这里临时构造一个请求工厂
-        RestTemplate client = rest;
-        if (readTimeoutMs != 30_000) {
-            SimpleClientHttpRequestFactory f = new SimpleClientHttpRequestFactory();
-            f.setConnectTimeout(2_000);
-            f.setReadTimeout(readTimeoutMs);
-            client = new RestTemplate(f);
+        if (!local) headers.setBearerAuth(doubaoApiKey());
+        ResponseEntity<String> response = client.exchange(local ? ollamaEndpoint : doubaoEndpoint(),
+            HttpMethod.POST, new HttpEntity<>(mapper.writeValueAsString(payload), headers), String.class);
+        JsonNode root = mapper.readTree(response.getBody());
+        JsonNode vector;
+        if (local) vector = root.path("embeddings").path(0);
+        else {
+            JsonNode data = root.path("data");
+            vector = data.isArray() ? data.path(0).path("embedding") : data.path("embedding");
         }
-
-        ResponseEntity<String> resp = client.exchange(
-            endpoint, HttpMethod.POST, new HttpEntity<>(body, headers), String.class
-        );
-
-        JsonNode root = mapper.readTree(resp.getBody());
-        if (root.has("error")) {
-            JsonNode error = root.path("error");
-            String message = error.isTextual() ? error.asText() : error.path("message").asText("?");
-            throw new IllegalStateException("Embedding API error: " + message);
-        }
-        return root;
+        return toVector(vector);
     }
-
-    private float[] toVector(JsonNode embedding, String provider) {
-        if (embedding == null || !embedding.isArray()) {
-            throw new IllegalStateException(provider + " embedding response format error");
+    private float[] toVector(JsonNode values) {
+        if (!values.isArray() || values.size() != 1024) throw new InvalidVectorException();
+        float[] vector = new float[1024];
+        for (int i=0; i<vector.length; i++) {
+            if (!values.get(i).isNumber()) throw new InvalidVectorException();
+            vector[i] = values.get(i).floatValue();
+            if (!Float.isFinite(vector[i])) throw new InvalidVectorException();
         }
-        float[] vec = new float[embedding.size()];
-        for (int i = 0; i < embedding.size(); i++) vec[i] = embedding.get(i).floatValue();
-        return vec;
+        return vector;
     }
-
-    private static String truncate(String s, int max) {
-        return s.length() <= max ? s : s.substring(0, max) + "...";
-    }
-
-    public static String toPgVectorString(float[] vec) {
-        if (vec == null) return null;
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < vec.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(vec[i]);
+    private static class InvalidVectorException extends IllegalStateException {}
+    private static String failure(Exception error) {
+        if (error instanceof InvalidVectorException) return "返回向量为空、非数值或维度不是 1024";
+        if (error instanceof HttpStatusCodeException http) {
+            int status = http.getStatusCode().value();
+            return switch (status) {
+                case 401 -> "HTTP 401，密钥无效或已失效";
+                case 403 -> "HTTP 403，请检查模型访问权限";
+                case 429 -> "HTTP 429，请检查额度或调用频率";
+                default -> "服务返回 HTTP " + status + "，请检查服务地址和模型";
+            };
         }
-        sb.append("]");
-        return sb.toString();
+        return "连接失败、超时或响应格式错误，请检查网络与服务地址";
+    }
+    private String doubaoApiKey() { return config.hasOverride() ? config.getDoubaoApiKey() : cloudKey; }
+    private String doubaoEndpoint() {
+        return config.getDoubaoEndpoint().isBlank() ? cloudEndpoint : config.getDoubaoEndpoint();
+    }
+    private String doubaoModel() { return config.getDoubaoModel().isBlank() ? cloudModel : config.getDoubaoModel(); }
+    public static String toPgVectorString(float[] vector) {
+        if (vector == null) return null;
+        StringBuilder text = new StringBuilder("[");
+        for (int i=0; i<vector.length; i++) { if (i>0) text.append(','); text.append(vector[i]); }
+        return text.append(']').toString();
     }
 }

@@ -38,6 +38,8 @@ interface BackendEvent {
   sequence?: number
   sessionId?: string
   messageId?: number | string
+  estimated?: boolean
+  contextUsage?: Record<string, any>
   taskId?: string
 }
 
@@ -69,6 +71,8 @@ export interface BackendStep {
   sequence?: number
   sessionId?: string
   messageId?: number | string
+  estimated?: boolean
+  contextUsage?: Record<string, any>
   taskId?: string
 }
 
@@ -243,14 +247,14 @@ export async function* callJavaBackend(
     sessionId: config.sessionId,
     messageId: config.messageId,
     mode: config.mode || 'chat',
-    contextRounds: (config as any).contextRounds || 6,
-    activeSkills: (config as any).activeSkills || [],
-    // 前端注入的技能规约全文（SKILL.md），后端仅用于本次请求
+    userMessageId: config.userMessageId,
+    selectedMcpServerIds: (config as any).selectedMcpServerIds || [],
+    // User customization only; installed skills are loaded progressively by the backend.
     systemPrompt: (config as any).systemPrompt || '',
     thinkingEnabled: Boolean((config as any).thinkingEnabled),
     workspacePath: config.workspacePath || '',
     resumeTaskId: config.resumeTaskId || '',
-    history: backendMessages.slice(0, -1)
+    // Formal session history is read and budgeted only by the Java backend.
   })
 
   const url = backendUrl('/api/desktop/chat/stream')
@@ -321,6 +325,7 @@ export async function* callJavaBackend(
               promptTokens: event.promptTokens,
               completionTokens: event.completionTokens,
               totalTokens: event.totalTokens,
+              estimated: event.estimated,
               model: event.model,
               provider: event.provider,
               files: event.files,
@@ -333,6 +338,7 @@ export async function* callJavaBackend(
               sequence: event.sequence,
               sessionId: event.sessionId,
               messageId: event.messageId,
+              contextUsage: event.type === 'context_usage' ? event as any : undefined,
               taskId: event.taskId
             }
           } catch {
@@ -353,6 +359,7 @@ export async function* callJavaBackend(
             promptTokens: event.promptTokens,
             completionTokens: event.completionTokens,
             totalTokens: event.totalTokens,
+            estimated: event.estimated,
             model: event.model,
             provider: event.provider,
             files: event.files,
@@ -365,6 +372,7 @@ export async function* callJavaBackend(
             sequence: event.sequence,
             sessionId: event.sessionId,
             messageId: event.messageId,
+            contextUsage: event.type === 'context_usage' ? event as any : undefined,
             taskId: event.taskId
           }
         } catch {

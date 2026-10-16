@@ -1,6 +1,17 @@
 import * as crypto from 'crypto'
 
 export class McpNameMapper {
+  private static targets = new Map<string, { serverId: string; toolName: string }>()
+
+  public static forServer(serverId: string, toolName: string): string {
+    const name = `mcp_${crypto.createHash('sha256').update(JSON.stringify([serverId, toolName])).digest('hex').slice(0, 48)}`
+    this.targets.set(name, { serverId, toolName })
+    return name
+  }
+
+  public static target(name: string): { serverId: string; toolName: string } | undefined {
+    return this.targets.get(name)
+  }
   // 运行时内存映射表：hashName -> originalName
   private static hashToOriginalMap = new Map<string, string>()
 

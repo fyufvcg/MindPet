@@ -13,6 +13,7 @@ public final class AgentMessages {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("role", message.getMessageType().getValue());
             row.put("text", Objects.toString(message.getText(), ""));
+            if (Boolean.TRUE.equals(message.getMetadata().get("mindpet.observation"))) row.put("observation", true);
             if (message instanceof AssistantMessage assistant && assistant.hasToolCalls()) {
                 row.put("calls", assistant.getToolCalls().stream().map(c -> Map.of(
                     "id", c.id(), "name", c.name(), "arguments", Objects.toString(c.arguments(), "{}"))).toList());
@@ -37,7 +38,8 @@ public final class AgentMessages {
             String text = Objects.toString(row.get("text"), "");
             switch (Objects.toString(row.get("role"), "")) {
                 case "system" -> messages.add(new SystemMessage(text));
-                case "user" -> messages.add(new UserMessage(text));
+                case "user" -> messages.add(UserMessage.builder().text(text)
+                    .metadata(Map.of("mindpet.observation", Boolean.TRUE.equals(row.get("observation")))).build());
                 case "assistant" -> {
                     List<Map<String, Object>> calls = (List<Map<String, Object>>) row.getOrDefault("calls", List.of());
                     messages.add(AssistantMessage.builder().content(text).toolCalls(calls.stream().map(c ->
@@ -62,14 +64,23 @@ public final class AgentMessages {
     }
 
     public static void closePendingCalls(List<Message> messages, Map<String, String> outcomes) {
-        Set<String> answered = new HashSet<>();
-        for (Message message : messages) if (message instanceof ToolResponseMessage result)
-            result.getResponses().forEach(r -> answered.add(r.id()));
-        List<ToolResponseMessage.ToolResponse> missing = new ArrayList<>();
-        for (Message message : messages) if (message instanceof AssistantMessage assistant)
-            for (var call : assistant.getToolCalls()) if (!answered.contains(call.id()))
-                missing.add(new ToolResponseMessage.ToolResponse(call.id(), call.name(),
-                    outcomes.getOrDefault(call.id(), "{\"success\":false,\"code\":\"INTERRUPTED_UNKNOWN_OUTCOME\",\"message\":\"执行中断，操作可能已经发生。先观察实际状态，不要盲目重复写操作。\"}")));
-        if (!missing.isEmpty()) messages.add(ToolResponseMessage.builder().responses(missing).build());
+        List<Message> repaired = new ArrayList<>();
+        for (int i = 0; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            if (message instanceof ToolResponseMessage) throw new IllegalStateException("工具结果缺少紧邻的调用记录，不能安全恢复");
+            repaired.add(message);
+            if (!(message instanceof AssistantMessage assistant) || !assistant.hasToolCalls()) continue;
+            Map<String,ToolResponseMessage.ToolResponse> known = new LinkedHashMap<>();
+            while (i + 1 < messages.size() && messages.get(i + 1) instanceof ToolResponseMessage result) {
+                i++;
+                result.getResponses().forEach(r -> known.put(r.id(), r));
+            }
+            List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
+            for (var call : assistant.getToolCalls()) responses.add(known.getOrDefault(call.id(),
+                new ToolResponseMessage.ToolResponse(call.id(), call.name(), outcomes.getOrDefault(call.id(),
+                    "{\"success\":false,\"code\":\"INTERRUPTED_UNKNOWN_OUTCOME\",\"message\":\"执行中断，操作可能已经发生。先观察实际状态，不要盲目重复写操作。\"}"))));
+            repaired.add(ToolResponseMessage.builder().responses(responses).build());
+        }
+        messages.clear(); messages.addAll(repaired);
     }
 }

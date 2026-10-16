@@ -1,4 +1,5 @@
 import React from 'react'
+import { SecretKeyField } from '../components/SecretKeyField'
 import { DEFAULT_MODELS } from '../utils/helpers'
 import type { AppStore, LlmTestResult, EmbeddingMode } from '../hooks/useAppStore'
 import { getProviderIcon, getModelIcon } from '../utils/modelIcons'
@@ -6,11 +7,8 @@ import {
   AudioLines,
   Cat,
   Check,
-  CheckCircle2,
   ChevronDown,
   Download,
-  Eye,
-  EyeOff,
   FolderOpen,
   MessageSquare,
   Pencil,
@@ -56,7 +54,6 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
     settingsSubTab, setSettingsSubTab,
     // llm
     llmConfig, saveLlmConfig,
-    showApiKey, setShowApiKey,
     showModelDropdown, setShowModelDropdown,
     isLoadingModels, availableModels,
     dropdownRef,
@@ -110,6 +107,8 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
   const [openAvatarDropdownId, setOpenAvatarDropdownId] = React.useState<string | null>(null)
   const [dropdownPos, setDropdownPos] = React.useState<{ top?: number, bottom?: number, right: number }>({ top: 0, right: 0 })
   const [apiKeyDraft, setApiKeyDraft] = React.useState('')
+  const [baseUrlDraft, setBaseUrlDraft] = React.useState(llmConfig.baseUrl || '')
+  React.useEffect(() => { setBaseUrlDraft(llmConfig.baseUrl || '') }, [llmConfig.baseUrl])
   const [isSavingApiKey, setIsSavingApiKey] = React.useState(false)
   const [toolCacheStats, setToolCacheStats] = React.useState({ fileCount: 0, totalBytes: 0 })
   const [isLoadingToolCache, setIsLoadingToolCache] = React.useState(false)
@@ -255,7 +254,7 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
       const saved = await saveLlmConfig({ ...llmConfig, apiKey: apiKeyDraft })
       if (saved) {
         setApiKeyDraft('')
-        showToast('API 密钥已使用系统凭据保护安全保存', 'success')
+        showToast('密钥已安全保存，同步与连接结果见模型状态', 'info')
       }
     } finally {
       setIsSavingApiKey(false)
@@ -381,6 +380,18 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
         {settingsSubTab === 'keys' && (
           <div className="settings-sub-panel settings-panel-card">
             {/* Provider Selection */}
+            <div className="form-desc-text">
+              对话模型与记忆向量模型分别配置。使用云端服务无需安装 Ollama；保存配置后，可分别检测两项服务。
+            </div>
+            <div className="form-desc-text" role="status" aria-live="polite" style={{ margin: '12px 0' }}>
+              <strong>对话模型：</strong>{test?.state === 'ok' ? '连接检测通过' : test?.state === 'testing' ? '正在检测连接' : test?.state === 'error' ? '连接检测未通过' : '尚未检测连接'}
+              <div>{llmConfig.backendSync?.message || '等待本地服务同步'}
+                {llmConfig.backendSync?.state !== 'applied' && (
+                  <button type="button" className="btn-secondary" style={{ marginLeft: 8 }}
+                    onClick={() => void saveLlmConfig(llmConfig)}>重试同步</button>
+                )}
+              </div>
+            </div>
             <div className="form-group">
               <label className="form-label">API 服务商</label>
               <div className="provider-grid">
@@ -389,7 +400,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                     key={prov}
                     className={`provider-btn ${llmConfig.provider === prov ? 'active' : ''}`}
                     onClick={() => {
-                      const defaults = { provider: prov, apiKey: '', hasApiKey: llmConfig.hasApiKey, baseUrl: '', model: '', temperature: llmConfig.temperature, maxTokens: undefined }
+                      if (prov === llmConfig.provider) return
+                      setApiKeyDraft('')
+                      const defaults = { provider: prov, apiKey: '', hasApiKey: false, baseUrl: '', model: '', temperature: llmConfig.temperature, maxTokens: undefined }
                       if (prov === 'doubao') { defaults.baseUrl = 'https://ark.cn-beijing.volces.com/api/v3' }
                       else if (prov === 'gemini') { defaults.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai' }
                       else if (prov === 'openai') { defaults.baseUrl = 'https://api.openai.com/v1' }
@@ -413,50 +426,15 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
 
             {/* API Key */}
             {llmConfig.provider !== 'ollama' && (
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label className="form-label">API 密钥 (API Key)</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                  <div style={{ display: 'flex', position: 'relative', flex: 1 }}>
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      className="form-input settings-api-key-input"
-                      placeholder={llmConfig.hasApiKey ? '密钥已安全保存；输入新密钥可替换' : '输入大模型提供商的 API 密钥'}
-                      value={apiKeyDraft}
-                      autoComplete="new-password"
-                      spellCheck={false}
-                      onChange={e => setApiKeyDraft(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !isSavingApiKey) void handleSaveApiKey()
-                      }}
-                      style={{ flex: 1, paddingRight: '40px' }}
-                    />
-                    <button
-                      type="button"
-                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', userSelect: 'none', fontSize: '14px', opacity: 0.6, border: 'none', background: 'transparent', padding: 0, lineHeight: 0, color: 'currentColor' }}
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      title={showApiKey ? '隐藏密钥' : '显示密钥'}
-                      aria-label={showApiKey ? '隐藏密钥' : '显示密钥'}
-                    >
-                      {showApiKey
-                        ? <EyeOff size={16} strokeWidth={2} aria-hidden="true" />
-                        : <Eye size={16} strokeWidth={2} aria-hidden="true" />}
-                    </button>
-                  </div>
-                  <button
-                    className="btn-primary"
-                    type="button"
-                    disabled={!apiKeyDraft || isSavingApiKey}
-                    onClick={() => void handleSaveApiKey()}
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {isSavingApiKey ? '保存中…' : '安全保存'}
-                  </button>
-                </div>
-                <div style={{ marginTop: '6px', fontSize: '11px', opacity: 0.65 }}>
-                  {llmConfig.hasApiKey && <CheckCircle2 size={13} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />}
-                  {llmConfig.hasApiKey ? '已保存到系统加密凭据库，页面不会回显密钥。' : '密钥不会写入 localStorage 或普通配置文件。'}
-                </div>
-              </div>
+              <SecretKeyField id="llm-api-key" label="对话模型 API Key" value={apiKeyDraft}
+                hasSavedKey={Boolean(llmConfig.hasApiKey)} busy={isSavingApiKey}
+                onChange={setApiKeyDraft} onSave={handleSaveApiKey}
+                onClear={async () => {
+                  if (!confirm('确认清除已保存的对话模型 API Key？')) return
+                  const saved = await saveLlmConfig({ ...llmConfig, apiKey: '', clearApiKey: true })
+                  if (saved) { setApiKeyDraft(''); showToast('对话模型密钥已清除', 'info') }
+                }}
+                hint="密钥使用系统凭据保护。已保存的密钥不会回填到页面，显示按钮仅用于查看正在输入的新密钥。" />
             )}
 
             {/* Base URL */}
@@ -466,8 +444,11 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                 type="text"
                 className="form-input"
                 placeholder="https://api.example.com/v1"
-                value={llmConfig.baseUrl}
-                onChange={e => saveLlmConfig({ ...llmConfig, baseUrl: e.target.value })}
+                value={baseUrlDraft}
+                onChange={e => setBaseUrlDraft(e.target.value)}
+                onBlur={() => {
+                  if (baseUrlDraft.trim() !== llmConfig.baseUrl) void saveLlmConfig({ ...llmConfig, baseUrl: baseUrlDraft.trim() })
+                }}
               />
             </div>
 
@@ -595,6 +576,9 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                   : <><Plug size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />测试大模型连接</>}
               </button>
             </div>
+            <div className="system-prompt-footer">
+              切换服务商或修改服务地址后需重新填写密钥。连接检测会向当前模型发送一次简短请求。
+            </div>
 
             {test && (test.state === 'ok' || test.state === 'error') && (() => {
               const isOk = test.state === 'ok'
@@ -661,17 +645,16 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
         {settingsSubTab === 'keys' && (
           <div className="settings-sub-panel settings-panel-card" style={{ marginTop: 16 }}>
             <div className="form-desc-text">
-              长期记忆依赖 Embedding 模型把对话转成向量。<b>注意：Embedding 不可用时后端不会报错，
-              只会静默停止记忆功能</b>，请以下方状态为准。
+              长期记忆的向量写入与检索需要 Embedding 服务。未安装 Ollama 时可选择“强制云端”并配置豆包 Key；基础对话可独立使用。
             </div>
 
             {/* 当前生效状态 */}
             {embStatus && (() => {
               const active = embStatus.activeProvider
-              const isOk = Boolean(active)
+              const isOk = embStatus.available === true && Boolean(active)
               const color = embStatus.unreachable ? '#f59e0b' : isOk ? '#10b981' : '#f87171'
               return (
-                <div style={{
+                <div role="status" aria-live="polite" style={{
                   marginTop: 10, padding: '10px 14px', borderRadius: 6, fontSize: '12.5px',
                   color, background: isOk ? 'rgba(16,185,129,0.05)' : 'rgba(248,113,113,0.05)',
                   border: `1px solid ${isOk ? 'rgba(16,185,129,0.2)' : 'rgba(248,113,113,0.2)'}`,
@@ -681,13 +664,13 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                     {embStatus.unreachable
                       ? '后端不可用'
                       : isOk
-                        ? `当前使用：${embStatus.activeProviderDescription}`
-                        : '长期记忆当前不可用'}
+                        ? `记忆向量服务检测通过：${embStatus.activeProviderDescription}`
+                        : '记忆向量服务未就绪'}
                   </div>
                   {embStatus.unreachable
                     ? <div style={{ marginTop: 2 }}>{embStatus.message}</div>
                     : embStatus.hint && <div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{embStatus.hint}</div>}
-                  {embStatus.ollama && (
+                  {embStatus.ollama?.checked && (
                     <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
                       本地 Ollama：{embStatus.ollama.reachable ? '服务在线' : '未连接'}
                       {embStatus.ollama.reachable
@@ -698,7 +681,7 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
                   )}
                   {embStatus.doubao && (
                     <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>
-                      豆包云端：{embStatus.doubao.configured ? `已配置（${embStatus.doubao.model}）` : '未配置 API Key'}
+                      豆包云端：{embStatus.doubao.verified ? `检测通过（${embStatus.doubao.model}）` : embStatus.doubao.configured ? '已配置，尚未通过检测' : '未配置 API Key'}
                     </div>
                   )}
                 </div>
@@ -735,62 +718,24 @@ export function SettingsPage({ store }: SettingsPageProps): React.JSX.Element {
               </div>
             </div>
 
-            {/* 豆包 Key */}
-            <div className="form-field" style={{ marginTop: 12 }}>
-              <label className="form-label">
-                豆包 Embedding API Key
-                {embConfig.hasApiKey && (
-                  <span style={{ marginLeft: 8, fontSize: 11, color: '#10b981' }}>已保存（加密存储）</span>
-                )}
-              </label>
-              <input
-                className="mcp-input-fancy"
-                type="password"
-                placeholder={embConfig.hasApiKey ? '已保存，留空则不修改' : '粘贴方舟平台的 API Key'}
-                value={embKeyInput}
-                onChange={(e) => setEmbKeyInput(e.target.value)}
-              />
-              <div className="system-prompt-footer" style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
-                仅在选择「自动/强制云端」且本地 Ollama 不可用时才需要。Key 加密保存在本机，不会明文落盘。
-              </div>
-            </div>
-
-            <div className="action-row" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-              <button
-                className="btn-primary"
-                disabled={embBusy}
-                onClick={() => {
-                  void handleSaveEmbedding({
-                    mode: embMode,
-                    apiKey: embKeyInput.trim() || undefined,
-                    endpoint: embConfig.endpoint,
-                    model: embConfig.model
-                  })
-                  setEmbKeyInput('')
-                }}
-              >
-                {embBusy ? '保存中...' : <><Save size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />保存并重新检测</>}
+            <SecretKeyField id="embedding-api-key" label="豆包 Embedding API Key" value={embKeyInput}
+              hasSavedKey={embConfig.hasApiKey} busy={embBusy} onChange={setEmbKeyInput}
+              allowEmptySave saveLabel="保存并检测"
+              onSave={async () => {
+                const saved = await handleSaveEmbedding({ mode: embMode, apiKey: embKeyInput.trim() || undefined,
+                  endpoint: embConfig.endpoint, model: embConfig.model })
+                if (saved) setEmbKeyInput('')
+              }}
+              onClear={async () => {
+                if (!confirm('确认清除已保存的豆包 Embedding API Key？')) return
+                if (await handleSaveEmbedding({ mode: embMode, clearApiKey: true })) setEmbKeyInput('')
+              }}
+              hint="使用豆包方舟的 Embedding API Key，其他平台的 Key 不能直接替用。密钥由系统加密保存，检测会发送一次极小的向量请求。" />
+            <div className="action-row" style={{ marginTop: 12 }}>
+              <button type="button" className="btn-secondary" disabled={embBusy}
+                onClick={() => void handleRefreshEmbedding()}>
+                <RotateCcw size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />重新同步并检测
               </button>
-              <button
-                className="btn-secondary"
-                disabled={embBusy}
-                onClick={() => void handleRefreshEmbedding()}
-              >
-                <RotateCcw size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />重新检测
-              </button>
-              {embConfig.hasApiKey && (
-                <button
-                  className="btn-secondary"
-                  disabled={embBusy}
-                  onClick={() => {
-                    if (confirm('确认清除已保存的豆包 Embedding API Key？')) {
-                      void handleSaveEmbedding({ mode: embMode, clearApiKey: true })
-                    }
-                  }}
-                >
-                  <Trash2 size={16} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />清除密钥
-                </button>
-              )}
             </div>
 
             <div style={{

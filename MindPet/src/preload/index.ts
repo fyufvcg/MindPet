@@ -53,6 +53,8 @@ const api = {
   openSkillsFolder: (): Promise<void> => ipcRenderer.invoke('api:open-skills-folder'),
   uploadSkillPack: (): Promise<any[]> => ipcRenderer.invoke('api:upload-skill-pack'),
   getSkillsList: (): Promise<any[]> => ipcRenderer.invoke('api:get-skills-list'),
+  updateSkillDescription: (name: string, description: string): Promise<any[]> =>
+    ipcRenderer.invoke('api:update-skill-description', name, description),
   deleteSkill: (name: string): Promise<any[]> => ipcRenderer.invoke('api:delete-skill', name),
   getActiveSkillsPrompt: (enabledSkillNames: string[]): Promise<string> =>
     ipcRenderer.invoke('api:get-active-skills-prompt', enabledSkillNames),
@@ -263,6 +265,7 @@ const api = {
     ipcRenderer.invoke('api:create-session', session),
   updateSession: (sessionId: string, updates: any): Promise<boolean> =>
     ipcRenderer.invoke('api:update-session', sessionId, updates),
+  clearChatHistory: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('api:clear-chat-history', sessionId),
   deleteSession: (sessionId: string): Promise<boolean> =>
     ipcRenderer.invoke('api:delete-session', sessionId),
   saveMessage: (message: any): Promise<boolean> =>
@@ -393,6 +396,11 @@ const api = {
       ipcRenderer.removeListener('api:request-permission', subscription)
     }
   },
+  onPermissionSettled: (callback: (data: { requestId: number }) => void): (() => void) => {
+    const subscription = (_event: any, data: { requestId: number }): void => callback(data)
+    ipcRenderer.on('api:permission-settled', subscription)
+    return () => { ipcRenderer.removeListener('api:permission-settled', subscription) }
+  },
   respondPermission: (requestId: number, approved: boolean, scope: 'once' | 'turn' = 'once'): void => {
     ipcRenderer.send('api:permission-response', { requestId, approved, scope })
   },
@@ -411,10 +419,16 @@ const api = {
   },
   abortLlm: (sessionId?: string): Promise<boolean> =>
     ipcRenderer.invoke('api:abort-llm', sessionId),
+  migrateCronTasks: (tasks: any[]): Promise<boolean> => ipcRenderer.invoke('api:migrate-cron-tasks', tasks),
+  listAgentTasks: (): Promise<any[]> => ipcRenderer.invoke('api:list-agent-tasks'),
+  getAgentTask: (id: string): Promise<any> => ipcRenderer.invoke('api:get-agent-task', id),
+  cancelAgentTask: (id: string): Promise<{ cancelled: boolean }> => ipcRenderer.invoke('api:cancel-agent-task', id),
+  resumeAgentTask: (id: string, instruction: string, servers: string[]): Promise<{ reply: string }> => ipcRenderer.invoke('api:resume-agent-task', id, instruction, servers),
+  clearCronLogs: (id: string): Promise<boolean> => ipcRenderer.invoke('api:clear-cron-logs', id),
   getCronTasks: (): Promise<any[] | null> =>
     ipcRenderer.invoke('api:get-cron-tasks'),
-  saveCronTasks: (tasks: any[]): Promise<boolean> =>
-    ipcRenderer.invoke('api:save-cron-tasks', tasks),
+  upsertCronTask: (id: string, task: any): Promise<any[]> => ipcRenderer.invoke('api:upsert-cron-task', id, task),
+  deleteCronTask: (id: string): Promise<any[]> => ipcRenderer.invoke('api:delete-cron-task', id),
   onCronUpdated: (callback: () => void): (() => void) => {
     const subscription = () => callback()
     ipcRenderer.on('api:cron-updated', subscription)

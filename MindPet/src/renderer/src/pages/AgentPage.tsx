@@ -1,3 +1,5 @@
+import { AgentTasksPanel } from '../components/AgentTasksPanel'
+import { ScheduleEditor } from '../components/ScheduleEditor'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { formatBytes } from '../utils/helpers'
@@ -49,7 +51,6 @@ interface AgentPageProps {
   archiveMode?: boolean
 }
 
-const CONTEXT_ROUND_OPTIONS = [5, 10, 20, 50] as const
 
 function toLocalDateKey(date: Date): string {
   const year = date.getFullYear()
@@ -98,7 +99,10 @@ function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React
   const [description, setDescription] = React.useState('')
   const [content, setContent] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'edit' | 'preview'>('preview')
-  const [toolCount, setToolCount] = React.useState(0)
+  const [toolCount, setToolCount] = React.useState<number | null>(null)
+  const [catalogLoading, setCatalogLoading] = React.useState(true)
+  const [catalogError, setCatalogError] = React.useState('')
+  const refreshCatalogRef = React.useRef<() => void>(() => {})
   const [loading, setLoading] = React.useState(false)
   const [transitioning, setTransitioning] = React.useState(false)
 
@@ -110,7 +114,6 @@ function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React
       if (result.status === 'ok') {
         setContent(result.content || '')
         if (result.name && !skillName) setSkillName(String(result.name))
-        setToolCount(result.toolCount || 0)
         setTransitioning(true)
         setTimeout(() => { setStep('preview'); setTransitioning(false) }, 280)
       } else {
@@ -133,11 +136,38 @@ function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React
     setTimeout(() => { setStep('input'); setTransitioning(false) }, 280)
   }
 
-  // 预加载工具目录
   React.useEffect(() => {
-    (window as any).api.getToolCatalog().then((data: any) => {
-      if (data?.tools) setToolCount(data.tools.length)
-    }).catch(() => {})
+    let disposed = false
+    let pending = false
+    const refresh = async (): Promise<void> => {
+      if (pending || document.visibilityState === 'hidden') return
+      pending = true
+      setCatalogLoading(true)
+      try {
+        const data = await (window as any).api.getToolCatalog()
+        if (data?.status !== 'ok' || !Array.isArray(data.tools)) {
+          throw new Error(data?.message || '工具目录响应无效')
+        }
+        if (!disposed) { setToolCount(data.tools.length); setCatalogError('') }
+      } catch (error) {
+        if (!disposed) { setToolCount(null); setCatalogError(error instanceof Error ? error.message : '读取失败') }
+      } finally {
+        pending = false
+        if (!disposed) setCatalogLoading(false)
+      }
+    }
+    const onFocus = (): void => { void refresh() }
+    refreshCatalogRef.current = onFocus
+    void refresh()
+    const timer = window.setInterval(onFocus, 15000)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
   }, [])
 
   return (
@@ -190,7 +220,7 @@ function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React
               </label>
               <input
                 className="mcp-input-fancy"
-                placeholder="例如：每日天气助手"
+                placeholder="例如：文件整理助手"
                 value={skillName} onChange={e => setSkillName(e.target.value)} />
             </div>
 
@@ -201,16 +231,23 @@ function SkillGenerateModal({ onSave, onClose }: SkillGenerateModalProps): React
               </label>
               <textarea
                 className="skill-gen-textarea-v2"
-                placeholder="例如：每天早上 8 点自动查天气，下雨就提醒我带伞。或者：帮我把对话中提到的待办事项自动整理成清单。"
+                placeholder="例如：把指定文件夹中的文档按类型整理，先预览整理方案，确认后再移动文件。"
                 value={description} onChange={e => setDescription(e.target.value)} />
             </div>
 
-            {toolCount > 0 && (
-              <div className="skill-gen-hint">
-                <Lightbulb size={14} strokeWidth={1.5} aria-hidden="true" />
-                <span>已加载 {toolCount} 个可用工具，AI 会自动匹配并编排技能流程</span>
-              </div>
-            )}
+            <div className="skill-gen-hint skill-gen-catalog" role="status" aria-live="polite">
+              <Wrench size={14} strokeWidth={1.5} aria-hidden="true" />
+              <span title={catalogError || undefined}>
+                {catalogLoading ? '正在同步工具目录…' : catalogError
+                  ? '工具目录同步失败，请重试'
+                  : `当前工具目录 ${toolCount ?? 0} 项，生成时会重新读取`}
+                <small>内置工具始终可用；外部服务需在聊天中通过 / 选择。</small>
+              </span>
+              <button type="button" className="skill-gen-catalog-refresh" disabled={catalogLoading}
+                onClick={() => refreshCatalogRef.current()} aria-label="刷新工具目录" title="刷新工具目录">
+                <RefreshCw size={14} className={catalogLoading ? 'spinning' : ''} />
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -289,10 +326,9 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
     // skills
     skillsList, skillsPath,
     handleSkillsPathClick, handleImportSkill, handleDeleteSkill,
-    handleSaveGeneratedSkill,
+    handleSaveGeneratedSkill, refreshSkillsAndStorage,
     // memory
     autoSaveHistory, setAutoSaveHistory,
-    contextRounds, setContextRounds,
     activeSessionId, setSessions,
     currentAvatarName,
     // cron
@@ -304,6 +340,20 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
     mcpConfig, saveMcpConfig, showToast
   } = store
 
+  const [clearingHistory, setClearingHistory] = React.useState(false)
+  const clearHistory = async (all: boolean): Promise<void> => {
+    if (clearingHistory || !confirm(all ? '确认清空所有会话的历史和执行上下文吗？长期记忆会保留。' : '确认清空当前会话的历史和执行上下文吗？长期记忆会保留。')) return
+    setClearingHistory(true)
+    const targetId = activeSessionId
+    try {
+      await window.api.clearChatHistory(all ? undefined : targetId)
+      setSessions(previous => previous.map(session => all || session.id === targetId
+        ? { ...session, messages: [], contextSummary: '' } : session))
+      showToast('会话历史和执行上下文已清空，长期记忆已保留。')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '清空失败，请重试。')
+    } finally { setClearingHistory(false) }
+  }
   const [convMessages, setConvMessages] = React.useState<any[]>([])
   const [isLoadingConversations, setIsLoadingConversations] = React.useState(false)
   const [archiveStats, setArchiveStats] = React.useState({ conversationRounds: 0, companionDays: 0 })
@@ -464,30 +514,17 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
   // 定时任务编辑/新增状态
   const [showCronModal, setShowCronModal] = React.useState(false)
   const [editingCron, setEditingCron] = React.useState<any>(null)
-  const [cronName, setCronName] = React.useState('')
-  const [cronHours, setCronHours] = React.useState<number>(0)
-  const [cronMinutes, setCronMinutes] = React.useState<number>(1)
-  const [cronSeconds, setCronSeconds] = React.useState<number>(0)
-  const [cronAction, setCronAction] = React.useState('')
   const [openDropdownId, setOpenDropdownId] = React.useState<string | null>(null)
-  const [contextRoundsMenuOpen, setContextRoundsMenuOpen] = React.useState(false)
-  const [contextRoundsHighlight, setContextRoundsHighlight] = React.useState(0)
 
   // 点击空白处关闭下拉菜单
   React.useEffect(() => {
     const handleClick = () => {
       setOpenDropdownId(null)
-      setContextRoundsMenuOpen(false)
     }
     window.addEventListener('click', handleClick)
     return () => window.removeEventListener('click', handleClick)
   }, [])
 
-  const selectContextRounds = (value: number) => {
-    setContextRounds(value)
-    localStorage.setItem('mindpet_context_rounds', String(value))
-    setContextRoundsMenuOpen(false)
-  }
 
   const formatInterval = (totalSeconds: number) => {
     const d = Math.floor(totalSeconds / (3600 * 24))
@@ -656,6 +693,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
       )}
       {/* Sub Nav */}
       {!archiveMode && <div className="sub-tab-nav">
+        <button type="button" className={`sub-tab-item ${agentSubTab === 'tasks' ? 'active' : ''}`} onClick={() => setAgentSubTab('tasks')}>任务记录</button>
         <div className={`sub-tab-item ${agentSubTab === 'skills' ? 'active' : ''}`} onClick={() => setAgentSubTab('skills')}>
           技能加入
         </div>
@@ -707,7 +745,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                   <thead>
                     <tr>
                       <th>技能包名称</th>
-                      <th>文件格式</th>
+                      <th>简介</th>
                       <th>文件大小</th>
                       <th>导入日期</th>
                       <th style={{ textAlign: 'right' }}>操作</th>
@@ -716,12 +754,22 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                   <tbody>
                     {skillsList.map(skill => (
                       <tr key={skill.name}>
-                        <td style={{ fontWeight: 600 }}>{skill.name}</td>
-                        <td><span className="skill-zip-badge">ZIP</span></td>
+                        <td style={{ fontWeight: 600 }}>{skill.displayName || skill.name}</td>
+                        <td style={{ maxWidth: 420 }}>
+                          {skill.source === 'builtin' ? <span>{skill.description}</span> : <textarea
+                            key={`${skill.name}:${skill.description}`} defaultValue={skill.description || ''} rows={2} maxLength={320}
+                            aria-label={`${skill.name} 的简介`} className="form-input" style={{ width: '100%', minWidth: 180, resize: 'vertical' }}
+                            onBlur={async event => {
+                              const description = event.currentTarget.value.trim()
+                              if (description === skill.description) return
+                              try { await window.api.updateSkillDescription(skill.name, description); await refreshSkillsAndStorage() }
+                              catch (error) { showToast(`简介保存失败：${String(error)}`, 'error') }
+                            }} />}
+                        </td>
                         <td>{formatBytes(skill.size)}</td>
-                        <td>{new Date(skill.mtime).toLocaleString()}</td>
+                        <td>{skill.mtime ? new Date(skill.mtime).toLocaleString() : '内置'}</td>
                         <td style={{ textAlign: 'right' }}>
-                          <button className="delete-btn" onClick={() => handleDeleteSkill(skill.name)}>
+                          <button className="delete-btn" disabled={skill.source === 'builtin'} onClick={() => handleDeleteSkill(skill.name)}>
                             <Trash2 size={14} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
                             卸载
                           </button>
@@ -732,7 +780,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 </table>
               ) : (
                 <div className="empty-state">
-                  本地没有已加载的 ZIP 技能包。请点击"导入技能包"选择 ZIP 压缩文件，或使用 AI 生成。
+                  尚未导入用户技能包。内置技能在后端启动后自动提供。请点击"导入技能包"选择 ZIP 压缩文件，或使用 AI 生成。
                 </div>
               )}
             </div>
@@ -772,64 +820,10 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
 
             <div className="settings-row">
               <div className="settings-row-info">
-                <span className="settings-row-title">单次会话记忆上下文轮数</span>
-                <span className="settings-row-desc">发送给大模型的前置聊天深度，当前轮数：{contextRounds} 轮对答。</span>
+                <span className="settings-row-title">会话上下文</span>
+                <span className="settings-row-desc">按容量自动整理历史，保留当前任务进展；较早记录可按需回读。</span>
               </div>
-              <div className="context-rounds-select">
-                <button
-                  type="button"
-                  className="context-rounds-trigger"
-                  aria-haspopup="listbox"
-                  aria-expanded={contextRoundsMenuOpen}
-                  onClick={event => {
-                    event.stopPropagation()
-                    const currentIndex = CONTEXT_ROUND_OPTIONS.indexOf(contextRounds as typeof CONTEXT_ROUND_OPTIONS[number])
-                    setContextRoundsHighlight(currentIndex >= 0 ? currentIndex : 0)
-                    setContextRoundsMenuOpen(open => !open)
-                  }}
-                  onKeyDown={event => {
-                    const currentIndex = CONTEXT_ROUND_OPTIONS.indexOf(contextRounds as typeof CONTEXT_ROUND_OPTIONS[number])
-                    if (event.key === 'Escape') {
-                      setContextRoundsMenuOpen(false)
-                    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                      event.preventDefault()
-                      const startIndex = contextRoundsMenuOpen ? contextRoundsHighlight : (currentIndex >= 0 ? currentIndex : 0)
-                      const direction = event.key === 'ArrowDown' ? 1 : -1
-                      setContextRoundsHighlight((startIndex + direction + CONTEXT_ROUND_OPTIONS.length) % CONTEXT_ROUND_OPTIONS.length)
-                      setContextRoundsMenuOpen(true)
-                    } else if (event.key === 'Enter' && contextRoundsMenuOpen) {
-                      event.preventDefault()
-                      selectContextRounds(CONTEXT_ROUND_OPTIONS[contextRoundsHighlight])
-                    }
-                  }}
-                >
-                  <span>{contextRounds} 轮</span>
-                  <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
-                </button>
-                {contextRoundsMenuOpen && (
-                  <div
-                    className="context-rounds-menu"
-                    role="listbox"
-                    aria-label="记忆上下文轮数"
-                    onClick={event => event.stopPropagation()}
-                  >
-                    {CONTEXT_ROUND_OPTIONS.map((rounds, index) => (
-                      <button
-                        key={rounds}
-                        type="button"
-                        role="option"
-                        aria-selected={contextRounds === rounds}
-                        className={`context-rounds-option ${contextRounds === rounds ? 'is-selected' : ''} ${contextRoundsHighlight === index ? 'is-highlighted' : ''}`}
-                        onMouseEnter={() => setContextRoundsHighlight(index)}
-                        onClick={() => selectContextRounds(rounds)}
-                      >
-                        <span>{rounds} 轮</span>
-                        {contextRounds === rounds && <CheckCircle2 size={15} strokeWidth={2.2} aria-hidden="true" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <span className="settings-row-desc">自动管理</span>
             </div>
 
             <div className="settings-section-title">本地存储清空</div>
@@ -842,19 +836,8 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
               <button
                 className="delete-btn"
                 style={{ border: '1px solid rgba(248,113,113,0.3)', padding: '6px 12px', borderRadius: '6px' }}
-                onClick={() => {
-                  if (confirm('确认清空当前会话历史吗？')) {
-                    setSessions(prev => prev.map(s => {
-                      if (s.id === activeSessionId) {
-                        return {
-                          ...s,
-                          messages: [{ id: 1, sender: 'agent', text: '本会话记录已清空。', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]
-                        }
-                      }
-                      return s
-                    }))
-                  }
-                }}
+                disabled={clearingHistory}
+                onClick={() => void clearHistory(false)}
               >
                 <Siren size={15} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
                 清除当前
@@ -864,23 +847,13 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
             <div className="settings-row">
               <div className="settings-row-info">
                 <span className="settings-row-title">清空所有会话记录缓存</span>
-                <span className="settings-row-desc">删除所有会话并还原为默认的空白会话。</span>
+                <span className="settings-row-desc">清空所有会话的历史和执行上下文，保留会话列表及长期记忆。</span>
               </div>
               <button
                 className="delete-btn"
                 style={{ border: '1px solid rgba(248,113,113,0.3)', padding: '6px 12px', borderRadius: '6px' }}
-                onClick={() => {
-                  if (confirm('确认清除所有会话记录吗？')) {
-                    const defaultSess = [{
-                      id: 'agent:main:dashboard:default',
-                      name: '新会话',
-                      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                      messages: [{ id: 1, sender: 'agent', text: `会话记录已彻底清空。${currentAvatarName} 核心记忆已重置。`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]
-                    }]
-                    setSessions(defaultSess)
-                    store.setActiveSessionId('agent:main:dashboard:default')
-                  }
-                }}
+                disabled={clearingHistory}
+                onClick={() => void clearHistory(true)}
               >
                 <Siren size={15} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
                 清空所有
@@ -1093,8 +1066,10 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
         )}
 
         {/* ── 定时任务 ── */}
+        {agentSubTab === 'tasks' && <AgentTasksPanel servers={(mcpConfig?.servers || []).filter(server => server.source !== 'DESKTOP_BUILTIN')} />}
         {agentSubTab === 'cron' && (
           <div>
+            {store.cronLoadError && <div className="agent-load-error" role="alert">定时任务同步失败，已有内容已保留。{store.cronLoadError}<button type="button" onClick={() => { void store.refreshCronTasks() }}>重试</button></div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div className="settings-section-title" style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>
                 已配置的定时任务 ({cronTasks.length})
@@ -1104,11 +1079,6 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                 className="btn-primary"
                 onClick={() => {
                   setEditingCron(null)
-                  setCronName('')
-                  setCronHours(0)
-                  setCronMinutes(1)
-                  setCronSeconds(0)
-                  setCronAction('')
                   setShowCronModal(true)
                 }}
                 style={{ height: '28px', padding: '0 12px', fontSize: '12px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -1135,11 +1105,11 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                     <tr key={task.id}>
                       <td style={{ fontWeight: 600 }}>{task.name}</td>
                       <td>{formatInterval(task.interval)}</td>
-                      <td>{task.lastTriggered}</td>
+                      <td>{task.lastTriggered ? new Date(task.lastTriggered).toLocaleString() : '尚未触发'}</td>
                       <td><span className="cron-badge-trigger">{task.triggerCount} 次</span></td>
                       <td>
                         <span style={{ color: task.isActive ? '#10b981' : '#f87171', fontWeight: 'bold' }}>
-                          {task.isActive ? '运行中' : '已暂停'}
+                          {task.running ? '正在执行' : task.isActive ? '等待调度' : '已暂停'}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right', position: 'relative' }}>
@@ -1196,11 +1166,6 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => {
                                 setEditingCron(task)
-                                setCronName(task.name)
-                                setCronHours(Math.floor(task.interval / 3600))
-                                setCronMinutes(Math.floor((task.interval % 3600) / 60))
-                                setCronSeconds(task.interval % 60)
-                                setCronAction(task.action || '')
                                 setShowCronModal(true)
                                 setOpenDropdownId(null)
                               }}
@@ -1466,115 +1431,11 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
             )}
 
             {/* 新增/编辑定时任务 Modal */}
-            {showCronModal && (
-              <div className="cron-modal-overlay" style={{
-                position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-                backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(8px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002
-              }}>
-                <div className="mcp-modal-card" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
-                  <div className="mcp-modal-header">
-                    <div className="mcp-modal-title">
-                      {editingCron
-                        ? <Pencil size={17} strokeWidth={2} aria-hidden="true" />
-                        : <Plus size={17} strokeWidth={2} aria-hidden="true" />}
-                      <span>{editingCron ? '编辑定时任务' : '新增定时任务'}</span>
-                    </div>
-                    <button className="mcp-modal-close-btn" onClick={() => setShowCronModal(false)} title="关闭"><X size={18} strokeWidth={2} aria-hidden="true" /></button>
-                  </div>
-                  <div className="mcp-modal-body">
-                    <div style={{ marginBottom: '12px' }}>
-                      <label className="mcp-form-label">任务名称</label>
-                      <input
-                        type="text"
-                        className="mcp-input-fancy"
-                        placeholder="如：定时清理日志、系统状态巡检"
-                        value={cronName}
-                        onChange={e => setCronName(e.target.value)}
-                        disabled={editingCron?.name === '系统画像提纯与经验沉淀'}
-                        style={editingCron?.name === '系统画像提纯与经验沉淀' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                      />
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <label className="mcp-form-label">执行频率</label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                          <input type="number" min="0" className="mcp-input-fancy" placeholder="小时" value={cronHours || ''} onChange={e => setCronHours(Number(e.target.value) || 0)} />
-                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>时</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                          <input type="number" min="0" max="59" className="mcp-input-fancy" placeholder="分钟" value={cronMinutes || ''} onChange={e => setCronMinutes(Number(e.target.value) || 0)} />
-                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>分</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                          <input type="number" min="0" max="59" className="mcp-input-fancy" placeholder="秒" value={cronSeconds || ''} onChange={e => setCronSeconds(Number(e.target.value) || 0)} />
-                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>秒</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mcp-form-label">动作指令 / 提示词</label>
-                      <textarea
-                        className="mcp-input-fancy"
-                        style={{ minHeight: '80px', resize: 'vertical', ...(editingCron?.name === '系统画像提纯与经验沉淀' ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
-                        placeholder="给助手的执行指令，例如：检查当前系统 CPU 状态"
-                        value={cronAction}
-                        onChange={e => setCronAction(e.target.value)}
-                        disabled={editingCron?.name === '系统画像提纯与经验沉淀'}
-                      />
-                    </div>
-                  </div>
-                  <div className="mcp-modal-footer">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setShowCronModal(false)}
-                      style={{ fontSize: '12.5px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer' }}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={async () => {
-                        if (!cronName.trim()) {
-                          showToast('请填写任务名称', 'error')
-                          return
-                        }
-                        if (!cronAction.trim()) {
-                          showToast('请填写动作指令/提示词', 'error')
-                          return
-                        }
-                        const totalInterval = cronHours * 3600 + cronMinutes * 60 + cronSeconds
-                        if (totalInterval < 5) {
-                          showToast('执行频率不能少于 5 秒', 'error')
-                          return
-                        }
-
-                        if (editingCron) {
-                          await handleEditCronTask(editingCron.id, {
-                            name: cronName.trim(),
-                            interval: totalInterval,
-                            action: cronAction.trim()
-                          })
-                        } else {
-                          await handleAddCronTask({
-                            name: cronName.trim(),
-                            interval: totalInterval,
-                            action: cronAction.trim(),
-                            isActive: true
-                          })
-                        }
-                        setShowCronModal(false)
-                      }}
-                      style={{ fontSize: '12.5px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer' }}
-                    >
-                      保存任务
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {showCronModal && <ScheduleEditor task={editingCron} servers={(mcpConfig?.servers || []).filter(server => server.source !== 'DESKTOP_BUILTIN')}
+              onClose={() => setShowCronModal(false)} onSave={async updates => {
+                if (editingCron) await handleEditCronTask(editingCron.id, updates)
+                else await handleAddCronTask({ ...updates, isActive: true })
+              }} />}
           </div>
         )}
 
@@ -1582,7 +1443,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
         {agentSubTab === 'mcp' && (
           <div className="settings-sub-panel">
             <div className="form-desc-text" style={{ marginBottom: '12px' }}>
-              配置并管理 Model Context Protocol (MCP) 服务列表。大模型及微信助手可自动并发连接并调用列表中处于启用状态的所有工具。
+              配置外部 MCP 服务，在聊天中通过 / 选择本次任务需要的服务；Desktop 基础工具始终可调用。
             </div>
 
             <div style={{ background: 'var(--bg-card-sub, rgba(128,128,128,0.02))', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border-color, var(--ds-color-7267626128313238))', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1611,7 +1472,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
             {/* MCP 服务列表区 */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div className="settings-section-title" style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>
-                已连接的服务列表 ({(mcpConfig?.servers || []).length})
+                外部服务列表 ({(mcpConfig?.servers || []).filter((server: any) => server.id !== 'desktop-tools').length})
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
@@ -1638,8 +1499,9 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
               </div>
             </div>
 
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Desktop 内置工具始终可用。下面的外部服务通过聊天输入框的 / 加入本次任务。</p>
             <div className="mcp-glass-card">
-              {(mcpConfig?.servers || []).length === 0 ? (
+              {(mcpConfig?.servers || []).filter((server: any) => server.id !== 'desktop-tools').length === 0 ? (
                 <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--text-muted, var(--ds-color-23383838))', fontSize: '13px' }}>
                   <Ghost size={18} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
                   暂无已添加的服务，请通过右上角“添加自定义”按钮添加。
@@ -1653,12 +1515,12 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                         <th>终结点地址 (Endpoint)</th>
                         <th style={{ width: '100px', textAlign: 'center' }}>协议类型</th>
                         <th style={{ width: '100px', textAlign: 'center' }}>鉴权密钥</th>
-                        <th style={{ width: '90px', textAlign: 'center' }}>启用状态</th>
+                        <th style={{ width: '90px', textAlign: 'center' }}>调用方式</th>
                         <th style={{ width: '230px', textAlign: 'center' }}>操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(mcpConfig.servers).map((server: any) => (
+                      {(mcpConfig.servers).filter((server: any) => server.id !== 'desktop-tools').map((server: any) => (
                         <tr key={server.id} className="mcp-table-row">
                           <td style={{ fontWeight: 600, color: 'var(--text-color-strong)' }}>
                             {server.name}
@@ -1679,19 +1541,7 @@ export function AgentPage({ store, archiveMode = false }: AgentPageProps): React
                             </span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div className="mcp-switch-container">
-                              <label className="mcp-switch-label">
-                                <input
-                                  type="checkbox"
-                                  checked={server.enabled}
-                                  onChange={e => {
-                                    const newServers = mcpConfig.servers.map((s: any) => s.id === server.id ? { ...s, enabled: e.target.checked } : s)
-                                    saveMcpConfig({ servers: newServers })
-                                  }}
-                                />
-                                <span className="mcp-switch-slider" />
-                              </label>
-                            </div>
+                            <span className="mcp-badge configured">聊天中 / 选择</span>
                           </td>
                           <td>
                             <div className="mcp-btn-action-group">

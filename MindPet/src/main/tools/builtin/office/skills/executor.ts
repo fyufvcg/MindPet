@@ -2,7 +2,7 @@
 
 import type { IToolExecutor, ToolContext, ToolResult } from '../../../core/types'
 import { getLoadedOfficeSkillNames, listOfficeSkills, loadOfficeSkill } from './registry'
-import { jsonResult, skillError } from './shared'
+import { jsonResult, skillError, readToolResultState } from './shared'
 import type { OfficeSkillAction } from './types'
 
 const validActions = new Set<OfficeSkillAction>([
@@ -139,9 +139,12 @@ export class OfficeSkillExecutor implements IToolExecutor {
 
         const input = args.input && typeof args.input === 'object' ? args.input : {}
         validateInput(input, operation.inputSchema)
-        return action === 'convert'
-          ? executeConversionWithTimeout(skill, action, input, context)
-          : skill.execute(action, input, context)
+        const result = action === 'convert'
+          ? await executeConversionWithTimeout(skill, action, input, context)
+          : await skill.execute(action, input, context)
+        // A completed validation call can still report an invalid artifact.
+        const state = readToolResultState(result)
+        return state.validation?.valid === false ? { ...result, success: false } : result
       }
 
       throw new Error(`未知 Office Skill API：${api}`)

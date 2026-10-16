@@ -9,15 +9,10 @@ import { useChatReplyRuntime } from './useChatReplyRuntime'
 import { useChatSend } from './useChatSend'
 import { useChatSessionSummary } from './useChatSessionSummary'
 import { useCronScheduler } from './useCronScheduler'
+import { tokenLogPersistence } from '../utils/tokenLogPersistence'
 import { useSessionSyncRuntime } from './useSessionSyncRuntime'
 import { useTokenUsageRuntime } from './useTokenUsageRuntime'
-import {
-  estimateContextMessageTokens,
-  estimatePromptEnvelopeTokens,
-  getContextMessageSignature,
-  getPromptEnvelopeSignature,
-  selectContextMessages
-} from '../utils/contextBudget'
+
 import { isRemoteSessionId } from '../utils/sessionChannels'
 
 const MODEL_CACHE_PREFIX = 'mindpet_model_list:'
@@ -64,6 +59,11 @@ export interface CronTask {
   action?: string
   logs?: CronLog[]
   isSystem?: boolean
+  workspacePath?: string
+  nextRunAt?: number
+  running?: boolean
+  selectedMcpServerIds?: string[]
+  kind?: 'memory-prune'
 }
 
 export interface Session {
@@ -118,10 +118,7 @@ export interface AttachedFile {
   objectUrl?: string
 }
 
-interface CachedContextMessage {
-  signature: string
-  tokens: number
-}
+
 
 /** Embedding 三态模式：AUTO 优先 Ollama 自动降级；OLLAMA / DOUBAO 强制指定 */
 export type EmbeddingMode = 'AUTO' | 'OLLAMA' | 'DOUBAO'
@@ -141,18 +138,22 @@ export interface EmbeddingStatus {
   mode?: string
   activeProvider?: string | null
   activeProviderDescription?: string | null
+  available?: boolean
+  verifiedAt?: number
+  dimension?: number | null
   reason?: string
   hint?: string
   unreachable?: boolean
   message?: string
   ollama?: {
+    checked?: boolean
     endpoint: string
     model: string
     reachable: boolean
     modelPresent: boolean
     detail?: string
   }
-  doubao?: { endpoint: string; model: string; configured: boolean }
+  doubao?: { endpoint: string; model: string; configured: boolean; verified?: boolean; detail?: string }
 }
 
 /** LLM 连通性测试结果。区分 idle / testing / ok / error 四态，错误时携带上游状态码与详情。 */
@@ -170,108 +171,21 @@ export interface LlmTestResult {
   elapsedMs?: number
 }
 
-interface SessionContextCache {
-  total: number
-  scopeSignature: string
-  messages: Map<string | number, CachedContextMessage>
+/** Context occupancy comes from the backend's last assembled request, not UI history length. */
+function getSessionContextTokens(_previous: Session | undefined, next: Session): number {
+  const message = (next.messages || []).findLast((item: any) => item.contextUsage)
+  return Math.max(0, Number((message as any)?.contextUsage?.contextTokens) || 0)
 }
-
-const contextTokenCache = new Map<string, SessionContextCache>()
-
-function rebuildSessionContextTokens(session: Session, contextRounds: number): number {
-  const messages = new Map<string | number, CachedContextMessage>()
-  const scopeSignature = `${contextRounds}\u0000${getPromptEnvelopeSignature(session)}`
-  let total = estimatePromptEnvelopeTokens(session)
-  for (const message of selectContextMessages(session, contextRounds)) {
-    const signature = getContextMessageSignature(message)
-    const tokens = estimateContextMessageTokens(message)
-    messages.set(message.id, { signature, tokens })
-    total += tokens
-  }
-  contextTokenCache.set(session.id, { total, scopeSignature, messages })
-  return total
-}
-
-/**
- * Streaming only replaces the final agent message. Keep the total in the store
- * and update that one message in O(1); other message edits safely fall back to
- * a full rebuild.
- */
-function getSessionContextTokens(previous: Session | undefined, next: Session, contextRounds: number): number {
-  const cache = contextTokenCache.get(next.id)
-  const scopeSignature = `${contextRounds}\u0000${getPromptEnvelopeSignature(next)}`
-  const previousMessages = previous?.messages || []
-  const nextMessages = next.messages || []
-  const previousLast = previousMessages[previousMessages.length - 1]
-  const nextLast = nextMessages[nextMessages.length - 1]
-
-  if (
-    cache && cache.scopeSignature === scopeSignature && previousLast && nextLast &&
-    previousMessages.length === nextMessages.length &&
-    previousLast.id === nextLast.id && previousLast !== nextLast
-  ) {
-    const cached = cache.messages.get(nextLast.id)
-    const previousSignature = getContextMessageSignature(previousLast)
-    if (cached?.signature === previousSignature) {
-      const signature = getContextMessageSignature(nextLast)
-      const tokens = estimateContextMessageTokens(nextLast)
-      cache.messages.set(nextLast.id, { signature, tokens })
-      cache.total += tokens - cached.tokens
-      return cache.total
-    }
-  }
-  return rebuildSessionContextTokens(next, contextRounds)
-}
-
-function syncContextTokenUsage(previous: Session[], next: Session[], usage: Record<string, number>, contextRounds: number): Record<string, number> {
-  if (previous.length === next.length) {
-    let changedIndex = -1
-    let compatible = true
-    for (let index = 0; index < next.length; index++) {
-      if (previous[index]?.id !== next[index]?.id) {
-        compatible = false
-        break
-      }
-      if (previous[index] !== next[index]) {
-        if (changedIndex >= 0) {
-          compatible = false
-          break
-        }
-        changedIndex = index
-      }
-    }
-    if (compatible) {
-      if (changedIndex < 0) return usage
-      const session = next[changedIndex]
-      const tokens = getSessionContextTokens(previous[changedIndex], session, contextRounds)
-      return usage[session.id] === tokens ? usage : { ...usage, [session.id]: tokens }
-    }
-  }
-
-  const previousById = new Map(previous.map(session => [session.id, session]))
-  let changed = false
-  const nextUsage: Record<string, number> = {}
-  for (const session of next) {
-    const prior = previousById.get(session.id)
-    const tokens = prior?.messages === session.messages && usage[session.id] !== undefined
-      ? usage[session.id]
-      : getSessionContextTokens(prior, session, contextRounds)
-    nextUsage[session.id] = tokens
-    changed ||= usage[session.id] !== tokens
-  }
-  for (const id of Object.keys(usage)) {
-    if (!(id in nextUsage)) {
-      contextTokenCache.delete(id)
-      changed = true
-    }
-  }
-  return changed ? nextUsage : usage
+function syncContextTokenUsage(_previous: Session[], next: Session[], _usage: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(next.map(session => [session.id, getSessionContextTokens(undefined, session)]))
 }
 
 // ── 内部剪贴板（用于消息间复制文件） ─────────────────────────
 let internalClipboard: { files: { name: string; path: string; content?: string }[]; text: string } | null = null
 let legacyLlmConfigForMigration: any = null
 let llmConfigHydrationPromise: Promise<any> | null = null
+let llmConfigRevision = 0
+let embeddingConfigRevision = 0
 let legacyMcpConfigForMigration: any = null
 let initialMcpConfigForSync: any = null
 let mcpConfigHydrationPromise: Promise<any> | null = null
@@ -284,7 +198,8 @@ function sanitizeLlmConfigForRenderer(config: any, fallbackHasApiKey = false): a
   return {
     ...rest,
     apiKey: '',
-    hasApiKey: Boolean(config?.apiKey) || Boolean(config?.hasApiKey) || fallbackHasApiKey
+    hasApiKey: !config?.clearApiKey && (Boolean(config?.apiKey)
+      || (typeof config?.hasApiKey === 'boolean' ? config.hasApiKey : fallbackHasApiKey))
   }
 }
 
@@ -440,12 +355,6 @@ export const useAppStoreRaw = create<any>((set) => ({
   skillGenLoading: false,
   skillGenResult: null as { name: string; content: string } | null,
   skillGenError: '',
-  disabledSkillNames: (() => {
-    try {
-      const saved = localStorage.getItem('mindpet_disabled_skills') || localStorage.getItem('agentself_disabled_skills')
-      return saved ? JSON.parse(saved) : []
-    } catch { return [] }
-  })(),
   activeMcpServers: [],
   storageInputPath: '',
   actualStoragePath: '',
@@ -464,7 +373,7 @@ export const useAppStoreRaw = create<any>((set) => ({
     const val = localStorage.getItem('agentself_autosave') || localStorage.getItem('mindpet_autosave')
     return val === null ? true : val === 'true'
   })(),
-  contextRounds: Number(localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10'),
+  memorySummaryBatchRounds: Number(localStorage.getItem('mindpet_memory_summary_batch_rounds') || localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10'),
   testStatus: { state: 'idle' } as LlmTestResult,
   isSessionSwitching: false,
   isSessionsInitialized: false,
@@ -505,8 +414,7 @@ export const useAppStoreRaw = create<any>((set) => ({
       contextTokenUsageBySession: syncContextTokenUsage(
         state.sessions,
         sessions,
-        state.contextTokenUsageBySession,
-        state.contextRounds
+        state.contextTokenUsageBySession
       )
     }
   }),
@@ -519,7 +427,7 @@ export const useAppStoreRaw = create<any>((set) => ({
     const nextSession = { ...previousSession, messages }
     const sessions = [...state.sessions]
     sessions[index] = nextSession
-    const tokens = getSessionContextTokens(previousSession, nextSession, state.contextRounds)
+    const tokens = getSessionContextTokens(previousSession, nextSession)
     const previousTokens = state.contextTokenUsageBySession[sessionId]
     return {
       sessions,
@@ -552,9 +460,13 @@ export const useAppStoreRaw = create<any>((set) => ({
   setAttachedFiles: (val: any) => set((state: any) => ({
     attachedFiles: typeof val === 'function' ? val(state.attachedFiles) : val
   })),
-  setTokenLogs: (val: any) => set((state: any) => ({
-    tokenLogs: typeof val === 'function' ? val(state.tokenLogs) : val
-  })),
+  setTokenLogs: (val: any) => set((state: any) => {
+    const value = typeof val === 'function' ? val(state.tokenLogs) : val
+    if (value === state.tokenLogs) return state
+    const tokenLogs = value.slice(-1000)
+    tokenLogPersistence.queue(tokenLogs)
+    return { tokenLogs }
+  }),
   setHighlightedMessageId: (val: any) => set({ highlightedMessageId: val }),
   setGeneratedFiles: (val: any) => set((state: any) => ({
     generatedFiles: typeof val === 'function' ? val(state.generatedFiles) : val
@@ -572,9 +484,6 @@ export const useAppStoreRaw = create<any>((set) => ({
   setSkillGenLoading: (val: any) => set({ skillGenLoading: val }),
   setSkillGenResult: (val: any) => set({ skillGenResult: val }),
   setSkillGenError: (val: any) => set({ skillGenError: val }),
-  setDisabledSkillNames: (val: any) => set((state: any) => ({
-    disabledSkillNames: typeof val === 'function' ? val(state.disabledSkillNames) : val
-  })),
   setActiveMcpServers: (val: any) => set({ activeMcpServers: val }),
   setStorageInputPath: (val: any) => set({ storageInputPath: val }),
   setActualStoragePath: (val: any) => set({ actualStoragePath: val }),
@@ -590,11 +499,10 @@ export const useAppStoreRaw = create<any>((set) => ({
   setAvatarList: (val: any) => set({ avatarList: val }),
   setTtsEnabled: (val: any) => set({ ttsEnabled: val }),
   setAutoSaveHistory: (val: any) => set({ autoSaveHistory: val }),
-  setContextRounds: (val: any) => set((state: any) => {
-    const contextRounds = Number(typeof val === 'function' ? val(state.contextRounds) : val) || 10
+  setMemorySummaryBatchRounds: (val: any) => set((state: any) => {
+    const memorySummaryBatchRounds = Number(typeof val === 'function' ? val(state.memorySummaryBatchRounds) : val) || 10
     return {
-      contextRounds,
-      contextTokenUsageBySession: syncContextTokenUsage([], state.sessions, {}, contextRounds)
+      memorySummaryBatchRounds
     }
   }),
   setTestStatus: (val: any) => set({ testStatus: val }),
@@ -656,7 +564,6 @@ export function useAppStore() {
     officePreviewRequest, setOfficePreviewRequest,
     skillsList, setSkillsList,
     skillsPath, setSkillsPath,
-    disabledSkillNames, setDisabledSkillNames,
     activeMcpServers, setActiveMcpServers,
     storageInputPath, setStorageInputPath,
     actualStoragePath, setActualStoragePath,
@@ -672,7 +579,7 @@ export function useAppStore() {
     avatarList, setAvatarList,
     ttsEnabled, setTtsEnabled,
     autoSaveHistory, setAutoSaveHistory,
-    contextRounds, setContextRounds,
+    memorySummaryBatchRounds, setMemorySummaryBatchRounds,
     testStatus, setTestStatus,
     embeddingConfig, setEmbeddingConfig,
     embeddingStatus, setEmbeddingStatus,
@@ -682,7 +589,6 @@ export function useAppStore() {
   } = store
   const dropdownRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const cronRunningLogsRef = useRef<Record<string, CronLog>>({})
   const activeSessionIdRef = useRef(activeSessionId)
   const creatingSessionIdsRef = useRef<Set<string>>(new Set())
   const refreshSessionsRequestRef = useRef(0)
@@ -698,6 +604,7 @@ export function useAppStore() {
   const currentAvatarStyle = activeAvatar?.languageStyle || 'normal'
   const currentAvatarVoice = activeAvatar?.voice || 'zh-CN-XiaoxiaoNeural'
 
+  const llmTestRequestRef = useRef(0)
   const saveLlmConfig = async (newConfig: any): Promise<boolean> => {
     if (isSending) {
       showToast('大模型正在思考中，无法修改配置', 'error')
@@ -705,17 +612,28 @@ export function useAppStore() {
     }
     const prevModel = llmConfig.model
     const newModel = newConfig.model
-    const sanitized = sanitizeLlmConfigForRenderer(newConfig, Boolean(llmConfig.hasApiKey))
+    const request = ++llmConfigRevision
+    ++llmTestRequestRef.current
+    setTestStatus({ state: 'idle' })
+    const sameService = newConfig.provider === llmConfig.provider
+      && newConfig.baseUrl?.trim().replace(/\/+$/, '') === llmConfig.baseUrl?.trim().replace(/\/+$/, '')
+    const sanitized = sanitizeLlmConfigForRenderer({ ...newConfig,
+      hasApiKey: Boolean(newConfig.apiKey) || (sameService && Boolean(newConfig.hasApiKey)),
+      backendSync: { state: 'pending', message: '正在保存并同步配置' }
+    })
     setLlmConfig(sanitized)
     persistSanitizedLlmConfig(sanitized)
 
     try {
       const saved = await window.api.syncLlmConfig(newConfig)
+      if (request !== llmConfigRevision) return true
       const serverConfig = sanitizeLlmConfigForRenderer(saved)
+      llmConfigHydrationPromise = Promise.resolve(serverConfig)
       if (newConfig.apiKey) legacyLlmConfigForMigration = null
       setLlmConfig(serverConfig)
       persistSanitizedLlmConfig(serverConfig)
     } catch (error) {
+      if (request !== llmConfigRevision) return false
       console.error('保存大模型配置失败', error)
       setLlmConfig(llmConfig)
       persistSanitizedLlmConfig(llmConfig)
@@ -908,10 +826,10 @@ export function useAppStore() {
       const autoFetch = async () => {
         setIsLoadingModels(true)
         try {
-          const list = await window.api.getModels({ 
-            provider: llmConfig.provider, 
-            apiKey: llmConfig.apiKey, 
-            baseUrl: llmConfig.baseUrl 
+          const list = await window.api.getModels({
+            provider: llmConfig.provider,
+            apiKey: llmConfig.apiKey,
+            baseUrl: llmConfig.baseUrl
           })
           if (cancelled) return
           if (list && list.length > 0) {
@@ -974,16 +892,6 @@ export function useAppStore() {
     }
   }
 
-  const toggleSkillEnable = (name: string): void => {
-    setDisabledSkillNames(prev => {
-      const next = prev.includes(name)
-        ? prev.filter(n => n !== name)
-        : [...prev, name]
-      localStorage.setItem('mindpet_disabled_skills', JSON.stringify(next))
-      return next
-    })
-  }
-
   const refreshAvatarsList = async (): Promise<void> => {
     try {
       const list = await window.api.getAvatarsList()
@@ -1012,33 +920,6 @@ export function useAppStore() {
     loadSandboxMode()
     loadCustomModelInfo()
     refreshAvatarsList()
-  }, [])
-
-  // 加载本地及主进程定时任务
-  useEffect(() => {
-    const loadCronTasks = async () => {
-      try {
-        const tasks = await window.api.getCronTasks()
-        if (tasks && tasks.length > 0) {
-          setCronTasks(tasks)
-        } else {
-          // 兼容并迁移旧版 localStorage 里的定时任务
-          const saved = localStorage.getItem('mindpet_cron_tasks') || localStorage.getItem('agentself_cron_tasks')
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved)
-              setCronTasks(parsed)
-              await window.api.saveCronTasks(parsed)
-            } catch (e) {
-              console.error(e)
-            }
-          }
-        }
-      } catch (e) {
-        console.error('加载定时任务失败', e)
-      }
-    }
-    loadCronTasks()
   }, [])
 
   // 监听并执行详情自动定位弹窗
@@ -1089,37 +970,25 @@ export function useAppStore() {
     }
   }, [])
 
-  // 监听主进程的大模型定时任务更新通知
-  useEffect(() => {
-    if (!window.api.onCronUpdated) return
-    const unsubscribe = window.api.onCronUpdated(async () => {
-      try {
-        const tasks = await window.api.getCronTasks()
-        if (tasks) {
-          setCronTasks(tasks)
-          showToast('🤖 桌面助理已为您创建或更新了定时任务！', 'success')
-        }
-      } catch (e) {
-        console.error('刷新定时任务失败', e)
-      }
-    })
-    return () => unsubscribe()
-  }, [])
-
   // 监听本地命令的安全沙盒授权请求
   useEffect(() => {
     if (!window.api.onRequestPermission) return
     const unsubscribe = window.api.onRequestPermission((data: any) => {
       setActivePermissionRequest(data)
     })
-    return () => unsubscribe()
+    const unsubscribeSettled = window.api.onPermissionSettled(({ requestId }) => {
+      if (useAppStoreRaw.getState().activePermissionRequest?.requestId === requestId) setActivePermissionRequest(null)
+    })
+    return () => { unsubscribe(); unsubscribeSettled() }
   }, [])
 
   useTokenUsageRuntime({ setTokenLogs })
 
+  const [sessionLoadError, setSessionLoadError] = useState('')
   const refreshSessions = useCallback(async (clearThinking = false): Promise<void> => {
     const requestId = ++refreshSessionsRequestRef.current
     try {
+      setSessionLoadError('')
       const currentActiveId = useAppStoreRaw.getState().activeSessionId
       const fetchedSessions = await window.api.getLocalSessions({
         activeSessionId: clearThinking ? undefined : currentActiveId
@@ -1205,7 +1074,7 @@ export function useAppStore() {
                 // memory-only IDs here caused every refresh to append old messages.
                 return { ...ls, messages: ls.messages || [] }
               }
-              
+
               const dbMessageIds = new Set((ls.messages || []).map((m: any) => m.id))
               const previousMessagesById = new Map((matchedPrev.messages || []).map((message: any) => [message.id, message]))
               // 找出在内存中但还没来得及落库的消息（竞态保护）
@@ -1250,9 +1119,9 @@ export function useAppStore() {
                 }
                 return lm
               })
-              
+
               const finalMessages = [...mergedMessages, ...memoryOnlyMessages]
-              
+
               return {
                 ...ls,
                 messages: finalMessages
@@ -1288,6 +1157,7 @@ export function useAppStore() {
       }
     } catch (e) {
       console.error('从本地文件载入会话记录失败', e)
+      setSessionLoadError(e instanceof Error ? e.message : '会话读取失败，请重试')
     } finally {
       if (requestId === refreshSessionsRequestRef.current) setIsSessionsInitialized(true)
     }
@@ -1304,6 +1174,8 @@ export function useAppStore() {
     }
     llmConfigHydrationPromise
       .then(config => {
+        // The shared store already owns all edits after the first save.
+        if (llmConfigRevision > 0) return
         const sanitized = sanitizeLlmConfigForRenderer(config)
         legacyLlmConfigForMigration = null
         setLlmConfig(sanitized)
@@ -1560,29 +1432,27 @@ export function useAppStore() {
   }
 
   const handleDeleteSession = async (id: string): Promise<void> => {
-    const currentSessions = useAppStoreRaw.getState().sessions as Session[]
-    const filtered = currentSessions.filter(s => s.id !== id)
+    const deleted = await window.api.deleteSession(id)
+    if (!deleted) {
+      showToast('删除失败。请先停止此会话的任务，并确认后端可用后重试。')
+      return
+    }
+    const currentState = useAppStoreRaw.getState()
+    const filtered = (currentState.sessions as Session[]).filter(s => s.id !== id)
     let nextSessions = filtered
     if (filtered.length === 0) {
       const timeStr = formatDateTime()
       const defaultSess = {
-        id: 'agent:main:dashboard:default',
-        name: '(未命名)',
-        time: timeStr,
-        createdAt: timeStr,
-        messages: []
+        id: 'agent:main:dashboard:default', name: '(未命名)',
+        time: timeStr, createdAt: timeStr, messages: []
       }
       nextSessions = [defaultSess]
       creatingSessionIdsRef.current.add(defaultSess.id)
-      try {
-        await window.api.createSession(defaultSess)
-      } finally {
-        creatingSessionIdsRef.current.delete(defaultSess.id)
-      }
+      try { await window.api.createSession(defaultSess) }
+      finally { creatingSessionIdsRef.current.delete(defaultSess.id) }
     }
     setSessions(nextSessions)
-    if (activeSessionId === id) setActiveSessionId(nextSessions[0].id)
-    await window.api.deleteSession(id)
+    if (currentState.activeSessionId === id) setActiveSessionId(nextSessions[0].id)
   }
 
   // 切换会话置顶状态
@@ -1672,7 +1542,7 @@ export function useAppStore() {
   const [workspacePath, setWorkspacePath] = useState<string>(() => {
     return localStorage.getItem('mindpet_workspace_path') || ''
   })
-  
+
   const handleSelectWorkspace = async (): Promise<void> => {
     try {
       const path = await window.api.selectDirectory({ title: '选择工作空间/项目目录' })
@@ -1750,9 +1620,7 @@ export function useAppStore() {
 
   const { discardPendingMessageSave: discardPendingToolMessageSave } = useChatToolEvents({
     updateSessionMessages,
-    setCronTasks,
     activeSessionIdRef,
-    cronRunningLogsRef,
     showToast
   })
   const discardPendingStreamMessageSaveRef = useRef<() => void>(() => {})
@@ -1799,67 +1667,86 @@ export function useAppStore() {
 
   /** 读取本地配置与后端运行时状态。打开设置页时调用一次。 */
   const handleLoadEmbedding = async (): Promise<void> => {
+    const revision = embeddingConfigRevision
     try {
       const cfg = await window.api.getEmbeddingConfig()
-      if (cfg) setEmbeddingConfig({ ...cfg, apiKey: '' })
+      if (cfg && revision === embeddingConfigRevision) setEmbeddingConfig({ ...cfg, apiKey: '' })
     } catch (e) {
       console.error('[Embedding] 读取配置失败', e)
     }
-    await handleRefreshEmbedding()
+    try {
+      const status = await window.api.getEmbeddingStatus()
+      if (revision === embeddingConfigRevision) setEmbeddingStatus(status)
+    } catch {
+      if (revision === embeddingConfigRevision) setEmbeddingStatus({ unreachable: true, message: '无法连接本地服务，请重新检测' })
+    }
   }
 
   /**
    * 保存配置。Key 由主进程加密落盘，随后同步给后端并立即重新决策 provider。
    * @param input 留空 apiKey 表示不修改；clearApiKey=true 表示显式清除
    */
-  const handleSaveEmbedding = async (input: Partial<EmbeddingConfigState> & { clearApiKey?: boolean }): Promise<void> => {
+  const handleSaveEmbedding = async (input: Partial<EmbeddingConfigState> & { clearApiKey?: boolean }): Promise<boolean> => {
+    const revision = ++embeddingConfigRevision
     setEmbeddingBusy(true)
     try {
       const res = await window.api.syncEmbeddingConfig(input as Record<string, unknown>)
+      if (revision !== embeddingConfigRevision) return true
       if (res?.config) setEmbeddingConfig({ ...res.config, apiKey: '' })
       if (res?.backend?.status === 'ok') {
         setEmbeddingStatus(res.backend as EmbeddingStatus)
-        showToast('Embedding 配置已保存', 'success')
+        showToast(res.backend.available ? '向量服务检测通过，配置已生效' : `配置已保存，向量检测未通过：${res.backend.hint || '请检查服务配置'}`,
+          res.backend.available ? 'success' : 'error')
       } else if (res?.backend?.unreachable || res?.backend?.status === 'error') {
         // 配置已落盘，但后端未生效 —— 明确告知，避免"以为改了其实没改"
         showToast(
           `Embedding 配置已保存，但后端未生效：${res?.backend?.message || '后端未启动'}`,
           'error'
         )
-        await handleRefreshEmbedding()
+        setEmbeddingStatus(res.backend as EmbeddingStatus)
       } else {
-        await handleRefreshEmbedding()
+        setEmbeddingStatus({ unreachable: true, message: '已保存，等待本地服务同步' })
       }
+      return true
     } catch (e: any) {
+      if (revision !== embeddingConfigRevision) return false
       showToast(`保存失败：${e?.message || e}`, 'error')
+      return false
     } finally {
-      setEmbeddingBusy(false)
+      if (revision === embeddingConfigRevision) setEmbeddingBusy(false)
     }
   }
 
-  /** 重新探测 Ollama 并拉取最新状态（不修改配置） */
+  /** 重新同步本机保存的配置，并检测当前模式对应的向量服务。 */
   const handleRefreshEmbedding = async (): Promise<void> => {
+    const revision = ++embeddingConfigRevision
+    setEmbeddingBusy(true)
     try {
       const st = await window.api.refreshEmbedding()
-      setEmbeddingStatus((st || null) as EmbeddingStatus | null)
+      if (revision === embeddingConfigRevision) setEmbeddingStatus((st || null) as EmbeddingStatus | null)
     } catch (e: any) {
+      if (revision !== embeddingConfigRevision) return
       setEmbeddingStatus({
         unreachable: true,
         message: `无法连接后端服务：${e?.message || e}`
       })
-    }
+    } finally { if (revision === embeddingConfigRevision) setEmbeddingBusy(false) }
   }
 
   const handleTestConnection = async (): Promise<void> => {
+    const request = ++llmTestRequestRef.current
+    const revision = llmConfigRevision
     setTestStatus({ state: 'testing' })
     try {
       const res = await window.api.testLlm(llmConfig)
+      if (request !== llmTestRequestRef.current || revision !== llmConfigRevision) return
       if (res?.ok) {
         setTestStatus({ state: 'ok', ...res })
       } else {
         setTestStatus({ state: 'error', ...res, message: res?.message || '未知错误' })
       }
     } catch (e: any) {
+      if (request !== llmTestRequestRef.current || revision !== llmConfigRevision) return
       setTestStatus({ state: 'error', message: e?.message || String(e) })
     }
   }
@@ -1880,8 +1767,9 @@ export function useAppStore() {
   const handleImportSkill = async (): Promise<void> => {
     try {
       const list = await window.api.uploadSkillPack()
-      if (list && list.length > 0) setSkillsList(list)
-    } catch (e) { console.error(e) }
+      if (list) setSkillsList(list)
+      showToast('技能已导入并加入能力目录，可在列表中编辑简介', 'success')
+    } catch (e) { showToast(`导入技能失败：${String(e)}`, 'error') }
   }
 
   const handleDeleteSkill = async (name: string): Promise<void> => {
@@ -1988,184 +1876,46 @@ export function useAppStore() {
   }
 
   const handleToggleCronTask = async (id: string): Promise<void> => {
-    const updated = cronTasks.map(t => t.id === id ? { ...t, isActive: !t.isActive } : t)
-    setCronTasks(updated)
-    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
-    await window.api.saveCronTasks(updated)
+    const task = cronTasks.find(task => task.id === id)
+    if (task) setCronTasks(await window.api.upsertCronTask(id, { isActive: !task.isActive }))
   }
-
   const handleDeleteCronTask = async (id: string): Promise<void> => {
-    const updated = cronTasks.filter(t => t.id !== id)
-    setCronTasks(updated)
-    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
-    await window.api.saveCronTasks(updated)
+    setCronTasks(await window.api.deleteCronTask(id))
   }
-
   const handleClearCronLogs = async (id: string): Promise<void> => {
-    const updated = cronTasks.map(t => t.id === id ? { ...t, logs: [] } : t)
-    setCronTasks(updated)
-    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
-    await window.api.saveCronTasks(updated)
-    showToast('定时任务日志已清空', 'success')
+    await window.api.clearCronLogs(id)
+    const tasks = await window.api.getCronTasks()
+    if (tasks) setCronTasks(tasks)
+    showToast('已清空已结束的定时任务日志，运行中的记录已保留', 'success')
   }
-
   const handleAddCronTask = async (taskData: Omit<CronTask, 'id' | 'lastTriggered' | 'triggerCount' | 'logs'>): Promise<void> => {
-    const newTask: CronTask = {
-      ...taskData,
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      lastTriggered: '从未执行',
-      triggerCount: 0,
-      logs: []
-    }
-    const updated = [...cronTasks, newTask]
-    setCronTasks(updated)
-    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
-    await window.api.saveCronTasks(updated)
-    showToast('定时任务添加成功', 'success')
+    const id = `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    setCronTasks(await window.api.upsertCronTask(id, { ...taskData, workspacePath }))
+    showToast('定时任务已保存到后台', 'success')
   }
-
   const handleEditCronTask = async (id: string, updates: Partial<CronTask>): Promise<void> => {
-    const updated = cronTasks.map(t => t.id === id ? { ...t, ...updates } : t)
-    setCronTasks(updated)
-    localStorage.setItem('mindpet_cron_tasks', JSON.stringify(updated))
-    await window.api.saveCronTasks(updated)
+    setCronTasks(await window.api.upsertCronTask(id, updates))
     showToast('定时任务已更新', 'success')
   }
 
   const handleClearTokenLogs = (): void => {
     setTokenLogs([])
+    localStorage.setItem('mindpet_token_logs_cleared_at', String(Date.now()))
     localStorage.removeItem('mindpet_token_logs')
     localStorage.removeItem('agentself_token_logs')
     showToast('已清空 Token 消耗日志', 'success')
   }
 
-  // ── Cron Timer Loop & Backend Executor (Moved here to avoid TDZ) ──
-  // Cron timer loop
-  const runTaskBackend = async (taskToRun: CronTask, tempSessionId: string, logId: string) => {
-    try {
-      const chatMessages = [
-        { role: 'user', content: `你正在后台执行定时任务，请直接调用可用工具并用最简短的话汇报结果。执行定时任务指令: ${taskToRun.action || '无'}` }
-      ]
+  useEffect(() => {
+    setSelectedTaskForLog(previous => previous ? cronTasks.find(task => task.id === previous.id) || null : previous)
+    setSelectedCronLogDetails(previous => {
+      if (!previous) return previous
+      return cronTasks.flatMap(task => task.logs || []).find(log => log.id === previous.id) || null
+    })
+  }, [cronTasks, setSelectedTaskForLog, setSelectedCronLogDetails])
 
-      let response = ''
-      if (taskToRun.name === '系统画像提纯与经验沉淀') {
-        const result = await window.api.purifyMemoryPipeline()
-        response = `内置系统画像与避坑经验提纯分析已完成。\n本次共合并处理了 ${result.count} 份未更新的对话摘要，并从中抽取/强化了 ${result.insertCount || 0} 条避坑经验。相关源文件已标记为已更新。`
-      } else {
-        response = await window.api.callLLM(
-          {
-            ...llmConfig,
-            sessionId: tempSessionId,
-            messageId: Date.now()
-          },
-          chatMessages,
-          workspacePath
-        )
-      }
-
-      const runningLog = cronRunningLogsRef.current[tempSessionId]
-      if (runningLog) {
-        runningLog.status = 'success'
-        runningLog.message = `定时任务 [${taskToRun.name}] 执行完成。`
-        if (runningLog.messages) {
-          runningLog.messages = runningLog.messages.map(m => 
-            m.sender === 'agent' ? { ...m, text: response, isThinking: false } : m
-          )
-        }
-        delete cronRunningLogsRef.current[tempSessionId]
-
-        setCronTasks(prevTasks => {
-          const nextTasks = prevTasks.map(t => {
-            if (t.id === taskToRun.id) {
-              const updatedLogs = (t.logs || []).map(l => l.id === logId ? { ...runningLog } : l)
-              return { ...t, logs: updatedLogs }
-            }
-            return t
-          })
-          localStorage.setItem('mindpet_cron_tasks', JSON.stringify(nextTasks))
-          window.api.saveCronTasks(nextTasks)
-          return nextTasks
-        })
-
-        // 触发系统托盘通知与桌面挂件气泡
-        window.api.showBubble(`任务 [${taskToRun.name}] 执行成功！`, response, taskToRun.id, logId)
-
-        // 在 Chat 会话中添加简化的完成提醒
-        const successTimeStr = formatDateTime()
-        const successTimeOnly = successTimeStr.split(' ')[1] || successTimeStr
-        setSessions(prevSessions => {
-          const updated = prevSessions.map(session => {
-            if (session.id === activeSessionId) {
-              return {
-                ...session,
-                messages: [...session.messages, {
-                  id: Date.now() + Math.random(),
-                  sender: 'system',
-                  text: `${successTimeOnly} - 完成【${taskToRun.name}】任务`,
-                  time: successTimeStr
-                }]
-              }
-            }
-            return session
-          })
-          if (autoSaveHistory) localStorage.setItem('mindpet_sessions', JSON.stringify(updated))
-          return updated
-        })
-      }
-    } catch (err: any) {
-      console.error('后台执行定时任务出错', err)
-      const runningLog = cronRunningLogsRef.current[tempSessionId]
-      if (runningLog) {
-        runningLog.status = 'failed'
-        runningLog.message = `定时任务 [${taskToRun.name}] 执行失败：${err.message || err}`
-        if (runningLog.messages) {
-          runningLog.messages = runningLog.messages.map(m => 
-            m.sender === 'agent' ? { ...m, text: `⚠️ 执行过程中出现错误：${err.message || err}`, isThinking: false, isError: true } : m
-          )
-        }
-        delete cronRunningLogsRef.current[tempSessionId]
-
-        setCronTasks(prevTasks => {
-          const nextTasks = prevTasks.map(t => {
-            if (t.id === taskToRun.id) {
-              const updatedLogs = (t.logs || []).map(l => l.id === logId ? { ...runningLog } : l)
-              return { ...t, logs: updatedLogs }
-            }
-            return t
-          })
-          localStorage.setItem('mindpet_cron_tasks', JSON.stringify(nextTasks))
-          window.api.saveCronTasks(nextTasks)
-          return nextTasks
-        })
-
-        window.api.showBubble(`任务 [${taskToRun.name}] 执行失败。`, err.message || err, taskToRun.id, logId)
-
-        // 在 Chat 会话中添加简化的失败提醒
-        const failTimeStr = formatDateTime()
-        const failTimeOnly = failTimeStr.split(' ')[1] || failTimeStr
-        setSessions(prevSessions => {
-          const updated = prevSessions.map(session => {
-            if (session.id === activeSessionId) {
-              return {
-                ...session,
-                messages: [...session.messages, {
-                  id: Date.now() + Math.random(),
-                  sender: 'system',
-                  text: `${failTimeOnly} - 【${taskToRun.name}】任务执行失败`,
-                  time: failTimeStr
-                }]
-              }
-            }
-            return session
-          })
-          if (autoSaveHistory) localStorage.setItem('mindpet_sessions', JSON.stringify(updated))
-          return updated
-        })
-      }
-    }
-  }
-
-  useCronScheduler({ setCronTasks, cronRunningLogsRef, runTaskBackend })
+  // The Java scheduler owns execution. Renderers only observe persisted state.
+  const cronRuntime = useCronScheduler({ setCronTasks, setTokenLogs })
 
   const handleSetActiveSessionId = useCallback((id: string) => {
     setActiveSessionId(id)
@@ -2177,6 +1927,7 @@ export function useAppStore() {
   // ── 使用 useMemo 稳定返回引用，配合子组件 React.memo 跳过不必要重渲染 ──
   // 仅依赖数据字段；函数引用通过闭包捕获，数据相同时语义等价
   return useMemo(() => ({
+    sessionLoadError, cronLoadError: cronRuntime.error, refreshCronTasks: cronRuntime.refresh,
     // navigation
     activeTab, setActiveTab,
     agentSubTab, setAgentSubTab,
@@ -2234,8 +1985,6 @@ export function useAppStore() {
     handleSkillsPathClick, handleImportSkill, handleDeleteSkill,
     handleSaveGeneratedSkill,
     refreshSkillsAndStorage,
-    disabledSkillNames,
-    toggleSkillEnable,
     activeMcpServers,
     refreshMcpServers,
     mcpConfig,
@@ -2255,7 +2004,7 @@ export function useAppStore() {
     ttsEnabled, setTtsEnabled,
     // memory
     autoSaveHistory, setAutoSaveHistory,
-    contextRounds, setContextRounds,
+    memorySummaryBatchRounds, setMemorySummaryBatchRounds,
     // models default
     DEFAULT_MODELS,
     // token logs
@@ -2284,7 +2033,7 @@ export function useAppStore() {
     // avatar derived & handlers
     currentAvatarStyle,
     currentAvatarVoice
-  }), [
+  }), [sessionLoadError, refreshSessions, cronRuntime.error, cronRuntime.refresh,
     // ── Zustand 数据字段（仅引用比较，不包含函数引用） ──
     activeTab, agentSubTab, settingsSubTab,
     isCollapsed, showApiKey, showApiKeyModal, showModelDropdown,
@@ -2297,12 +2046,12 @@ export function useAppStore() {
     inputValue, tokenLogs,
     highlightedMessageId, generatedFiles, showFilePanel,
     openTabs, previewFile, previewLoading, officePreviewRequest,
-    skillsList, skillsPath, disabledSkillNames,
+    skillsList, skillsPath,
     activeMcpServers, storageInputPath, actualStoragePath, storageSaveStatus,
     sandboxMode, activePermissionRequest,
     executionDevice, sshConnected, sshHost, sshUsername,
     customModelDir, customModelFile, avatarList,
-    ttsEnabled, autoSaveHistory, contextRounds,
+    ttsEnabled, autoSaveHistory, memorySummaryBatchRounds,
     testStatus, isSessionSwitching, isSessionsInitialized,
     // ── 本地 React 状态 ──
     workspacePath, attachedFiles

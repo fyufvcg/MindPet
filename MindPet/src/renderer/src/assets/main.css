@@ -6911,25 +6911,33 @@ body .agent-window-container .chat-messages-box.session-switching .chat-empty-st
   }
 }
 
-/* API keys use a compact, readable password rhythm without changing other
-   settings fields or the visible-key state. */
-.settings-panel-card .settings-api-key-input[type='password'] {
-  font-size: 18px;
-  letter-spacing: 0.04em;
-  line-height: 1;
+/* Shared credential entry for conversation and memory providers. */
+.secret-key-field { container-type: inline-size; margin: 16px 0; min-width: 0; }
+.secret-key-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.secret-key-state { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.secret-key-state.is-saved { color: var(--color-action-primary); }
+.secret-key-controls { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; min-width: 0; }
+.secret-key-input-wrap { position: relative; display: flex; flex: 1 1 240px; min-width: 0; }
+.secret-key-leading { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; }
+.settings-panel-card .secret-key-input { box-sizing: border-box; width: 100%; min-width: 0; height: 42px; padding: 10px 44px 10px 39px; font-size: 13px; line-height: 20px; letter-spacing: normal; }
+.settings-panel-card .secret-key-input::placeholder { font-size: 12px; color: var(--text-secondary); opacity: 1; }
+.settings-panel-card .secret-key-input[type='password']:not(:placeholder-shown) { font-size: 16px; letter-spacing: .1em; }
+.settings-panel-card .secret-key-input:focus-visible { border-color: var(--color-action-primary) !important; outline: 2px solid var(--color-action-primary) !important; outline-offset: 2px; box-shadow: none !important; }
+.secret-key-reveal { position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.secret-key-reveal:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-menu-hover); }
+.secret-key-reveal:focus-visible, .secret-key-actions button:focus-visible { outline: 2px solid var(--color-action-primary); outline-offset: 2px; }
+.secret-key-reveal:disabled { opacity: .5; cursor: default; }
+.secret-key-actions { display: flex; gap: 8px; align-items: stretch; }
+.secret-key-actions .btn-primary, .secret-key-actions .btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; margin: 0; padding: 8px 13px; font-size: 12px; white-space: nowrap; }
+.secret-key-hint { margin-top: 8px; color: var(--text-secondary); font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+.secret-key-spinner { animation: secret-key-spin 1s linear infinite; }
+@keyframes secret-key-spin { to { transform: rotate(360deg); } }
+@container (max-width: 480px) {
+  .secret-key-input-wrap { flex-basis: 100%; }
+  .secret-key-actions { width: 100%; }
+  .secret-key-actions .btn-primary { flex: 1; }
 }
-
-.settings-panel-card .settings-api-key-input[type='text'] {
-  font-size: 13.5px;
-  letter-spacing: normal;
-}
-
-.settings-panel-card .settings-api-key-input:focus,
-.settings-panel-card .settings-api-key-input:focus-visible {
-  border-color: color-mix(in srgb, var(--color-action-primary) 58%, var(--border-input)) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-action-primary) 14%, transparent) !important;
-  outline: none !important;
-}
+@media (prefers-reduced-motion: reduce) { .secret-key-spinner { animation: none; } }
 
 @keyframes splash-title-enter {
   0% {
@@ -13079,3 +13087,99 @@ body.session-dragging * {
   width: 100%;
   justify-content: center;
 }
+
+/* Task service picker follows the chat composer's neutral surface and blue accents. */
+.chat-panel-column .chat-control-card { position: relative; overflow: visible; }
+.task-mcp-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
+.task-mcp-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--border-card); border-radius: 7px; background: var(--bg-input, var(--bg-card)); color: var(--text-secondary); font: inherit; font-size: 11px; cursor: pointer; overflow-wrap: anywhere; }
+.task-mcp-chip:hover { color: var(--text-primary); border-color: var(--color-action-primary); }
+.mcp-slash-popover { position: absolute; bottom: calc(100% + 10px); left: 0; right: 0; z-index: 60; padding: 6px; border: 1px solid var(--border-card); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); box-shadow: 0 8px 28px color-mix(in srgb, var(--text-primary) 12%, transparent); }
+.mcp-slash-heading, .mcp-slash-footer { display: flex; justify-content: space-between; gap: 10px; padding: 7px 9px; font-size: 11px; color: var(--text-secondary); }
+.mcp-slash-heading > :first-child { font-weight: 600; color: var(--text-primary); }
+.mcp-slash-options { max-height: min(260px, 35vh); overflow-y: auto; overscroll-behavior: contain; }
+.mcp-slash-option { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 9px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.mcp-slash-option.active { background: color-mix(in srgb, var(--color-action-primary) 10%, var(--bg-card)); }
+.mcp-slash-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--border-card); border-radius: 8px; color: var(--text-secondary); }
+.mcp-slash-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.mcp-slash-copy strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.mcp-slash-copy > span { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-slash-command { max-width: 28%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--text-secondary); }
+.mcp-slash-check { flex-shrink: 0; color: var(--color-action-primary); }
+.mcp-slash-footer { margin-top: 4px; border-top: 1px solid var(--border-card); font-size: 10px; flex-wrap: wrap; }
+.mcp-slash-empty { padding: 20px 10px; color: var(--text-secondary); font-size: 12px; }
+.skill-gen-catalog { align-items: flex-start; }
+.skill-gen-catalog > span { flex: 1; min-width: 0; }
+.skill-gen-catalog small { display: block; margin-top: 4px; font-size: 11px; font-weight: normal; color: var(--text-secondary); }
+.skill-gen-catalog-refresh { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--border-card); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.skill-gen-catalog-refresh:disabled { opacity: .5; cursor: default; }
+
+/* Compact service surfaces: explicit typography avoids browser button defaults. */
+.task-service-popover {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 1000;
+  width: 232px; max-width: calc(100vw - 40px); padding: 5px;
+  border: 1px solid var(--border-card); border-radius: 10px;
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .09);
+  font-family: inherit; line-height: 1.4;
+}
+.task-service-heading { display: flex; justify-content: space-between; padding: 6px 7px; color: var(--text-secondary); font-size: 10px; }
+.task-service-heading > :first-child { font-weight: 600; color: var(--text-primary); }
+.task-service-list { max-height: min(192px, 35vh); overflow-y: auto; overscroll-behavior: contain; }
+.task-service-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 33px; padding: 7px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); text-align: left; font-family: inherit; font-size: 12px; line-height: 1.4; cursor: pointer; }
+.task-service-row:hover, .task-service-manage:hover { background: color-mix(in srgb, var(--color-action-primary) 8%, var(--bg-card)); }
+.task-service-row > svg { flex-shrink: 0; }
+.task-service-row-copy { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.task-service-row-copy strong { font-size: 12px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-service-row-copy > span { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-service-manage { display: flex; align-items: center; justify-content: flex-start; gap: 7px; width: 100%; margin-top: 4px; padding: 8px 7px 5px; border: 0; border-top: 1px solid var(--border-card); border-radius: 0 0 5px 5px; background: transparent; color: var(--text-secondary); font-family: inherit; font-size: 11px; line-height: 1.4; cursor: pointer; }
+.task-service-search { box-sizing: border-box; width: calc(100% - 8px); margin: 3px 4px 5px; padding: 6px 7px; border: 1px solid var(--border-card); border-radius: 5px; background: var(--bg-input, var(--bg-card)); color: var(--text-primary); font-family: inherit; font-size: 11px; }
+.chat-panel-column .mcp-slash-popover { left: 10px; right: auto; width: min(300px, calc(100% - 32px)); bottom: calc(100% + 7px); padding: 4px; border-radius: 10px; box-shadow: 0 5px 18px rgba(0, 0, 0, .09); }
+.mcp-slash-heading { padding: 5px 7px; font-size: 10px; }
+.mcp-slash-options { max-height: min(190px, 30vh); }
+.mcp-slash-option { padding: 7px; gap: 8px; border-radius: 6px; line-height: 1.4; }
+.mcp-slash-icon { width: 23px; height: 23px; border: 0; border-radius: 5px; }
+.mcp-slash-icon svg { width: 14px; height: 14px; }
+.mcp-slash-copy { gap: 2px; }
+.mcp-slash-copy strong { font-size: 12px; font-weight: 500; }
+.mcp-slash-copy > span { font-size: 10px; }
+.mcp-slash-footer { margin-top: 3px; padding: 6px 7px 3px; font-size: 10px; }
+
+/* Task records share the compact agent settings surface. */
+.agent-tasks-panel { padding: 20px; min-width: 0; color: inherit; }
+.agent-tasks-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.agent-tasks-toolbar h3 { margin: 0 0 5px; font-size: 15px; }
+.agent-tasks-toolbar p, .agent-task-meta, .agent-tasks-empty { opacity: .72; font-size: 12px; }
+.agent-tasks-toolbar p { margin: 0; }
+.agent-tasks-toolbar button, .agent-task-detail button { display: inline-flex; align-items: center; gap: 6px; }
+.agent-tasks-layout { display: grid; grid-template-columns: minmax(220px, .9fr) minmax(260px, 1.2fr); gap: 20px; align-items: start; }
+.agent-tasks-list { min-width: 0; max-height: 65vh; overflow-y: auto; }
+.agent-task-row { display: block; width: 100%; text-align: left; padding: 12px 10px; background: transparent; border: 0; border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: 0; color: inherit; cursor: pointer; }
+.agent-task-row:hover, .agent-task-row.selected { background: color-mix(in srgb, #3976f6 12%, transparent); }
+.agent-task-goal { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.agent-task-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.agent-task-meta [data-state="running"] { color: #3976f6; }
+.agent-task-detail { min-width: 0; padding: 0 4px; }
+.agent-task-detail h4 { margin: 8px 0; font-size: 14px; overflow-wrap: anywhere; }
+.agent-task-detail h5 { margin: 18px 0 7px; font-size: 12px; }
+.agent-task-pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: 13px; }
+.agent-task-journal { padding-left: 20px; font-size: 12px; overflow-wrap: anywhere; }
+.agent-task-journal p { white-space: pre-wrap; opacity: .75; }
+.agent-task-resume { display: grid; gap: 10px; margin: 20px 0 12px; }
+.agent-task-resume textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 9px; border-radius: 6px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); color: inherit; background: transparent; font: inherit; }
+.agent-task-resume fieldset { border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 6px; padding: 10px; }
+.agent-task-resume fieldset label { display: inline-flex; align-items: center; gap: 5px; margin: 5px 14px 5px 0; font-size: 12px; }
+.agent-task-resume fieldset p { font-size: 12px; margin: 3px; opacity: .75; }
+.agent-load-error { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, #ef4444 40%, transparent); border-radius: 6px; font-size: 12px; }
+.agent-load-error button { color: inherit; background: transparent; border: 0; text-decoration: underline; cursor: pointer; }
+.agent-tasks-panel button:focus-visible, .agent-task-resume textarea:focus-visible { outline: 2px solid #3976f6; outline-offset: 2px; }
+@media (max-width: 780px) { .agent-tasks-layout { grid-template-columns: 1fr; } .agent-tasks-list { max-height: 32vh; } .agent-tasks-panel { padding: 14px; } }
+.schedule-editor { position: fixed; inset: 0; margin: auto; width: min(450px, calc(100vw - 40px)); max-height: calc(100vh - 40px); padding: 0; color: var(--text-primary); background: var(--bg-card); }
+.schedule-editor:not([open]) { display: none; }
+.schedule-editor::backdrop { background: rgba(0, 0, 0, .4); }
+.schedule-editor .mcp-form-label:not(:first-child) { margin-top: 16px; }
+.schedule-editor .mcp-modal-title { margin: 0; font-size: 15px; }
+.schedule-editor fieldset { margin: 16px 0 0; padding: 10px; border: 1px solid var(--border-card); border-radius: 6px; font-size: 12px; }
+.schedule-editor fieldset label { display: inline-flex; align-items: center; gap: 6px; margin: 5px 14px 5px 0; overflow-wrap: anywhere; }
+.schedule-editor .mcp-modal-body { max-height: calc(100vh - 200px); overflow-y: auto; gap: 8px; }
+.schedule-editor .mcp-modal-body > * { flex-shrink: 0; }
+.schedule-editor textarea.mcp-input-fancy { height: auto; min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.5; }

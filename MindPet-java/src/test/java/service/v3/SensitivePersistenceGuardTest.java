@@ -53,4 +53,14 @@ class SensitivePersistenceGuardTest {
         jdbc.update("INSERT INTO kg_entity VALUES(?)","公司公开客服账号是 support");
         assertThat(jdbc.queryForList("SELECT display_name FROM kg_entity",String.class)).containsExactly(SensitivePersistenceGuard.REDACTED,"label_28","公司公开客服账号是 support");
     }
+    @Test void literalQuotesAndRepeatedSanitizationPreserveSqlAndMarkers() {
+        JdbcTemplate jdbc=database();jdbc.execute("CREATE TABLE long_term_memory(id INTEGER,content TEXT)");
+        jdbc.execute("INSERT INTO long_term_memory VALUES(1,'Bob''s note; 我的测试账号是 demo_31')");
+        jdbc.update("INSERT INTO long_term_memory VALUES(2,?)", SecretSanitizer.sanitize("我的测试账号是 demo_32; password=private-pass"));
+        assertThat(jdbc.queryForObject("SELECT content FROM long_term_memory WHERE id=1",String.class))
+            .isEqualTo("Bob's note; 我的测试账号是 [REDACTED_ACCOUNT]");
+        String text=jdbc.queryForObject("SELECT content FROM long_term_memory WHERE id=2",String.class);
+        assertThat(text).isEqualTo("我的测试账号是 [REDACTED_ACCOUNT]; password=[REDACTED_SECRET]");
+        assertThat(SecretSanitizer.sanitize(text)).isEqualTo(text);
+    }
 }

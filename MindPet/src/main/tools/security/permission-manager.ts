@@ -1,5 +1,17 @@
 import { app, BrowserWindow, ipcMain, Notification, WebContents } from 'electron'
 
+type PermissionRequest = {
+    command: string
+    execCwd: string
+    sessionId?: string
+    warning?: string
+    sender?: WebContents
+    forcePrompt?: boolean
+    allowTurnScope?: boolean
+    abortSignal?: AbortSignal
+    approvalScopeId?: string
+}
+
 type PermissionScope = 'once' | 'turn'
 
 type PermissionResponse = {
@@ -13,6 +25,7 @@ export class PermissionManager {
   private pendingNotifications = new Map<number, Notification>()
   private turnApprovals = new Map<string, number>()
   private nextPermissionRequestId = 1
+  private approvalEpoch = 0
 
   private constructor() {
     ipcMain.on('api:permission-response', (_, { requestId, approved, scope }) => {
@@ -35,17 +48,15 @@ export class PermissionManager {
     return PermissionManager.instance
   }
 
-  public async requestCommandPermission(params: {
-    command: string
-    execCwd: string
-    sessionId?: string
-    warning?: string
-    sender?: WebContents
-    forcePrompt?: boolean
-    allowTurnScope?: boolean
-    abortSignal?: AbortSignal
-    approvalScopeId?: string
-  }): Promise<boolean> {
+  private approvalQueue: Promise<void> = Promise.resolve()
+  public requestCommandPermission(params: PermissionRequest): Promise<boolean> {
+    const epoch = this.approvalEpoch
+    const result = this.approvalQueue.then(() => epoch === this.approvalEpoch ? this.requestPermissionNow(params) : false)
+    this.approvalQueue = result.then(() => {}, () => {})
+    return result
+  }
+
+  private async requestPermissionNow(params: PermissionRequest): Promise<boolean> {
     if (params.abortSignal?.aborted) return false
     const approvalKey = params.approvalScopeId || params.sessionId
     if (!params.forcePrompt && this.isTurnApprovalGranted(approvalKey)) {
@@ -62,6 +73,8 @@ export class PermissionManager {
 
     const reqId = this.nextPermissionRequestId++
     return new Promise<boolean>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let settled = false
       const onAbort = (): void => {
         this.pendingPermissions.get(reqId)?.({ approved: false, scope: 'once' })
         this.pendingPermissions.delete(reqId)
@@ -69,7 +82,13 @@ export class PermissionManager {
       }
       params.abortSignal?.addEventListener('abort', onAbort, { once: true })
       this.pendingPermissions.set(reqId, (response) => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
+        this.pendingPermissions.delete(reqId)
+        this.closeNotification(reqId)
         params.abortSignal?.removeEventListener('abort', onAbort)
+        if (!activeWin.isDestroyed()) activeWin.webContents.send('api:permission-settled', { requestId: reqId })
         if (
           response.approved &&
           response.scope === 'turn' &&
@@ -94,13 +113,8 @@ export class PermissionManager {
         this.showPermissionNotification(reqId, activeWin)
       }
 
-      setTimeout(() => {
-        if (!this.pendingPermissions.has(reqId)) return
-        this.pendingPermissions.delete(reqId)
-        this.closeNotification(reqId)
-        params.abortSignal?.removeEventListener('abort', onAbort)
-        resolve(false)
-      }, 300000)
+      timer = setTimeout(() => { onAbort() }, 300000)
+      if (params.abortSignal?.aborted) onAbort()
     })
   }
 
@@ -124,6 +138,7 @@ export class PermissionManager {
   }
 
   public clearPendingPermissions(): void {
+    this.approvalEpoch++
     for (const [, resolve] of this.pendingPermissions.entries()) {
       resolve({ approved: false, scope: 'once' })
     }

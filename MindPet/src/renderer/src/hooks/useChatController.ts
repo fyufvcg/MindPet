@@ -34,7 +34,9 @@ export function useChatController() {
   const activeSessionId = useAppStoreRaw(state => state.activeSessionId)
   const activeSession = useAppStoreRaw(state => state.sessions.find((session: any) => session.id === state.activeSessionId))
   const activeSessMessages = activeSession?.messages || EMPTY_MESSAGES
-  const currentContextTokens = useAppStoreRaw(state => state.contextTokenUsageBySession[state.activeSessionId] || 1500)
+  const currentContextTokens = useAppStoreRaw(state => state.contextTokenUsageBySession[state.activeSessionId] || 0)
+  const contextUsage = activeSessMessages.findLast((message: any) => message.contextUsage)?.contextUsage
+
   const isSending = useAppStoreRaw(state => !!state.sendingSessionIds[state.activeSessionId])
   const inputValue = useAppStoreRaw(state => state.inputValue)
   const availableModels = useAppStoreRaw(state => state.availableModels)
@@ -47,7 +49,6 @@ export function useChatController() {
   const sshUsername = useAppStoreRaw(state => state.sshUsername)
   const activePermissionRequest = useAppStoreRaw(state => state.activePermissionRequest)
   const skillsList = useAppStoreRaw(state => state.skillsList)
-  const disabledSkillNames = useAppStoreRaw(state => state.disabledSkillNames)
   const mcpConfig = useAppStoreRaw(state => state.mcpConfig)
   const avatarList = useAppStoreRaw(state => state.avatarList)
   const customModelDir = useAppStoreRaw(state => state.customModelDir)
@@ -59,10 +60,10 @@ export function useChatController() {
   }, [avatarList, customModelDir, customModelFile])
 
   return {
-    llmConfig, activeSessionId, activeSessMessages, currentContextTokens, currentAvatarName, isSending,
+    llmConfig, activeSessionId, activeSessMessages, currentContextTokens, contextUsage, currentAvatarName, isSending,
     inputValue, availableModels, attachedFiles, highlightedMessageId, isSessionSwitching,
     executionDevice, sshConnected, sshHost, sshUsername, activePermissionRequest,
-    skillsList, disabledSkillNames, mcpConfig,
+    skillsList, mcpConfig,
     setInputValue: useChatAction('setInputValue'),
     handleSendChat: useChatAction('handleSendChat'),
     saveLlmConfig: useChatAction('saveLlmConfig'),
@@ -76,7 +77,6 @@ export function useChatController() {
     handleDisconnectSsh: useChatAction('handleDisconnectSsh'),
     showToast: useChatAction('showToast'),
     handleRespondPermission: useChatAction('handleRespondPermission'),
-    toggleSkillEnable: useChatAction('toggleSkillEnable'),
     setActiveTab: useChatAction('setActiveTab'),
     setAgentSubTab: useChatAction('setAgentSubTab'),
     refreshSkillsAndStorage: useChatAction('refreshSkillsAndStorage'),

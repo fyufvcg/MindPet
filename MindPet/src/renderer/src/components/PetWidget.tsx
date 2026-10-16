@@ -418,32 +418,7 @@ export function PetWidget(): React.JSX.Element {
         isNew = true
       }
 
-      const contextRoundsStr = localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10'
-      const contextRounds = Number(contextRoundsStr)
-      const currentMessages = activeSession.messages || []
-      const filtered = currentMessages.filter((m: any) => (m.sender === 'user' || m.sender === 'agent') && !m.isThinking && !m.isError)
-
-      const parseMessageToBlocks = (msgText: string) => {
-        const imageRegex = /!\[([^\]]*)\]\((local-file:\/\/[^)]+)\)/g
-        imageRegex.lastIndex = 0
-        const match = imageRegex.exec(msgText)
-        if (match) {
-          const textPart = msgText.replace(imageRegex, '').trim()
-          const imageUrl = match[2]
-          return [
-            { type: 'text', text: textPart || '分析这张图片' },
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ]
-        }
-        return msgText
-      }
-
-      const chatMessages = filtered.slice(-contextRounds * 2).map((m: any) => {
-        return {
-          role: m.sender === 'user' ? 'user' : 'assistant',
-          content: parseMessageToBlocks(m.text || '')
-        }
-      })
+      const chatMessages: any[] = []
 
       if (imagePath) {
         chatMessages.push({
@@ -517,6 +492,7 @@ export function PetWidget(): React.JSX.Element {
           ...llmConfig,
           sessionId: activeSessionId,
           messageId: replyId,
+          userMessageId: userMsg.id,
           callNonce
         },
         chatMessages,

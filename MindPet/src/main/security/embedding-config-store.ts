@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs'
 import { SecretVault, writeTextAtomically } from './secret-vault-core'
+import { serviceAddress, validateServiceAddress } from './credential-scope'
 
 /**
  * 豆包 Embedding API Key 的加密存储。
@@ -97,13 +98,16 @@ export class EmbeddingConfigStore {
 
   save(input: JsonObject): RuntimeEmbeddingConfig {
     if (!isJsonObject(input)) throw new TypeError('Embedding configuration must be an object')
+    validateServiceAddress(input.endpoint)
 
     const stored = this.readStoredConfig()
     const currentWithoutSecrets = withoutRuntimeSecrets(stored)
     const incomingWithoutSecrets = withoutRuntimeSecrets(input)
-    const shouldClear = input.clearApiKey === true
+    const endpointChanged = serviceAddress(stored.endpoint ?? DEFAULT_EMBEDDING_CONFIG.endpoint)
+      !== serviceAddress(input.endpoint ?? stored.endpoint ?? DEFAULT_EMBEDDING_CONFIG.endpoint)
+    const shouldClear = input.clearApiKey === true || (endpointChanged && !String(input.apiKey || '').trim())
     const incomingApiKey =
-      typeof input.apiKey === 'string' && input.apiKey.length > 0 ? input.apiKey : ''
+      typeof input.apiKey === 'string' ? input.apiKey.trim() : ''
     const legacyApiKey =
       typeof stored.apiKey === 'string' && stored.apiKey.length > 0 ? stored.apiKey : ''
     let apiKeyRef =
@@ -113,7 +117,7 @@ export class EmbeddingConfigStore {
       this.vault.deleteSecret(EMBEDDING_API_KEY_SECRET_ID)
       apiKeyRef = undefined
     } else {
-      const keyToPersist = incomingApiKey || legacyApiKey
+      const keyToPersist = incomingApiKey || (endpointChanged ? '' : legacyApiKey)
       if (keyToPersist) {
         this.vault.setSecret(EMBEDDING_API_KEY_SECRET_ID, keyToPersist, 'Embedding API key')
         apiKeyRef = EMBEDDING_API_KEY_REF

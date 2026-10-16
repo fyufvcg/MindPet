@@ -30,6 +30,19 @@ public class AgentTaskStore {
         jdbc.update("UPDATE agent_task SET status='interrupted' WHERE status='running'");
     }
 
+    @org.springframework.beans.factory.annotation.Value("${agent.completed-retention-days:90}")
+    private int completedRetentionDays = 90;
+
+    /** Only completed execution records expire. Recoverable tasks and conversation history remain. */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 86400000, initialDelay = 60000)
+    @org.springframework.transaction.annotation.Transactional
+    public void pruneCompleted() {
+        if (completedRetentionDays <= 0) return;
+        long cutoff = System.currentTimeMillis() - java.time.Duration.ofDays(completedRetentionDays).toMillis();
+        jdbc.update("DELETE FROM agent_tool_output WHERE task_id IN (SELECT id FROM agent_task WHERE status='completed' AND updated_at<?)", cutoff);
+        jdbc.update("DELETE FROM agent_task WHERE status='completed' AND updated_at<?", cutoff);
+    }
+
     public void save(String id, String user, String session, String request, String status,
                      String goal, Map<String, Object> snapshot) {
         try {
@@ -75,6 +88,11 @@ public class AgentTaskStore {
         String value = (String) rows.get(0).get("content");
         int start = Math.min(Math.max(0, offset), value.length());
         int end = Math.min(value.length(), start + Math.min(Math.max(1, length), 16000));
-        return "offset=" + start + ", end=" + end + ", total=" + value.length() + "\n" + value.substring(start, end);
+        String fragment = ContextTokens.head(value.substring(start, end), 1800);
+        try {
+            return json.writeValueAsString(Map.of("task_id", task, "call_id", call, "offset", start,
+                "nextOffset", start + fragment.length(), "totalLength", value.length(),
+                "hasMore", start + fragment.length() < value.length(), "content", fragment));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException(e); }
     }
 }

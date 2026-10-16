@@ -1,3 +1,5 @@
+import { mcpManager } from './mcp-manager'
+import { McpNameMapper } from './mcp-name-mapper'
 /**
  * MCP Server — 将前端 ToolRegistry 以 MCP JSON-RPC 协议暴露给 Java 后端。
  *
@@ -6,10 +8,11 @@
  *
  * 工具命名格式: desktop__{category}__{toolName}
  *   例: desktop__computer__screenshot
- * 后端 AiService 按 category 段做分组路由过滤。
+ * 这是应用内置工具桥，后端将 Desktop 工具常驻提供；不参与用户外部 MCP 的 / 选择。
  */
 
 import http from 'http'
+import { randomBytes } from 'crypto'
 import { webContents } from 'electron'
 import * as fs from 'fs/promises'
 import { basename, extname } from 'path'
@@ -20,6 +23,7 @@ import { backendBaseUrl } from '../../backend-endpoint'
 import { getSessionFilesDir, resolveSessionPath } from '../utils/paths'
 import { permissionManager } from '../security/permission-manager'
 
+export const MCP_BRIDGE_TOKEN = randomBytes(32).toString('hex')
 export const MCP_SERVER_PORT = 9339
 export const MCP_SERVER_ID = 'desktop-tools'
 const SERVER_ID = 'desktop'
@@ -124,6 +128,10 @@ async function handleRequest(
     return
   }
 
+  if (req.headers.authorization !== `Bearer ${MCP_BRIDGE_TOKEN}`) {
+    json(res, 401, err('', -32001, 'Unauthorized'))
+    return
+  }
   let raw: string
   try {
     raw = await readBody(req)
@@ -185,8 +193,23 @@ async function handleRequest(
       }
 
       // ── tools/call ──────────────────────────────────────
+      case 'mindpet/mcp-list': {
+        const serverId = String((params as any)?.serverId || '')
+        if (!mcpManager.systemMcpConfig.servers.some(server => server.id === serverId && server.source !== 'DESKTOP_BUILTIN'))
+          throw new Error('外部 MCP 服务不存在')
+        const tools = await mcpManager.getServerTools(serverId)
+        json(res, 200, ok(id, { tools })); break
+      }
+      case 'mindpet/mcp-call':
       case 'tools/call': {
-        const toolName = (params as any)?.name as string
+        const external = method === 'mindpet/mcp-call'
+        const serverId = String((params as any)?.serverId || '')
+        const metadata = (params as any)?._meta?.['mindpet/context'] || {}
+        if (external) {
+          const selected = JSON.parse(String(metadata.selectedMcpServerIds || '[]'))
+          if (!Array.isArray(selected) || !selected.includes(serverId)) throw new Error('本次任务未选择该 MCP 服务')
+        }
+        const toolName = external ? McpNameMapper.forServer(serverId, String((params as any)?.name || '')) : (params as any)?.name as string
         const args = ((params as any)?.arguments as Record<string, any>) || {}
 
         if (!toolName) {
@@ -200,7 +223,7 @@ async function handleRequest(
           : toolName
 
         const executor = toolRegistry.getExecutor(realName)
-        if (!executor) {
+        if (!executor && !(external && mcpManager.hasTool(realName))) {
           json(
             res,
             200,
@@ -212,7 +235,6 @@ async function handleRequest(
           return
         }
 
-        const metadata = (params as any)?._meta?.['mindpet/context'] || {}
         const sessionId = typeof metadata.sessionId === 'string' ? metadata.sessionId : undefined
         const messageId = String(metadata.messageId || '')
         const key = taskKey(sessionId || '', messageId)
@@ -228,11 +250,12 @@ async function handleRequest(
         if (Number.isFinite(remaining) && remaining <= 0) controller.abort()
         const timer = remaining > 0 ? setTimeout(() => controller.abort(), Math.min(remaining, 2147483647)) : undefined
         const context: ToolContext = {
-          workspacePath: local?.workspacePath || getSessionFilesDir(sessionId),
+          workspacePath: local?.workspacePath || String(metadata.workspacePath || '') || getSessionFilesDir(sessionId),
           sessionId,
           messageId,
           isFrontend: false,
           sandboxMode: false,
+          selectedMcpServerIds: JSON.parse(String(metadata.selectedMcpServerIds || '[]')),
           abortSignal: controller.signal,
           ...(sender && !sender.isDestroyed() ? { event: { sender } as Electron.IpcMainInvokeEvent } : {})
         }
@@ -264,7 +287,9 @@ async function handleRequest(
           if (Array.isArray(resultState?.sources) && sender && !sender.isDestroyed()) sender.send('api:llm-tool-event', {
             type: 'web_sources', sessionId, messageId, sources: resultState.sources
           })
-          const content: Record<string, unknown>[] = [{ type: 'text', text: result.content }]
+          const blocks = Array.isArray(resultState?.contentBlocks) ? resultState.contentBlocks : []
+          const content: Record<string, unknown>[] = [{ type: 'text', text: result.content }, ...blocks.filter(block => block.type !== 'text')]
+          if (external && resultState) { resultState = { ...resultState }; delete resultState.contentBlocks }
           const imagePaths = [
             ...(Array.isArray(resultState?.imagePaths) ? resultState.imagePaths : []),
             ...(realName === 'screenshot' && resultState?.filePath ? [resultState.filePath] : []),
@@ -291,7 +316,7 @@ async function handleRequest(
             ok(id, {
               content,
               isError: !result.success,
-              structuredContent: { success: result.success, content: result.content, state: resultState },
+              structuredContent: { success: result.success, outcome: result.outcome || 'confirmed', content: result.content, state: resultState },
               ...(result.error && { meta: { error: result.error.message } }),
             })
           )

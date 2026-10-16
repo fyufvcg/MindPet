@@ -1,7 +1,8 @@
+import { registerAgentRuntimeIpc } from './agent/runtime-ipc'
+import { readSkillPackage, skillPackagePath } from './skills/catalog'
 import { app, shell, BrowserWindow, ipcMain, screen, protocol, net, Tray, Menu, dialog, Notification, session, clipboard, nativeImage, desktopCapturer, globalShortcut } from 'electron'
 import { join, basename, dirname, extname, sep, resolve } from 'path'
 // memory APIs now route to Java backend
-const getLastCleanupTime = (): number => 0
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -27,7 +28,7 @@ import { getDefaultDataDir } from './storage-path'
 import { toolRegistry } from './tools/core/tool-registry'
 import { registerBuiltinTools } from './tools/builtin'
 import { mcpManager } from './tools/mcp/mcp-manager'
-import { startMcpServer, MCP_SERVER_ID, MCP_SERVER_PORT } from './tools/mcp/mcp-server'
+import { startMcpServer, MCP_SERVER_ID, MCP_SERVER_PORT, MCP_BRIDGE_TOKEN } from './tools/mcp/mcp-server'
 import { permissionManager } from './tools/security/permission-manager'
 import { clarificationManager } from './tools/interaction/clarification-manager'
 import { credentialManager } from './tools/interaction/credential-manager'
@@ -133,6 +134,8 @@ import {
   saveSecureSystemLlmConfig
 } from './security/secure-llm-config'
 import { DEFAULT_LLM_CONFIG, type RuntimeLlmConfig } from './security/llm-config-store'
+import { sameLlmCredentialScope } from './security/credential-scope'
+import { ModelConfigSync } from './model-config-sync'
 import {
   loadSecureEmbeddingConfig,
   sanitizeEmbeddingConfig,
@@ -172,6 +175,22 @@ function loadSystemLlmConfig() {
     console.error('[Secrets] Failed to load the system LLM configuration', e)
   }
 }
+
+const modelConfigSync = new ModelConfigSync({
+  url: backendUrl,
+  llm: () => systemLlmConfig,
+  embedding: loadSecureEmbeddingConfig,
+  systemPrompt: (config) => {
+    if (typeof config.systemPrompt === 'string' && config.systemPrompt.trim()) return config.systemPrompt
+    try {
+      const avatars = JSON.parse(fs.readFileSync(join(app.getPath('userData'), 'config.json'), 'utf8')).avatarConfigs || {}
+      const list = Object.values(avatars) as any[]
+      const avatar = list.find(item => item.isDefault) || list[0]
+      if (avatar) return `你是${avatar.name || '小晴'}，请使用${avatar.languageStyle === 'cute' ? '可爱、活泼' : '专业、友好、自然'}的语气回复用户。`
+    } catch { /* No avatar customization. */ }
+    return ''
+  }
+})
 
 // 提高 Windows 下透明窗口和 Live2D WebGL 渲染的稳定性，防止 GPU 进程 TDR 崩溃或睡眠后唤醒黑屏
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
@@ -1036,62 +1055,37 @@ app.whenReady().then(async () => {
   startMcpServer()
   const desktopMcpConfig = {
     id: MCP_SERVER_ID,
+    source: 'DESKTOP_BUILTIN',
     name: 'MindPet Desktop 工具',
     url: `http://127.0.0.1:${MCP_SERVER_PORT}`,
-    apiKey: '',
-    hasApiKey: false,
+    apiKey: MCP_BRIDGE_TOKEN,
+    hasApiKey: true,
     type: 'stream' as const,
     enabled: true,
     description: '桌面端本地工具（截图、浏览器控制、文件操作等）',
   }
   const existingServers = mcpManager.systemMcpConfig.servers || []
   const filtered = existingServers.filter((s: any) => s.id !== MCP_SERVER_ID)
+  mcpManager.registerDesktopBridge({ ...desktopMcpConfig, source: 'DESKTOP_BUILTIN' })
   const merged = { servers: [...filtered, desktopMcpConfig] }
   systemMcpConfig = mcpManager.saveSystemMcpConfig(merged)
   // 同步到 Java 后端（后端可能尚未启动，失败时静默忽略；mcp-manager 已保护 desktop-tools 不被覆盖）
   fetch(backendUrl('/api/desktop/mcp-config'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(systemMcpConfig),
+    body: JSON.stringify(mcpManager.getBackendConfig()),
   }).then(() => console.log('[MCP] ✅ Desktop 工具配置已同步到后端'))
     .catch(() => console.warn('[MCP] ⏳ 后端未就绪，前端 MCP 同步时会补推'))
 
-  // ==================== Embedding 配置：启动同步（带重试）====================
-  // Electron 启动的本地后端可能尚未就绪，因此这里做有限重试；
-  // 渲染进程获取状态时也会兜底再同步一次。
-  const syncEmbeddingConfigToBackend = async (): Promise<boolean> => {
-    let cfg
-    try {
-      cfg = loadSecureEmbeddingConfig()
-    } catch (e) {
-      console.warn('[Embedding] 读取本地配置失败:', e)
-      return false
-    }
-    try {
-      const res = await fetch(backendUrl('/api/desktop/embedding-config'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: cfg.mode,
-          apiKey: cfg.apiKey,
-          endpoint: cfg.endpoint,
-          model: cfg.model
-        })
-      })
-      if (!res.ok) return false
-      console.log('[Embedding] ✅ 配置已同步到后端，mode=' + cfg.mode)
-      return true
-    } catch {
-      return false
-    }
-  }
-
+  // Both configurations restore without depending on a renderer window.
   void (async () => {
     for (let attempt = 1; attempt <= 12; attempt++) {
-      if (await syncEmbeddingConfigToBackend()) return
-      if (attempt < 12) await new Promise((r) => setTimeout(r, 5000))
+      await modelConfigSync.retryPending()
+      if (modelConfigSync.state('llm').state === 'applied'
+          && modelConfigSync.state('embedding').state === 'applied') return
+      if (attempt < 12) await new Promise(resolve => setTimeout(resolve, 5000))
     }
-    console.warn('[Embedding] ⏳ 后端长时间未就绪，配置未同步；打开设置页时会重试')
+    console.warn('[Models] 本地配置等待后端同步，可在设置页重试')
   })()
 
   // Set app user model id for windows
@@ -2391,56 +2385,7 @@ app.whenReady().then(async () => {
   })
 
 
-  ipcMain.handle('api:get-cron-tasks', async () => {
-    try {
-      let tasks: any[] = []
-      const cronPath = join(getActiveStorageDir(), 'cron_tasks.json')
-      if (fs.existsSync(cronPath)) {
-        const data = await fs.promises.readFile(cronPath, 'utf-8')
-        tasks = JSON.parse(data)
-      }
-
-      // 混入系统内置只读定时任务
-      const lastCleanup = getLastCleanupTime()
-      const lastTriggeredStr = lastCleanup ? new Date(lastCleanup).toLocaleString('zh-CN', { hour12: false }) : '从未执行'
-      
-      tasks.push({
-        id: 'system:memory-cleanup',
-        name: '记忆定时清理',
-        interval: 15 * 24 * 60 * 60, // 15天以秒为单位
-        isActive: true,
-        isSystem: true, // 只读标识，禁用操作按钮
-        action: '计算所有记忆的实时衰减强度，物理删除 sNow < 0.2 的深度遗忘记忆。',
-        lastTriggered: lastTriggeredStr,
-        triggerCount: lastCleanup ? 1 : 0, // 简单记录执行次数
-        logs: [
-          {
-            id: 'system-log',
-            time: lastTriggeredStr,
-            status: lastCleanup ? 'success' : 'idle',
-            message: lastCleanup ? `记忆清理任务于 ${lastTriggeredStr} 成功执行。` : '等待首次运行触发。'
-          }
-        ]
-      })
-
-      return tasks
-    } catch (e) {
-      console.error('读取 cron_tasks.json 失败', e)
-    }
-    return null
-  })
-
-  ipcMain.handle('api:save-cron-tasks', async (_, tasks: any[]) => {
-    try {
-      const cronPath = join(getActiveStorageDir(), 'cron_tasks.json')
-      await fs.promises.writeFile(cronPath, JSON.stringify(tasks, null, 2), 'utf-8')
-      return true
-    } catch (e) {
-      console.error('保存 cron_tasks.json 失败', e)
-      return false
-    }
-  })
-
+  registerAgentRuntimeIpc({ storageDir: getActiveStorageDir })
 
   // 通用选择文件夹
   ipcMain.handle('api:select-directory', async (event, options?: { title?: string }) => {
@@ -2686,9 +2631,10 @@ app.whenReady().then(async () => {
   // 动态获取大模型服务商的模型列表
   ipcMain.handle('api:get-models', async (_, config: { provider: string; apiKey?: string; baseUrl: string; credentialScope?: 'system' | 'wechat' }) => {
     const { provider, baseUrl } = config
-    const scopedApiKey = config.credentialScope === 'wechat'
-      ? wechatBotManager?.getRuntimeLlmConfig().apiKey
-      : systemLlmConfig.apiKey
+    const savedConfig = config.credentialScope === 'wechat'
+      ? wechatBotManager?.getRuntimeLlmConfig()
+      : systemLlmConfig
+    const scopedApiKey = savedConfig && sameLlmCredentialScope(config, savedConfig) ? savedConfig.apiKey : ''
     const apiKey = config.apiKey || scopedApiKey || ''
 
     // 如果是 ollama，优先用原有的 api/tags 获取方式
@@ -2945,8 +2891,8 @@ app.whenReady().then(async () => {
 
   const loadSessionsFromBackend = async (): Promise<any[]> => {
     try {
-      const res = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user')
-      if (!res.ok) return []
+      const res = await fetch(backendUrl('/api/desktop/sessions') + '?userId=desktop-user&includeMessages=true', { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) throw new Error(`会话列表读取失败 (${res.status})`)
       const data = await res.json() as any
       const sessions = (data.sessions || []) as any[]
       const result: any[] = []
@@ -2955,19 +2901,21 @@ app.whenReady().then(async () => {
         if (sessionId === 'memory-portrait' || sessionId === 'memory-gallery' || sessionId.startsWith('memory-gallery:')) {
           continue
         }
-        const msgsRes = await fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(s.id)}/messages?userId=desktop-user&limit=50`)
-        const msgsData = msgsRes.ok ? await msgsRes.json() as any : { messages: [] }
+        const msgsData = { messages: s.messages, contextUsage: s.contextUsage }
+        const normalizedMessages = normalizeSessionMessages(String(s.id), msgsData.messages || [])
+        const lastAgent = normalizedMessages.findLast((message: any) => message.sender === 'agent')
+        if (lastAgent && msgsData.contextUsage?.contextTokens != null) lastAgent.contextUsage = msgsData.contextUsage
         result.push({
           id: s.id, name: s.name || '(未命名)',
           time: s.updated_at || s.created_at || '',
           createdAt: s.created_at || s.updated_at || '',
           pinned: isRemoteSessionId(s.id || '') || s.pinned === true || s.pinned === 1 || s.pinned === '1' || s.pinned === 'true',
           userId: 'desktop-user', contextSummary: s.context_summary || s.contextSummary || '',
-          messages: normalizeSessionMessages(String(s.id), msgsData.messages || [])
+          messages: normalizedMessages
         })
       }
       return result
-    } catch (_) { return [] }
+    } catch (error) { throw error }
   }
 
   ipcMain.handle('api:get-local-sessions', async () => {
@@ -2975,7 +2923,7 @@ app.whenReady().then(async () => {
       return await loadSessionsFromBackend()
     } catch (e) {
       console.error('Failed to load chat sessions from the local backend', e)
-      return null
+      throw e
     }
   })
   type SessionMutation =
@@ -3124,13 +3072,40 @@ app.whenReady().then(async () => {
     }
   })
 
+  ipcMain.handle('api:clear-chat-history', async (event, sessionId?: string) => {
+    const path = sessionId ? `/${encodeURIComponent(sessionId)}/messages` : '/messages'
+    const response = await fetch(`${backendUrl('/api/desktop/sessions')}${path}?userId=desktop-user`, {
+      method: 'DELETE', signal: AbortSignal.timeout(15000)
+    })
+    if (!response.ok) throw new Error(response.status === 409
+      ? '请先停止正在执行的任务，待任务退出后再清空。'
+      : `清空后端会话失败 (${response.status})，请重试。`)
+    const database = await getDB()
+    if (database) {
+      if (sessionId) {
+        await database.run('DELETE FROM messages WHERE session_id = ?', sessionId)
+        await database.run("UPDATE sessions SET context_summary = '' WHERE id = ?", sessionId)
+      } else {
+        await database.run('DELETE FROM messages')
+        await database.run("UPDATE sessions SET context_summary = ''")
+      }
+    }
+    if (sessionId) broadcastSessionMutation(event.sender.id, { type: 'session-update', sessionId, updates: { messages: [], contextSummary: '' } })
+    else {
+      const sessions = database ? await database.all('SELECT id FROM sessions') : []
+      for (const session of sessions) broadcastSessionMutation(event.sender.id, { type: 'session-update', sessionId: session.id, updates: { messages: [], contextSummary: '' } })
+      broadcastSessionMutation(event.sender.id, { type: 'refresh' })
+    }
+    return true
+  })
+
   // 删除会话
   ipcMain.handle('api:delete-session', async (event, sessionId: string) => {
     try {
       const database = await getDB()
-      await database.run('DELETE FROM sessions WHERE id = ?', sessionId)
-      // 同步删除本地后端中的会话
-      fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(sessionId)}?userId=desktop-user`, { method: 'DELETE' }).catch(() => {})
+      const response = await fetch(`${backendUrl('/api/desktop/sessions')}/${encodeURIComponent(sessionId)}?userId=desktop-user`, { method: 'DELETE', signal: AbortSignal.timeout(15000) })
+      if (!response.ok) throw new Error(`删除后端会话失败 (${response.status})；请先停止任务后重试。`)
+      if (database) await database.run('DELETE FROM sessions WHERE id = ?', sessionId)
 
       // 如果删除的是微信会话，同步从微信活跃好友列表中清除该记录
       if (sessionId.startsWith('wechat:') && wechatBotManager) {
@@ -3420,7 +3395,6 @@ app.whenReady().then(async () => {
         sessionId,
         messageId,
         mode: 'chat',
-        contextRounds: 20,
         isBackground: true
       }, [{
         role: 'user',
@@ -3708,11 +3682,13 @@ app.whenReady().then(async () => {
         await fs.promises.mkdir(destDir, { recursive: true })
       }
       for (const [filename, file] of Object.entries(zip.files)) {
+        const destination = resolve(destDir, filename)
+        if (!destination.startsWith(resolve(destDir) + sep)) throw new Error('技能包包含超出目录的路径')
         if (file.dir) {
-          await fs.promises.mkdir(join(destDir, filename), { recursive: true })
+          await fs.promises.mkdir(destination, { recursive: true })
         } else {
           const fileData = await file.async('nodebuffer')
-          const filePath = join(destDir, filename)
+          const filePath = destination
           await fs.promises.mkdir(dirname(filePath), { recursive: true })
           await fs.promises.writeFile(filePath, fileData)
         }
@@ -3720,16 +3696,19 @@ app.whenReady().then(async () => {
       console.log(`[Skills] 成功解压技能包: ${basename(zipPath)} 到 ${destDir}`)
     } catch (e) {
       console.error(`[Skills] 解压技能包失败: ${zipPath}`, e)
+      throw e
     }
   }
 
-  const readSkillsFolder = async (): Promise<any[]> => {
+  const scanSkillsFolder = async (): Promise<any[]> => {
     try {
       const skillsPath = getActiveSkillsDir()
       const files = await fs.promises.readdir(skillsPath)
       const list: any[] = []
+      const definitions: Record<string, any> = {}
       for (const file of files) {
         if (file.toLowerCase().endsWith('.zip')) {
+          try {
           const filePath = join(skillsPath, file)
           const stat = await fs.promises.stat(filePath)
           
@@ -3752,18 +3731,48 @@ app.whenReady().then(async () => {
             await unzipSkillPack(filePath, folderPath)
           }
 
+          const entries = await readSkillPackage(folderPath, folderName)
+          Object.assign(definitions, entries)
           list.push({
-            name: file,
-            size: stat.size,
-            mtime: stat.mtime.toISOString()
+            name: file, size: stat.size, mtime: stat.mtime.toISOString(), source: 'user',
+            description: Object.values(entries).map(skill => skill.description).join('；') || '未找到可用的 SKILL.md，请检查技能包内容。',
+            skillIds: Object.keys(entries), available: Object.keys(entries).length > 0
           })
+          } catch (error) {
+            list.push({ name: file, source: 'user', size: 0, mtime: '', available: false,
+              description: `技能包读取失败：${error instanceof Error ? error.message : String(error)}` })
+          }
         }
+      }
+      for (const file of files) {
+        if (!fs.statSync(join(skillsPath, file)).isDirectory() || files.includes(file + '.zip')) continue
+        const entries = await readSkillPackage(join(skillsPath, file), file)
+        Object.assign(definitions, entries)
+        if (Object.keys(entries).length) list.push({ name: file, size: 0, mtime: fs.statSync(join(skillsPath, file)).mtime.toISOString(),
+          source: 'user', description: Object.values(entries).map(skill => skill.description).join('；'), skillIds: Object.keys(entries), available: true })
+      }
+      const response = await fetch(backendUrl('/api/desktop/skills'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(definitions), signal: AbortSignal.timeout(15000)
+      })
+      if (!response.ok || (await response.json()).status !== 'ok') throw new Error('Skill 目录同步失败')
+      const catalogResponse = await fetch(backendUrl('/api/desktop/skills/catalog'), { signal: AbortSignal.timeout(5000) })
+      if (catalogResponse.ok) {
+        const catalog = await catalogResponse.json()
+        for (const skill of catalog.skills || []) if (skill.source === 'builtin')
+          list.unshift({ name: skill.id, displayName: String(skill.description).split('：')[0], description: skill.description, source: 'builtin', size: 0, mtime: '', skillIds: [skill.id], available: true })
       }
       return list
     } catch (e) {
       console.error(e)
-      return []
+      throw e
     }
+  }
+
+  let skillsScanQueue: Promise<unknown> = Promise.resolve()
+  const readSkillsFolder = (): Promise<any[]> => {
+    const pending = skillsScanQueue.then(scanSkillsFolder)
+    skillsScanQueue = pending.then(() => undefined, () => undefined)
+    return pending
   }
 
   ipcMain.handle('api:get-skills-list', async () => {
@@ -3796,7 +3805,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('api:delete-skill', async (_, name: string) => {
     try {
       const skillsPath = getActiveSkillsDir()
-      const filePath = join(skillsPath, name)
+      const folder = skillPackagePath(skillsPath, name)
+      const filePath = name.toLowerCase().endsWith('.zip') ? folder + '.zip' : folder
       if (fs.existsSync(filePath)) {
         await shell.trashItem(filePath)
       }
@@ -3814,69 +3824,15 @@ app.whenReady().then(async () => {
     return await readSkillsFolder()
   })
 
-  // 辅助递归寻找 skill.md (限制深度，防止超大目录卡死)
-  async function findSkillMds(dirPath: string, maxDepth = 4, currentDepth = 0): Promise<string[]> {
-    if (currentDepth > maxDepth) return []
-    let results: string[] = []
-    try {
-      const items = await fs.promises.readdir(dirPath, { withFileTypes: true })
-      for (const item of items) {
-        if (item.isDirectory()) {
-          const subResults = await findSkillMds(join(dirPath, item.name), maxDepth, currentDepth + 1)
-          results = results.concat(subResults)
-        } else if (item.isFile() && item.name.toLowerCase() === 'skill.md') {
-          results.push(join(dirPath, item.name))
-        }
-      }
-    } catch (e) {
-      // 忽略无法读取的目录
-    }
-    return results
-  }
-
-  // 获取已启用的技能 SKILL.md 内容，同时自动同步到后端
-  ipcMain.handle('api:get-active-skills-prompt', async (_, enabledSkillNames: string[]) => {
-    try {
-      const skillsPath = getActiveSkillsDir()
-      const prompts: string[] = []
-      const skillMap: Record<string, string> = {}
-
-      if (enabledSkillNames && enabledSkillNames.length > 0) {
-        for (const zipName of enabledSkillNames) {
-          const folderName = zipName.toLowerCase().endsWith('.zip')
-            ? zipName.substring(0, zipName.length - 4)
-            : zipName
-          const folderPath = join(skillsPath, folderName)
-
-          if (fs.existsSync(folderPath)) {
-            const mdPaths = await findSkillMds(folderPath)
-            for (const mdPath of mdPaths) {
-              const content = await fs.promises.readFile(mdPath, 'utf-8')
-              if (content.trim()) {
-                let relativeName = mdPath.replace(folderPath, '').replace(/^[\\/]/, '')
-                const key = folderName + (relativeName !== 'SKILL.md' ? ' ' + relativeName : '')
-                skillMap[key] = content.trim()
-                prompts.push(`### 技能规约: ${key}\n${content.trim()}`)
-              }
-            }
-          }
-        }
-      }
-
-      // 自动同步到后端
-      if (Object.keys(skillMap).length > 0) {
-        fetch(backendUrl('/api/desktop/skills'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(skillMap)
-        }).catch(() => {})
-      }
-
-      return prompts.join('\n\n---\n\n')
-    } catch (e) {
-      console.error('[Skills] 获取已启用技能提示词失败:', e)
-      return ''
-    }
+  // Compatibility endpoint: synchronize all installed skills, never return bodies for prompt injection.
+  ipcMain.handle('api:get-active-skills-prompt', async () => {
+    await readSkillsFolder()
+    return ''
+  })
+  ipcMain.handle('api:update-skill-description', async (_, name: string, description: string) => {
+    const folder = skillPackagePath(getActiveSkillsDir(), name)
+    await fs.promises.writeFile(join(folder, '.mindpet-skill.json'), JSON.stringify({ description: description.trim().slice(0, 320) }), 'utf8')
+    return await readSkillsFolder()
   })
 
   // 获取工具目录（从后端拉取，含 Java + MCP 工具）
@@ -3912,8 +3868,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('api:save-generated-skill', async (_, name: string, content: string) => {
     try {
       const skillsPath = getActiveSkillsDir()
-      const folderName = name.replace(/\.zip$/i, '')
-      const folderPath = join(skillsPath, folderName)
+      const folderPath = skillPackagePath(skillsPath, name)
+      const folderName = basename(folderPath)
       const zipPath = join(skillsPath, folderName + '.zip')
 
       // 创建文件夹并写入 SKILL.md
@@ -4376,6 +4332,8 @@ app.whenReady().then(async () => {
       }
 
       try {
+        // Refresh the unified installed-skill catalog before the model starts; no skill body in chat prompts.
+        if (!config.isBackground && config.mode !== 'summary') await readSkillsFolder()
         // ===== 转发到 Java 后端（小晴）= =====
         const stepStream = callJavaBackend({ ...config, workspacePath: _workspacePath || config.workspacePath, senderId: event?.sender.id }, messages, thisController.signal)
 
@@ -4414,10 +4372,11 @@ app.whenReady().then(async () => {
             const src = remoteChannelForSessionId(config.sessionId || '')
             const tokenData = {
               model: step.model || 'unknown',
-              provider: step.provider || 'doubao',
+              provider: step.provider || config.provider || 'unknown',
               promptTokens: step.promptTokens || 0,
               completionTokens: step.completionTokens || 0,
               totalTokens: step.totalTokens || 0,
+              estimated: Boolean(step.estimated),
               timestamp: Date.now(),
               sessionId: config.sessionId,
               messageId: config.messageId,
@@ -4439,12 +4398,13 @@ app.whenReady().then(async () => {
             }
             _onToolEvent?.(generatedEvent)
             if (event) event.sender.send('api:llm-tool-event', generatedEvent)
-          } else if (step.type === 'tool_started' || step.type === 'tool_finished' || step.type.startsWith('task_')) {
+          } else if (step.type === 'tool_started' || step.type === 'tool_finished' || step.type === 'context_usage' || step.type.startsWith('task_')) {
             const toolEvent = {
               type: step.type,
               name: step.name || 'unknown_tool',
               callId: step.callId,
               taskId: step.taskId,
+              contextUsage: step.contextUsage,
               detail: step.detail || '',
               status: step.status,
               durationMs: step.durationMs,
@@ -4477,6 +4437,7 @@ app.whenReady().then(async () => {
             promptTokens: estPrompt,
             completionTokens: estCompletion,
             totalTokens: estPrompt + estCompletion,
+            estimated: true,
             timestamp: Date.now(),
             sessionId: config.sessionId,
             messageId: config.messageId,
@@ -4552,11 +4513,11 @@ app.whenReady().then(async () => {
     try {
       // Renderer 只持有 hasApiKey，不持有密钥明文；测试时在主进程复用已保存的密钥。
       // 仅当服务商一致时回退，避免把前一个服务商的 Key 用到刚切换的新服务商上。
-      const providerMatchesSaved = config?.provider === systemLlmConfig.provider
+      const providerMatchesSaved = sameLlmCredentialScope(config || {}, systemLlmConfig)
       const savedApiKey = config?.hasApiKey && providerMatchesSaved ? systemLlmConfig.apiKey : ''
       const apiKey = typeof config?.apiKey === 'string' && config.apiKey.trim()
         ? config.apiKey.trim()
-        : savedApiKey
+        : savedApiKey || (config?.provider === 'ollama' ? 'ollama' : '')
       const res = await fetch(backendUrl('/api/desktop/llm-test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4564,7 +4525,8 @@ app.whenReady().then(async () => {
           apiKey,
           baseUrl: config?.baseUrl || '',
           model: config?.model || ''
-        })
+        }),
+        signal: AbortSignal.timeout(35_000)
       })
       const data = await res.json()
       return { ...data, backendStatus: res.status }
@@ -4628,102 +4590,29 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('api:sync-embedding-config', async (_, input) => {
-    const saved = saveSecureEmbeddingConfig(input || {})
-    // 后端未启动时静默忽略，与 MCP / Skills 同步保持一致的行为
-    let backendResult: any = null
-    try {
-      const res = await fetch(backendUrl('/api/desktop/embedding-config'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: saved.mode,
-          apiKey: saved.apiKey, // 仅主进程→后端，绝不进渲染进程
-          endpoint: saved.endpoint,
-          model: saved.model,
-          clearApiKey: (input as any)?.clearApiKey === true
-        })
-      })
-      backendResult = await res.json()
-    } catch {
-      backendResult = { status: 'error', message: '后端未启动，配置已保存，将在下次同步时生效' }
-    }
-    return { config: sanitizeEmbeddingConfig(saved), backend: backendResult }
+    saveSecureEmbeddingConfig(input || {})
+    const backend = await modelConfigSync.apply('embedding', true)
+    return { config: sanitizeEmbeddingConfig(loadSecureEmbeddingConfig()), backend }
   })
 
-  // 后端 embedding 运行时状态（当前 provider / 降级原因 / 修复提示）
   ipcMain.handle('api:get-embedding-status', async () => {
-    try {
-      const res = await fetch(backendUrl('/api/desktop/embedding-status'))
-      return await res.json()
-    } catch (e: any) {
-      return {
-        status: 'error',
-        unreachable: true,
-        message: `无法连接后端服务 (${backendBaseUrl()}): ${e?.message || e}`
-      }
-    }
+    // Reapply saved credentials before reading status, including after a backend restart.
+    return modelConfigSync.apply('embedding')
   })
 
-  // 重新探测 Ollama 并决策 provider
   ipcMain.handle('api:refresh-embedding', async () => {
-    try {
-      const res = await fetch(backendUrl('/api/desktop/embedding-refresh'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}'
-      })
-      return await res.json()
-    } catch (e: any) {
-      return {
-        status: 'error',
-        unreachable: true,
-        message: `无法连接后端服务 (${backendBaseUrl()}): ${e?.message || e}`
-      }
-    }
+    return modelConfigSync.apply('embedding', true)
   })
 
-  ipcMain.handle('api:get-system-llm-config', () => {
-    return sanitizeSystemLlmConfig(systemLlmConfig)
+  ipcMain.handle('api:get-system-llm-config', async () => {
+    await modelConfigSync.apply('llm')
+    return { ...sanitizeSystemLlmConfig(systemLlmConfig), backendSync: modelConfigSync.state('llm') }
   })
 
   ipcMain.handle('api:sync-llm-config', async (_, config) => {
     systemLlmConfig = saveSecureSystemLlmConfig(config)
-
-    // system prompt：优先用用户自定义，否则从 avatar 配置自动生成
-    let systemPrompt = (config as any).systemPrompt || ''
-    if (!systemPrompt.trim()) {
-      try {
-        const avatarConfigs = JSON.parse(fs.readFileSync(join(app.getPath('userData'), 'config.json'), 'utf-8')).avatarConfigs || {}
-        const avatarList = Object.values(avatarConfigs) as any[]
-        const defaultAvatar = avatarList.find((a: any) => a.isDefault) || avatarList[0]
-        if (defaultAvatar) {
-          const name = defaultAvatar.name || '小晴'
-          const style = defaultAvatar.languageStyle || 'normal'
-          const styleText = style === 'cute'
-            ? '你需要使用可爱、萌系、活泼的语气与用户对话。'
-            : '你需要使用专业、友好、自然的语气与用户对话。'
-          systemPrompt = `你是${name}，${styleText}\n请根据用户的需求自然地回复，保持人设一致。`
-        }
-      } catch (_) { /* ignore */ }
-    }
-
-    // 同步到 Java 后端
-    try {
-      await fetch(backendUrl('/api/desktop/llm-config'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: config.apiKey || systemLlmConfig.apiKey || '',
-          baseUrl: config.baseUrl || systemLlmConfig.baseUrl || '',
-          model: config.model || systemLlmConfig.model || '',
-          systemPrompt
-        })
-      })
-    } catch (_) {
-      // Java 后端未启动时静默忽略
-    }
-
-    return sanitizeSystemLlmConfig(systemLlmConfig)
+    await modelConfigSync.apply('llm')
+    return { ...sanitizeSystemLlmConfig(systemLlmConfig), backendSync: modelConfigSync.state('llm') }
   })
 
   // 技能同步到后端
@@ -4742,11 +4631,11 @@ app.whenReady().then(async () => {
     systemMcpConfig = mcpManager.saveSystemMcpConfig(config)
     const sanitized = mcpManager.getSanitizedSystemMcpConfig()
 
-    // 同步到 Java 后端（发原始配置，含 apiKey）
+    // Java only needs service identities and the internal bridge capability.
     fetch(backendUrl('/api/desktop/mcp-config'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(systemMcpConfig)
+      body: JSON.stringify(mcpManager.getBackendConfig())
     }).catch(() => { /* 后端未启动时静默忽略 */ })
 
     return sanitized

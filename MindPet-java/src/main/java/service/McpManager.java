@@ -8,6 +8,7 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.stereotype.Service;
 import util.Logger;
+import service.agent.ToolExposurePolicy;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -25,6 +26,7 @@ public class McpManager implements ToolCallbackProvider {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Logger logger;
     private final Map<String, McpConnection> connections = new ConcurrentHashMap<>();
+    private final Map<String, String> configuredNames = new ConcurrentHashMap<>();
 
     public McpManager(Logger logger) {
         this.logger = logger;
@@ -32,9 +34,11 @@ public class McpManager implements ToolCallbackProvider {
 
     /** 前端同步 MCP 配置 */
     public synchronized void syncServers(List<McpServerConfig> configs) {
+        configuredNames.clear();
         Set<String> newIds = new HashSet<>();
-        for (McpServerConfig cfg : configs) {
+        for (McpServerConfig cfg : configs.stream().sorted(Comparator.comparing(c -> !"DESKTOP_BUILTIN".equals(c.source))).toList()) {
             if (!cfg.enabled || cfg.url == null || cfg.url.isBlank()) continue;
+            configuredNames.put(cfg.id, Objects.toString(cfg.name, cfg.id));
             newIds.add(cfg.id);
             McpConnection existing = connections.get(cfg.id);
             if (existing != null && existing.sameConfig(cfg)) continue;
@@ -46,6 +50,27 @@ public class McpManager implements ToolCallbackProvider {
         }
     }
 
+    /** Refresh live tool schemas instead of returning the connection-time snapshot. */
+    public synchronized void refreshToolCatalog() {
+        List<String> failures = new ArrayList<>();
+        for (McpConnection connection : new ArrayList<>(connections.values())) {
+            McpServerConfig cfg = connection.config;
+            try {
+                List<ToolCallback> callbacks = new ArrayList<>();
+                for (ToolDef tool : listTools(cfg)) {
+                    String name = sanitizeName(cfg, tool.name);
+                    if (!"USER_MCP".equals(cfg.source) && !ToolExposurePolicy.allows(name)) continue;
+                    String schema = tool.inputSchema != null ? mapper.writeValueAsString(tool.inputSchema) : "{}";
+                    callbacks.add(new McpToolCallback(name, tool.description, schema, tool.name, cfg));
+                }
+                connections.put(cfg.id, new McpConnection(cfg, callbacks));
+            } catch (Exception e) {
+                failures.add(Objects.toString(cfg.name, cfg.id));
+            }
+        }
+        if (!failures.isEmpty()) throw new IllegalStateException("部分服务目录同步失败：" + String.join("、", failures));
+    }
+
     @Override
     public ToolCallback[] getToolCallbacks() {
         List<ToolCallback> list = new ArrayList<>();
@@ -53,28 +78,69 @@ public class McpManager implements ToolCallbackProvider {
         return list.toArray(new ToolCallback[0]);
     }
 
+    public ToolCallback[] callbacksFor(Set<String> selectedServers) {
+        return connections.values().stream()
+            .filter(conn -> "DESKTOP_BUILTIN".equals(conn.config.source) || selectedServers.contains(conn.config.id))
+            .flatMap(conn -> conn.toolCallbacks.stream()).toArray(ToolCallback[]::new);
+    }
+
+    public boolean isManaged(ToolCallback callback) { return callback instanceof McpToolCallback; }
+    public boolean isBuiltin(ToolCallback callback) {
+        return callback instanceof McpToolCallback tool && "DESKTOP_BUILTIN".equals(tool.config.source);
+    }
+    public int serverToolCount(ToolCallback callback) {
+        if (!(callback instanceof McpToolCallback tool)) return 0;
+        McpConnection conn = connections.get(tool.config.id);
+        return conn == null ? 0 : conn.toolCallbacks.size();
+    }
+    public String sourceOf(ToolCallback callback) {
+        return isBuiltin(callback) ? "desktop" : isManaged(callback) ? "mcp" : "java";
+    }
+    public String serverIdOf(ToolCallback callback) {
+        return callback instanceof McpToolCallback tool ? tool.config.id : "";
+    }
+    public String scopeSummary(Set<String> selected) {
+        if (selected.isEmpty()) return "本次任务未选择外部 MCP 服务。";
+        StringBuilder summary = new StringBuilder("本次任务已选择的外部 MCP（大型服务可用 agent_discover_tools 按服务 id 查找工具）：\n");
+        for (String id : selected) {
+            McpConnection connection = connections.get(id);
+            summary.append("- ").append(id).append(" ").append(configuredNames.getOrDefault(id, "未配置的服务"))
+                .append(connection == null ? "：未连接或连接失败，请说明具体限制。" : "：可用工具 " + connection.toolCallbacks.size()).append("\n");
+        }
+        return summary.toString();
+    }
+
     // ==================== 连接 & 工具发现 ====================
 
     private void connectAndRegister(McpServerConfig cfg) {
         try {
             logger.log("INFO", "[MCP] 正在连接 " + cfg.name + " (" + cfg.url + ")");
-            if (!initAndCheck(cfg)) {
+            if ("DESKTOP_BUILTIN".equals(cfg.source) && !initAndCheck(cfg)) {
                 logger.log("WARN", "[MCP] " + cfg.name + " 初始化失败");
                 return;
             }
             List<ToolDef> tools = listTools(cfg);
+            // A legacy Mi Home server may have an opaque id/name. Its device schema identifies
+            // the whole vertical service, so login/get_statistics cannot leak through discovery.
+            Set<String> rawNames = new HashSet<>();
+            for (ToolDef tool : tools) rawNames.add(tool.name);
+            if (!"USER_MCP".equals(cfg.source) && rawNames.contains("get_device_spec") && rawNames.contains("list_devices")) {
+                logger.log("INFO", "[MCP] 跳过已移除的米家专用工具服务");
+                return;
+            }
             if (tools.isEmpty()) {
                 logger.log("WARN", "[MCP] " + cfg.name + " 没有工具");
                 return;
             }
             List<ToolCallback> cbs = new ArrayList<>();
             for (ToolDef tool : tools) {
-                String name = sanitizeName(cfg.id, tool.name);
+                String name = sanitizeName(cfg, tool.name);
+                if (!"USER_MCP".equals(cfg.source) && !ToolExposurePolicy.allows(name)) continue;
                 String schema = tool.inputSchema != null ? mapper.writeValueAsString(tool.inputSchema) : "{}";
                 cbs.add(new McpToolCallback(name, tool.description, schema, tool.name, cfg));
             }
             connections.put(cfg.id, new McpConnection(cfg, cbs));
-            logger.log("INFO", "[MCP] " + cfg.name + " 已连接，" + tools.size() + " 个工具");
+            logger.log("INFO", "[MCP] " + cfg.name + " 已连接，" + cbs.size() + " 个通用工具");
         } catch (Exception e) {
             logger.log("ERROR", "[MCP] " + cfg.name + " 异常: " + e.getMessage());
         }
@@ -121,10 +187,16 @@ public class McpManager implements ToolCallbackProvider {
             ObjectNode req = mapper.createObjectNode();
             req.put("jsonrpc", "2.0"); req.put("method", "tools/list"); req.put("id", 2);
 
-            JsonNode resp = sendJsonRpc(cfg, req);
-            if (resp == null || !resp.has("result")) return List.of();
+            McpServerConfig transport = cfg;
+            if (!"DESKTOP_BUILTIN".equals(cfg.source)) {
+                transport = desktopBridge();
+                req.put("method", "mindpet/mcp-list");
+                req.set("params", mapper.valueToTree(Map.of("serverId", cfg.id)));
+            }
+            JsonNode resp = sendJsonRpc(transport, req);
+            if (resp == null || !resp.has("result")) throw new IllegalStateException("tools/list 请求失败");
             JsonNode arr = resp.get("result").get("tools");
-            if (arr == null || !arr.isArray()) return List.of();
+            if (arr == null || !arr.isArray()) throw new IllegalStateException("tools/list 响应无效");
 
             List<ToolDef> list = new ArrayList<>();
             for (JsonNode t : arr) {
@@ -136,7 +208,7 @@ public class McpManager implements ToolCallbackProvider {
             return list;
         } catch (Exception e) {
             logger.log("ERROR", "[MCP] listTools " + cfg.name + ": " + e.getMessage());
-            return List.of();
+            throw new IllegalStateException("无法读取服务工具目录", e);
         }
     }
 
@@ -145,7 +217,7 @@ public class McpManager implements ToolCallbackProvider {
             ObjectNode params = mapper.createObjectNode();
             params.put("name", toolName);
             params.set("arguments", mapper.valueToTree(arguments != null ? arguments : Map.of()));
-            if (toolName.startsWith("desktop__")) {
+            {
                 Map<String, String> execution = tool.ToolUserContext.getExecution();
                 Map<String, String> context = new LinkedHashMap<>(execution);
                 context.put("sessionId", tool.ToolUserContext.getSessionId());
@@ -157,36 +229,30 @@ public class McpManager implements ToolCallbackProvider {
             req.put("jsonrpc", "2.0"); req.put("method", "tools/call"); req.put("id", 3);
             req.set("params", params);
 
-            JsonNode resp = sendJsonRpc(cfg, req);
+            McpServerConfig transport = cfg;
+            if (!"DESKTOP_BUILTIN".equals(cfg.source)) {
+                transport = desktopBridge(); req.put("method", "mindpet/mcp-call"); params.put("serverId", cfg.id);
+            }
+            JsonNode resp = sendJsonRpc(transport, req);
             if (resp == null) return toolError("MCP_TRANSPORT_ERROR", "MCP 请求失败或超时，操作结果可能未知。写操作请先检查实际状态，不要直接重试。");
             if (resp.has("error")) return toolError("MCP_PROTOCOL_ERROR", resp.get("error").toString());
 
             JsonNode result = resp.path("result");
-            if (toolName.startsWith("desktop__")) {
-                ObjectNode envelope = mapper.createObjectNode();
-                envelope.put("mindpetToolResult", true);
-                envelope.put("success", !result.path("isError").asBoolean(false));
-                envelope.put("content", result.path("content").findValuesAsText("text").stream().collect(java.util.stream.Collectors.joining("\n")));
-                if (result.has("structuredContent")) envelope.set("state", result.path("structuredContent").path("state"));
-                var images = envelope.putArray("images");
-                for (JsonNode item : result.path("content")) if ("image".equals(item.path("type").asText())) images.add(item);
-                return envelope.toString();
+            ObjectNode envelope = mapper.createObjectNode();
+            envelope.put("mindpetToolResult", true);
+            envelope.put("success", !result.path("isError").asBoolean(false));
+            envelope.put("outcome", result.path("structuredContent").path("outcome").asText("confirmed"));
+            envelope.put("content", result.path("content").findValuesAsText("text").stream().collect(java.util.stream.Collectors.joining("\n")));
+            if (result.has("structuredContent")) envelope.set("state", result.path("structuredContent").path("state"));
+            var images = envelope.putArray("images");
+            var resources = envelope.putArray("resources");
+            for (JsonNode item : result.path("content")) {
+                if ("image".equals(item.path("type").asText())) images.add(item);
+                else if (!"text".equals(item.path("type").asText())) resources.add(item);
             }
-            if (result.path("isError").asBoolean(false)) return toolError("MCP_TOOL_ERROR", result.path("content").toString());
-
-            JsonNode content = resp.path("result").path("content");
-            if (content.isArray()) {
-                StringBuilder sb = new StringBuilder();
-                for (JsonNode c : content) {
-                    String t = c.path("text").asText("");
-                    if (!t.isBlank()) sb.append(t).append("\n");
-                }
-                String r = sb.toString().trim();
-                if (!r.isEmpty()) return r;
-            }
-            return resp.path("result").toString();
+            return envelope.toString();
         } catch (Exception e) {
-            return toolError("MCP_TOOL_ERROR", e.getMessage());
+            return toolError("MCP_TRANSPORT_ERROR", "响应无法确认；请核实实际结果，勿直接重试。");
         }
     }
 
@@ -200,12 +266,12 @@ public class McpManager implements ToolCallbackProvider {
 
             conn = (HttpURLConnection) URI.create(cfg.url).toURL().openConnection();
             HttpURLConnection cancellableConnection = conn;
-            if ("tools/call".equals(method)) tool.ToolUserContext.registerCancellation(cancellableConnection::disconnect);
+            if ("tools/call".equals(method) || "mindpet/mcp-call".equals(method)) tool.ToolUserContext.registerCancellation(cancellableConnection::disconnect);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(cfg.timeout > 0 ? cfg.timeout * 1000 : 30000);
-            if (request.path("params").path("name").asText().startsWith("desktop__")) {
+            if ("DESKTOP_BUILTIN".equals(cfg.source) && ("tools/call".equals(method) || "mindpet/mcp-call".equals(method))) {
                 long deadline = Long.parseLong(tool.ToolUserContext.getExecution().getOrDefault("deadline", Long.toString(System.currentTimeMillis() + 600_000)));
                 conn.setReadTimeout((int)Math.max(1, Math.min(Integer.MAX_VALUE, deadline - System.currentTimeMillis())));
             }
@@ -258,13 +324,18 @@ public class McpManager implements ToolCallbackProvider {
     }
 
     private String toolError(String code, String message) {
-        try { return mapper.writeValueAsString(Map.of("success", false, "code", code, "message", Objects.toString(message, ""))); }
+        try { return mapper.writeValueAsString(Map.of("success", false, "code", code, "outcome", code.equals("MCP_TRANSPORT_ERROR") ? "unknown" : "not_executed", "message", Objects.toString(message, ""))); }
         catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    private McpServerConfig desktopBridge() {
+        return connections.values().stream().filter(c -> "DESKTOP_BUILTIN".equals(c.config.source))
+            .map(c -> c.config).findFirst().orElseThrow(() -> new IllegalStateException("Desktop 工具桥尚未连接"));
     }
 
     public void finishDesktopTask(String sessionId, String messageId) {
         for (McpConnection connection : connections.values()) {
-            if (connection.toolCallbacks.stream().noneMatch(callback -> callback instanceof McpToolCallback m && m.mcpName.startsWith("desktop__"))) continue;
+            if (!"DESKTOP_BUILTIN".equals(connection.config.source)) continue;
             ObjectNode request = mapper.createObjectNode();
             request.put("jsonrpc", "2.0"); request.put("method", "mindpet/task-finished"); request.put("id", UUID.randomUUID().toString());
             request.set("params", mapper.valueToTree(Map.of("sessionId", sessionId, "messageId", messageId)));
@@ -274,16 +345,22 @@ public class McpManager implements ToolCallbackProvider {
 
     // ==================== helper ====================
 
-    private String sanitizeName(String serverId, String toolName) {
-        String p = serverId.replaceAll("[^a-zA-Z0-9_]", "_");
-        if (p.length() > 20) p = p.substring(0, 20);
-        return p + "__" + toolName.replaceAll("[^a-zA-Z0-9_]", "_");
+    private String sanitizeName(McpServerConfig cfg, String toolName) {
+        String serverId = cfg.id;
+        // Keep the builtin names readable; external names have an exact, bounded identity.
+        if ("DESKTOP_BUILTIN".equals(cfg.source)) return serverId.replaceAll("[^a-zA-Z0-9_]", "_") + "__" + toolName.replaceAll("[^a-zA-Z0-9_]", "_");
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(mapper.writeValueAsBytes(List.of(serverId, toolName)));
+            return "mcp_" + HexFormat.of().formatHex(digest).substring(0, 48);
+        } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
     // ==================== 内部类 ====================
 
     public static class McpServerConfig {
         public String id, name, url, apiKey, type = "stream";
+        public String source = "USER_MCP";
         public boolean enabled = true;
         public int timeout = 60;
         public String sessionId; // MCP Streamable HTTP session
@@ -296,7 +373,9 @@ public class McpManager implements ToolCallbackProvider {
         final List<ToolCallback> toolCallbacks;
         McpConnection(McpServerConfig c, List<ToolCallback> t) { config = c; toolCallbacks = t; }
         boolean sameConfig(McpServerConfig o) {
-            return Objects.equals(config.url, o.url) && Objects.equals(config.apiKey, o.apiKey);
+            return Objects.equals(config.url, o.url) && Objects.equals(config.apiKey, o.apiKey)
+                && Objects.equals(config.type, o.type) && Objects.equals(config.source, o.source)
+                && config.timeout == o.timeout;
         }
     }
 

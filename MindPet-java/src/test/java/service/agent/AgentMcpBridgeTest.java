@@ -26,9 +26,9 @@ class AgentMcpBridgeTest {
         server.createContext("/", exchange -> {
             JsonNode request = json.readTree(exchange.getRequestBody());
             Object result = switch (request.path("method").asText()) {
-                case "tools/list" -> Map.of("tools", List.of(Map.of("name", "desktop__file__read_file",
+                case "tools/list", "mindpet/mcp-list" -> Map.of("tools", List.of(Map.of("name", "desktop__file__read_file",
                     "description", "read", "inputSchema", Map.of("type", "object", "properties", Map.of()))));
-                case "tools/call" -> {
+                case "tools/call", "mindpet/mcp-call" -> {
                     received.set(request);
                     yield Map.of("isError", fail, "content", List.of(Map.of("type", "text", "text", fail ? "文件不存在" : "未找到搜索结果")),
                         "structuredContent", Map.of("success", !fail, "state", Map.of("path", "sample.txt")));
@@ -66,9 +66,28 @@ class AgentMcpBridgeTest {
         assertThat(result.path("content").asText()).contains("文件不存在");
     }
 
+    @Test void userConfiguredVerticalServiceIsNotBlockedAsRetiredBuiltin() {
+        McpManager manager = manager();
+        McpManager.McpServerConfig config = new McpManager.McpServerConfig();
+        config.id = "mcdonalds"; config.name = "麦当劳"; config.source = "USER_MCP";
+        config.url = "http://127.0.0.1:" + server.getAddress().getPort();
+        var builtin = new McpManager.McpServerConfig(); builtin.id = "test"; builtin.source = "DESKTOP_BUILTIN"; builtin.name = "test"; builtin.url = config.url;
+        config.url = "http://invalid.example/never-called";
+        manager.syncServers(List.of(config, builtin));
+        assertThat(manager.getToolCallbacks()).hasSize(2);
+        assertThat(manager.callbacksFor(Set.of())).hasSize(1);
+        assertThat(manager.callbacksFor(Set.of("mcdonalds"))).hasSize(2);
+        ToolUserContext.setExecution(Map.of("selectedMcpServerIds", "[\"mcdonalds\"]"));
+        var external = Arrays.stream(manager.getToolCallbacks()).filter(callback -> !manager.isBuiltin(callback)).findFirst().orElseThrow();
+        external.call("{}");
+        assertThat(received.get().path("method").asText()).isEqualTo("mindpet/mcp-call");
+        assertThat(received.get().path("params").path("serverId").asText()).isEqualTo("mcdonalds");
+    }
+
     private McpManager manager() {
         McpManager manager = new McpManager(mock(Logger.class));
         McpManager.McpServerConfig config = new McpManager.McpServerConfig();
+        config.source = "DESKTOP_BUILTIN";
         config.id = "test"; config.name = "test"; config.url = "http://127.0.0.1:" + server.getAddress().getPort();
         manager.syncServers(List.of(config));
         return manager;

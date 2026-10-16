@@ -26,6 +26,26 @@ import java.util.Map;
  */
 @Service
 public class EmotionService {
+    private final java.util.concurrent.ExecutorService observations = new java.util.concurrent.ThreadPoolExecutor(
+        1, 1, 30, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.ArrayBlockingQueue<>(16),
+        runnable -> { Thread thread = new Thread(runnable, "emotion-observer"); thread.setDaemon(true); return thread; });
+
+    @jakarta.annotation.PreDestroy public void closeObserver() { observations.shutdownNow(); }
+
+    /** Local safeguards are immediate; model emotion analysis runs independently of task execution. */
+    public EmotionResult observe(String userId, String message) {
+        String text = message == null ? "" : message;
+        EmotionResult immediate = enrich(text, EmotionResult.NEUTRAL);
+        try {
+            observations.execute(() -> {
+                try { saveToHistory(userId, analyze(text)); }
+                catch (Exception e) { logger.log("WARN", "后台情感分析失败: " + e.getClass().getSimpleName()); }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            logger.log("DEBUG", "情感分析队列繁忙，本次使用本地情感规则");
+        }
+        return immediate;
+    }
 
     // ==================== 危险关键词 ====================
 
@@ -179,7 +199,7 @@ public class EmotionService {
 
     /**
      * 对已有的 LLM 情感结果做后处理（危险信号 + 语境翻转），不发起新的 LLM 调用。
-     * 用于意图路由与情感分析合并的场景（AiService.preCall 已返回原始情感）。
+     * 可用于主任务即时的本地情感规则，以及独立情感分析结果的后处理。
      */
     public EmotionResult enrich(String userMessage, EmotionResult llmResult) {
         // 第1层：危险信号检测

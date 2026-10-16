@@ -1,6 +1,6 @@
 {
   "name": "mindpet",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "author": "cheer.com",
@@ -13,6 +13,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test:security:compile": "tsc src/main/tools/security/safety-checker.ts src/main/tools/security/audit-pipeline.ts src/main/tools/core/types.ts --outDir node_modules/.cache/mindpet-security-tests --module commonjs --moduleResolution node --target ES2022 --types node,electron --esModuleInterop --skipLibCheck",
     "test:security": "npm run test:security:compile",
+    "test:agent-workflows": "node scripts/agent-workflows-check.cjs",
+    "test:model-config": "node scripts/model-config-check.cjs",
     "prepare:backend": "node scripts/prepare-backend.mjs",
     "start": "chcp 65001 > nul && electron-vite preview",
     "dev": "chcp 65001 > nul && electron-vite dev",

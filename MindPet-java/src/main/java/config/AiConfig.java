@@ -4,7 +4,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
@@ -14,10 +13,11 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import util.Logger;
 
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import tool.impl.DateCalcTool;
+import tool.impl.EmailTools;
+import tool.impl.NumericCalcTool;
+import tool.impl.TimezoneConvertTool;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executor;
 
@@ -70,7 +70,7 @@ public class AiConfig {
         return executor;
     }
 
-    /** 返回空工具集占位。ApplicationReadyEvent 后才真正扫描，避免 getBean() 触发循环依赖。 */
+    /** 返回空工具集占位。ApplicationReadyEvent 后注册通用工具，避免提前 getBean() 触发循环依赖。 */
     @Bean
     public ToolCallbackProvider toolCallbackProvider() {
         return () -> {
@@ -79,24 +79,14 @@ public class AiConfig {
         };
     }
 
-    /** 容器完全就绪后再扫描 @Tool Bean，此时所有 Bean 已创建完毕，无循环依赖风险。 */
+    /** 只注册通用办公工具，避免扫描 @Tool 时重新暴露历史垂直业务适配器。 */
     @EventListener(ApplicationReadyEvent.class)
     public void onReady(ApplicationReadyEvent event) {
         ApplicationContext appCtx = event.getApplicationContext();
         Logger logger = appCtx.getBean(Logger.class);
-        List<Object> toolBeans = new ArrayList<>();
-        for (String beanName : appCtx.getBeanDefinitionNames()) {
-            Object bean;
-            try {
-                bean = appCtx.getBean(beanName);
-            } catch (Exception e) {
-                logger.log("WARN", "跳过Bean初始化: " + beanName + " → " + e.toString());
-                continue;
-            }
-            if (hasToolAnnotatedMethod(bean)) {
-                toolBeans.add(bean);
-            }
-        }
+        List<Object> toolBeans = List.of(
+            appCtx.getBean(NumericCalcTool.class), appCtx.getBean(DateCalcTool.class),
+            appCtx.getBean(TimezoneConvertTool.class), appCtx.getBean(EmailTools.class));
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder()
             .toolObjects(toolBeans.toArray())
             .build()
@@ -105,12 +95,4 @@ public class AiConfig {
         logger.log("INFO", "注册本地工具数: " + callbacks.length);
     }
 
-    private boolean hasToolAnnotatedMethod(Object bean) {
-        for (Method method : bean.getClass().getMethods()) {
-            if (method.isAnnotationPresent(Tool.class)) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

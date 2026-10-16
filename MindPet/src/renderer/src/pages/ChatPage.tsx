@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 import { getInternalClipboard, setInternalClipboard } from '../hooks/useAppStore'
+import { useTaskMcp } from '../hooks/useTaskMcp'
 import { useChatController } from '../hooks/useChatController'
 import { ChatMessageItem } from '../components/ChatMessageItem'
 import { ImagePreviewOverlay } from '../components/ImagePreviewOverlay'
@@ -83,17 +84,14 @@ function ChatPageImpl(): React.JSX.Element {
     handleRespondPermission,
     // skills & mcp
     skillsList,
-    disabledSkillNames,
-    toggleSkillEnable,
     setActiveTab,
     setAgentSubTab,
     refreshSkillsAndStorage,
     refreshMcpServers,
     mcpConfig,
-    saveMcpConfig,
     handlePreviewFile: previewFile,
     setShowFilePanel,
-    currentContextTokens
+    currentContextTokens, contextUsage
   } = useChatController()
 
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null)
@@ -195,23 +193,30 @@ function ChatPageImpl(): React.JSX.Element {
   // 搜索输入框公共样式 — 使用模块级常量
   const searchInputStyle = SEARCH_INPUT_STYLE
 
-  // MCP 服务开关切换
-  const toggleMcpServerEnable = useCallback((serverId: string) => {
-    const newConfig = {
-      ...mcpConfig,
-      servers: mcpConfig.servers.map((s: any) =>
-        s.id === serverId ? { ...s, enabled: !s.enabled } : s
-      )
-    }
-    saveMcpConfig(newConfig)
-  }, [mcpConfig, saveMcpConfig])
+  const { selectedIds: selectedMcpIds, select: selectMcp, remove: removeMcp } = useTaskMcp(activeSessionId)
+  const [slashDismissed, setSlashDismissed] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const allMcpServers: any[] = (mcpConfig?.servers || []).filter((server: any) => server.id !== 'desktop-tools')
+  const slashMatch = inputValue.match(/(?:^|\s)\/([^\s/]*)$/)
+  const slashQuery = slashMatch?.[1]?.toLowerCase() || ''
+  const slashServers = allMcpServers.filter(server => `${server.name} ${server.id} ${server.description || ''}`.toLowerCase().includes(slashQuery))
+  const showSlashMenu = Boolean(slashMatch && !slashDismissed)
+  useEffect(() => {
+    if (!showSlashMenu || !slashServers.length) return
+    document.getElementById(`mcp-slash-option-${slashServers[Math.min(slashIndex, slashServers.length - 1)].id}`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [showSlashMenu, slashIndex, slashQuery])
 
-  // 全部 MCP 服务列表（用于 popover 展示，含未启用的）
-  const allMcpServers: any[] = mcpConfig?.servers || []
+  const chooseMcp = (serverId: string): void => {
+    selectMcp(serverId)
+    setInputValue(value => value.replace(/(^|\s)\/([^\s/]*)$/, '$1'))
+    setSlashDismissed(true)
+    setShowMcpPopover(false)
+  }
 
   const renderSkillsPopover = () => {
     const filtered = skillsSearchKey
-      ? skillsList.filter(s => s.name.toLowerCase().includes(skillsSearchKey.toLowerCase()))
+      ? skillsList.filter(s => `${s.name} ${s.description || ''}`.toLowerCase().includes(skillsSearchKey.toLowerCase()))
       : skillsList
     return (
       <div
@@ -241,7 +246,7 @@ function ChatPageImpl(): React.JSX.Element {
             <Puzzle size={15} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
             已装载的技能包
           </span>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>勾选在会话中启用</span>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>按任务自动加载</span>
         </div>
         {/* 搜索框：仅在列表溢出时显示 */}
         {skillsOverflow && (
@@ -262,62 +267,12 @@ function ChatPageImpl(): React.JSX.Element {
               {skillsList.length === 0 ? '暂未安装任何技能扩展包' : '无匹配的技能'}
             </div>
           ) : (
-            filtered.map(skill => {
-              const isEnabled = !disabledSkillNames.includes(skill.name)
-              return (
-                <label
-                  key={skill.name}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    fontSize: '12.5px',
-                    cursor: 'pointer',
-                    padding: '4px 6px',
-                    borderRadius: '4px',
-                    transition: 'background 0.15s ease',
-                    userSelect: 'none'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-menu-hover, rgba(128,128,128,0.04))'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  <span
-                    style={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: isEnabled ? 'var(--text-color)' : 'var(--text-muted)',
-                      fontWeight: isEnabled ? 500 : 400,
-                      flex: 1
-                    }}
-                    title={skill.name}
-                  >
-                    {skill.name.replace(/\.zip$/i, '')}
-                  </span>
-                  {/* CSS Toggle Switch */}
-                  <div style={{ position: 'relative', width: '28px', height: '16px', borderRadius: '8px', backgroundColor: isEnabled ? 'var(--accent-color, var(--ds-color-23346638636666))' : 'var(--border-color, var(--ds-color-7267626128313238))', transition: 'background-color 0.2s ease', flexShrink: 0 }}>
-                    <div style={{
-                      position: 'absolute',
-                      top: '2px',
-                      left: isEnabled ? '14px' : '2px',
-                      width: '12px',
-                      height: '12px',
-                      backgroundColor: '#ffffff',
-                      borderRadius: '50%',
-                      transition: 'left 0.2s ease',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                    }} />
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={() => toggleSkillEnable(skill.name)}
-                      style={{ opacity: 0, width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, margin: 0, cursor: 'pointer' }}
-                    />
-                  </div>
-                </label>
-              )
-            })
+            filtered.map(skill => (
+              <div key={skill.name} style={{ padding: '6px', fontSize: '12px' }}>
+                <div style={{ fontWeight: 600 }}>{skill.displayName || skill.name.replace(/\.zip$/i, '')}</div>
+                <div style={{ color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 3 }}>{skill.description || '已安装，按任务需要自动加载。'}</div>
+              </div>
+            ))
           )}
         </div>
         <div style={{ borderTop: '1px solid var(--border-color, var(--ds-color-7267626128313238))', paddingTop: '6px', marginTop: '4px' }}>
@@ -355,135 +310,28 @@ function ChatPageImpl(): React.JSX.Element {
       ? allMcpServers.filter((s: any) => s.name.toLowerCase().includes(mcpSearchKey.toLowerCase()))
       : allMcpServers
     return (
-      <div
-        ref={mcpPopoverRef}
-        className="chat-popover-card"
-        style={{
-          position: 'absolute',
-          bottom: 'calc(100% + 8px)',
-          right: 0,
-          width: '260px',
-          background: 'var(--bg-card, #ffffff)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid var(--border-color, var(--ds-color-7267626128313238))',
-          borderRadius: '10px',
-          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.12)',
-          zIndex: 1000,
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          animation: 'slideUpMenu 0.15s ease-out'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color, var(--ds-color-7267626128313238))', paddingBottom: '6px' }}>
-          <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-color)', display: 'inline-flex', alignItems: 'center' }}>
-            <Link size={15} strokeWidth={2} className="ui-icon-leading" aria-hidden="true" />
-            MCP 服务
-          </span>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>勾选启用服务</span>
-        </div>
-        {/* 搜索框：仅在列表溢出时显示 */}
+      <div ref={mcpPopoverRef} className="chat-popover-card task-service-popover">
+        <div className="task-service-heading"><span>外部服务</span><span>本次任务</span></div>
         {mcpOverflow && (
-          <input
-            style={searchInputStyle}
-            placeholder="搜索 MCP 服务..."
-            value={mcpSearchKey}
-            onChange={e => setMcpSearchKey(e.target.value)}
-            autoFocus
-          />
+          <input className="task-service-search" placeholder="搜索服务…" aria-label="搜索外部服务"
+            value={mcpSearchKey} onChange={e => setMcpSearchKey(e.target.value)} autoFocus />
         )}
-        <div
-          ref={mcpListRef}
-          style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', padding: '2px 0' }}
-        >
+        <div ref={mcpListRef} className="task-service-list">
           {filtered.length === 0 ? (
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
-              {allMcpServers.length === 0 ? '暂未配置任何 MCP 服务' : '无匹配的 MCP 服务'}
-            </div>
-          ) : (
-            filtered.map((server: any) => (
-              <label
-                key={server.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                  fontSize: '12.5px',
-                  cursor: 'pointer',
-                  padding: '4px 6px',
-                  borderRadius: '4px',
-                  transition: 'background 0.15s ease',
-                  userSelect: 'none'
-                }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-menu-hover, rgba(128,128,128,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    color: server.enabled ? 'var(--text-color)' : 'var(--text-muted)',
-                    fontWeight: server.enabled ? 500 : 400,
-                    flex: 1
-                  }}
-                  title={server.name}
-                >
-                  {server.name}
-                </span>
-                {/* CSS Toggle Switch */}
-                <div style={{ position: 'relative', width: '28px', height: '16px', borderRadius: '8px', backgroundColor: server.enabled ? 'var(--accent-color, var(--ds-color-23346638636666))' : 'var(--border-color, var(--ds-color-7267626128313238))', transition: 'background-color 0.2s ease', flexShrink: 0 }}>
-                  <div style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: server.enabled ? '14px' : '2px',
-                    width: '12px',
-                    height: '12px',
-                    backgroundColor: '#ffffff',
-                    borderRadius: '50%',
-                    transition: 'left 0.2s ease',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                  }} />
-                  <input
-                    type="checkbox"
-                    checked={!!server.enabled}
-                    onChange={() => toggleMcpServerEnable(server.id)}
-                    style={{ opacity: 0, width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, margin: 0, cursor: 'pointer' }}
-                  />
-                </div>
-              </label>
-            ))
-          )}
+            <div className="mcp-slash-empty">{allMcpServers.length === 0 ? '还没有外部服务' : '没有匹配的服务'}</div>
+          ) : filtered.map((server: any) => (
+            <button key={server.id} type="button" className="task-service-row"
+              onClick={() => { selectMcp(server.id); setShowMcpPopover(false) }}>
+              <Plug size={14} strokeWidth={1.6} aria-hidden="true" />
+              <span className="task-service-row-copy"><strong>{server.name || server.id}</strong>
+                {server.description && <span>{server.description}</span>}</span>
+              {selectedMcpIds.includes(server.id) && <Check size={14} className="mcp-slash-check" aria-label="已添加" />}
+            </button>
+          ))}
         </div>
-        <div style={{ borderTop: '1px solid var(--border-color, var(--ds-color-7267626128313238))', paddingTop: '6px', marginTop: '4px' }}>
-          <button
-            style={{
-              width: '100%',
-              padding: '6px 0',
-              fontSize: '11.5px',
-              fontWeight: 600,
-              color: 'var(--accent-color, var(--ds-color-23346638636666))',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px'
-            }}
-            onClick={() => {
-              setShowMcpPopover(false)
-              setActiveTab('agent')
-              setAgentSubTab('mcp')
-            }}
-          >
-            <Settings2 size={14} strokeWidth={2} aria-hidden="true" />
-            前往管理 MCP 服务
-          </button>
-        </div>
+        <button type="button" className="task-service-manage" onClick={() => {
+          setShowMcpPopover(false); setActiveTab('agent'); setAgentSubTab('mcp')
+        }}><Settings2 size={13} strokeWidth={1.6} aria-hidden="true" />管理服务</button>
       </div>
     )
   }
@@ -634,7 +482,7 @@ function ChatPageImpl(): React.JSX.Element {
 
   // 上下文安全额度环机制
   const [showContextTooltip, setShowContextTooltip] = useState(false)
-  const contextLimit = Number((llmConfig as any).contextWindow) || 168000
+  const contextLimit = Number(contextUsage?.inputBudget) || 32000
   const estimatedContextTokens = useMemo(
     () => currentContextTokens + estimateDraftTokens(inputValue, attachedFiles),
     [attachedFiles, currentContextTokens, inputValue]
@@ -654,10 +502,6 @@ function ChatPageImpl(): React.JSX.Element {
   }, [thinkingEnabled])
 
   const handleSendIntercept = () => {
-    if (estimatedContextTokens >= contextLimit) {
-      showToast('上下文额度已用满，请创建新会话以继续对话！', 'error')
-      return
-    }
     void handleSendChat(thinkingEnabled)
   }
 
@@ -1174,19 +1018,48 @@ function ChatPageImpl(): React.JSX.Element {
             </section>
           )}
 
+          {selectedMcpIds.length > 0 && (
+            <div className="task-mcp-chips" aria-label="本次任务的外部服务">
+              {selectedMcpIds.map(id => <button key={id} type="button" className="task-mcp-chip"
+                onClick={() => removeMcp(id)} aria-label={`移除服务 ${allMcpServers.find(server => server.id === id)?.name || id}`}>
+                <Plug size={12} aria-hidden="true" /> /{allMcpServers.find(server => server.id === id)?.name || id} <X size={12} aria-hidden="true" />
+              </button>)}
+            </div>
+          )}
+          {showSlashMenu && (
+            <div className="mcp-slash-popover">
+              <div className="mcp-slash-heading"><span>外部服务</span><span>添加到本次任务</span></div>
+              <div id="mcp-slash-list" className="mcp-slash-options" role="listbox" aria-label="选择外部 MCP 服务">
+                {slashServers.length ? slashServers.map((server, index) => (
+                  <button id={`mcp-slash-option-${server.id}`} key={server.id} type="button" role="option"
+                    aria-selected={index === Math.min(slashIndex, slashServers.length - 1)}
+                    className={`mcp-slash-option ${index === Math.min(slashIndex, slashServers.length - 1) ? 'active' : ''}`}
+                    onMouseDown={event => event.preventDefault()} onMouseEnter={() => setSlashIndex(index)}
+                    onClick={() => chooseMcp(server.id)}>
+                    <span className="mcp-slash-icon"><Plug size={17} strokeWidth={1.6} /></span>
+                    <span className="mcp-slash-copy"><strong>{server.name || server.id}</strong><span>{server.description || '连接此服务，供本次任务调用'}</span></span>
+                    {selectedMcpIds.includes(server.id) ? <Check size={15} className="mcp-slash-check" /> : null}
+                  </button>
+                )) : <div className="mcp-slash-empty">{allMcpServers.length ? '没有匹配的服务，试试其他名称。' : '还没有外部服务，可在工具设置中添加。'}</div>}
+              </div>
+              <div className="mcp-slash-footer"><span>↑ ↓ 选择 · Enter 添加 · Esc 关闭</span></div>
+            </div>
+          )}
           <textarea
             className="chat-textarea-field"
+            onBlur={() => setSlashDismissed(true)}
+            aria-label="消息"
+            aria-controls={showSlashMenu ? 'mcp-slash-list' : undefined}
+            aria-autocomplete="list"
+            aria-activedescendant={showSlashMenu && slashServers.length ? `mcp-slash-option-${slashServers[Math.min(slashIndex, slashServers.length - 1)].id}` : undefined}
             rows={2}
             placeholder={
-              estimatedContextTokens >= contextLimit
-                ? '上下文额度已用满，请创建新会话以继续对话！'
-                : isSending
+              isSending
                   ? `${currentAvatarName} 正在思考中…可继续发送追加指引`
-                  : `输入指令并发送给 ${currentAvatarName} ...`
+                  : `输入指令，使用 / 选择外部服务 ...`
             }
             value={inputValue}
-            disabled={estimatedContextTokens >= contextLimit}
-            onChange={e => setInputValue(e.target.value)}
+            onChange={e => { setInputValue(e.target.value); setSlashDismissed(false); setSlashIndex(0) }}
             onPaste={async e => {
               // 优先检查内部剪贴板（从消息复制的文件+文本）
               const internalClip = getInternalClipboard()
@@ -1233,6 +1106,18 @@ function ChatPageImpl(): React.JSX.Element {
               }
             }}
             onKeyDown={e => {
+              if (showSlashMenu && !e.nativeEvent.isComposing) {
+                if (e.key === 'Escape') { e.preventDefault(); setSlashDismissed(true); return }
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSlashIndex(index => Math.max(0, Math.min(slashServers.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1))))
+                  return
+                }
+                if ((e.key === 'Enter' || e.key === 'Tab') && slashServers.length) {
+                  e.preventDefault(); chooseMcp(slashServers[Math.min(slashIndex, slashServers.length - 1)].id); return
+                }
+              }
+              if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 handleSendIntercept()
@@ -1474,9 +1359,10 @@ function ChatPageImpl(): React.JSX.Element {
                       animation: 'slideUpMenu 0.15s ease-out'
                     }}
                   >
-                    <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>背景信息窗口：</div>
-                    <div style={{ fontSize: '12px' }}>{`${Math.round(contextPercent)}% 已用`}</div>
-                    <div>{`已用 ${Math.round(estimatedContextTokens / 1000)}k 标记，共 ${Math.round(contextLimit / 1000)}k`}</div>
+                    <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>会话上下文</div>
+                    <div style={{ fontSize: '12px' }}>{`${Math.round(contextPercent)}% · 自动整理`}</div>
+                    <div>{contextUsage ? `最近输入约 ${Math.round(currentContextTokens / 1000)}k / 预算 ${Math.round(contextLimit / 1000)}k Token` : '发送后显示后端上下文估算'}</div>
+                    {contextUsage && <div>{`本次任务${contextUsage.usageEstimated ? '约' : ''} ${(Number(contextUsage.promptTokens || 0) + Number(contextUsage.completionTokens || 0)).toLocaleString()} Token`}</div>}
                   </div>
                 )}
               </div>
@@ -1493,7 +1379,7 @@ function ChatPageImpl(): React.JSX.Element {
                       refreshSkillsAndStorage()
                     }
                   }}
-                  title={`管理与启用技能扩展包 (当前启用: ${skillsList.filter(s => !disabledSkillNames.includes(s.name)).length}/${skillsList.length})`}
+                  title={`查看技能简介（${skillsList.length} 个，按需自动加载）`}
                 >
                   <Puzzle size={18} strokeWidth={2} aria-hidden="true" />
                 </div>
@@ -1512,7 +1398,7 @@ function ChatPageImpl(): React.JSX.Element {
                       refreshMcpServers()
                     }
                   }}
-                  title={`管理与启用 MCP 服务 (当前启用: ${allMcpServers.filter((s: any) => s.enabled).length}/${allMcpServers.length})`}
+                  title="选择本次任务的外部 MCP，也可输入 /"
                 >
                   <Link size={17} strokeWidth={2} aria-hidden="true" />
                 </div>
@@ -1533,8 +1419,7 @@ function ChatPageImpl(): React.JSX.Element {
               <button
                 className="toolbar-icon-btn toolbar-action-btn upload"
                 onClick={handleUploadFile}
-                disabled={estimatedContextTokens >= contextLimit}
-                title={estimatedContextTokens >= contextLimit ? '上下文额度已用满' : '上传文件进行分析'}
+                    title='上传文件进行分析'
               >
                 <Plus size={18} strokeWidth={2} aria-hidden="true" />
               </button>
@@ -1552,7 +1437,7 @@ function ChatPageImpl(): React.JSX.Element {
                     className="toolbar-send-btn"
                     onClick={handleSendIntercept}
                     title="发送追加指引并调整当前任务"
-                    disabled={(!inputValue.trim() && attachedFiles.length === 0) || estimatedContextTokens >= contextLimit}
+                    disabled={(!inputValue.trim() && attachedFiles.length === 0)}
                   >
                     <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
                   </button>
@@ -1562,7 +1447,7 @@ function ChatPageImpl(): React.JSX.Element {
                   className="toolbar-send-btn"
                   onClick={handleSendIntercept}
                   title="发送消息"
-                  disabled={(!inputValue.trim() && attachedFiles.length === 0) || estimatedContextTokens >= contextLimit}
+                  disabled={(!inputValue.trim() && attachedFiles.length === 0)}
                 >
                   <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
                 </button>

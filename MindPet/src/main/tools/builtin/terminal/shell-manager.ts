@@ -28,6 +28,8 @@ export interface ShellSession {
   isRunning: boolean
   startTime: number
   command: string
+  exitCode?: number | null
+  error?: string
 }
 
 export interface ShellExecResult {
@@ -247,11 +249,13 @@ export class ShellManager {
     proc.stderr.on('data', appendOutput)
 
     proc.on('close', (code: number) => {
+      session.exitCode = code
       session.isRunning = false
       session.output += `\n[进程退出，退出码: ${code}]`
     })
 
     proc.on('error', (err: Error) => {
+      session.error = err.message
       session.isRunning = false
       session.output += `\n[错误: ${err.message}]`
     })
@@ -261,10 +265,10 @@ export class ShellManager {
   }
 
   // 获取 shell 会话的新输出
-  public getOutput(shellId: string, filter?: string): { output: string; isRunning: boolean } {
+  public getOutput(shellId: string, filter?: string): { output: string; isRunning: boolean; exitCode?: number | null; error?: string } {
     const session = this.sessions.get(shellId)
     if (!session) {
-      return { output: `错误: 未找到会话 ${shellId}`, isRunning: false }
+      return { output: `错误: 未找到会话 ${shellId}`, isRunning: false, error: 'SESSION_NOT_FOUND' }
     }
 
     let output = session.output
@@ -276,7 +280,7 @@ export class ShellManager {
       } catch (e) {}
     }
 
-    return { output, isRunning: session.isRunning }
+    return { output, isRunning: session.isRunning, exitCode: session.exitCode, error: session.error }
   }
 
   // 注册外部会话（如远程 SSH 异步通道）
@@ -315,7 +319,10 @@ export class ShellManager {
     for (const [id, session] of this.sessions.entries()) {
       if (now - session.startTime > 3600000) { // 1小时
         if (session.isRunning) {
-          session.process.kill('SIGKILL')
+          try {
+            if (typeof session.process?.kill === 'function') session.process.kill('SIGKILL')
+            else session.process?.destroy?.()
+          } catch { /* The process may already have exited. */ }
         }
         this.sessions.delete(id)
       }

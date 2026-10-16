@@ -45,6 +45,11 @@ public class DesktopController {
     private final Logger logger;
     private final service.agent.AgentTaskService agentTasks;
     private final service.agent.AgentTaskStore agentTaskStore;
+    private service.agent.AgentContextStore contextStore;
+    @Autowired
+    public void setContextStore(service.agent.AgentContextStore contextStore) {
+        this.contextStore = contextStore;
+    }
 
     @Autowired
     public DesktopController(AiService aiService, DynamicLlmConfig dynamicLlmConfig,
@@ -92,7 +97,7 @@ public class DesktopController {
         String requestId = normalizedRequestId(body.get("messageId"));
         String message = String.valueOf(body.getOrDefault("message", ""));
         String mode = String.valueOf(body.getOrDefault("mode", "chat"));
-        int contextRounds = Integer.parseInt(String.valueOf(body.getOrDefault("contextRounds", "6")));
+        int contextRounds = 0; // Desktop context is assembled by the backend token budget.
         boolean thinkingRequested = Boolean.parseBoolean(String.valueOf(body.getOrDefault("thinkingEnabled", false)));
         @SuppressWarnings("unchecked")
         List<String> images = (List<String>) body.getOrDefault("images", List.of());
@@ -103,12 +108,15 @@ public class DesktopController {
         // 前端注入的技能规约全文（SKILL.md）。仅用于本次请求，不写入 DynamicLlmConfig。
         String extraSystemPrompt = String.valueOf(body.getOrDefault("systemPrompt", ""));
 
+        boolean sessionLease = !"summary".equals(mode);
+        if (sessionLease) agentTasks.beginSessionRequest(userId, sessionId);
         ToolUserContext.set(userId, sessionId);
         ToolUserContext.setRequestId(requestId);
         OutputStream out = null;
         try {
             out = response.getOutputStream();
             ToolUserContext.setExecution(executionOptions(body, userId, sessionId, message));
+            if (!"summary".equals(mode)) archiveInput(body, userId, sessionId, requestId, message);
             logger.log("INFO", "[Desktop] 收到请求 userId=" + userId + " sessionId=" + (sessionId.isBlank() ? "(空)" : sessionId) + " 消息长度=" + message.length()
                 + (activeSkills.isEmpty() ? "" : " 技能=" + String.join(",", activeSkills)));
             if (message.isBlank() && images.isEmpty()) {
@@ -227,6 +235,7 @@ public class DesktopController {
                 } catch (Exception ignored) {}
             }
         } finally {
+            if (sessionLease) agentTasks.endSessionRequest(userId, sessionId);
             ToolUserContext.drainGeneratedFiles(requestId);
             ToolUserContext.clear();
         }
@@ -264,7 +273,7 @@ public class DesktopController {
         Map<String, Object> row = agentTaskStore.get(user, taskId);
         Map<String, Object> request = new LinkedHashMap<>(body);
         request.put("sessionId", row.get("session_id"));
-        request.put("message", row.get("goal"));
+        request.put("message", java.util.Objects.toString(body.get("message"), "继续"));
         request.put("resumeTaskId", taskId);
         request.put("messageId", UUID.randomUUID().toString());
         chatStream(request, response);
@@ -280,7 +289,25 @@ public class DesktopController {
         String workspace = String.valueOf(body.getOrDefault("workspacePath", ""));
         if (!resume.isBlank() && workspace.isBlank())
             workspace = String.valueOf(agentTaskStore.snapshot(agentTaskStore.get(user, resume)).getOrDefault("workspacePath", ""));
-        return Map.of("workspacePath", workspace, "resumeTaskId", resume);
+        Object selected = body.getOrDefault("selectedMcpServerIds", List.of());
+        return Map.of("workspacePath", workspace, "resumeTaskId", resume,
+            "userMessageId", ToolUserContext.getRequestId() + "-user",
+            "resumeInstruction", resume.isBlank() ? "" : message,
+            "selectedMcpServerIds", new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(selected).toString());
+    }
+
+    private void archiveInput(Map<String,Object> body, String user, String session, String request, String message) {
+        if (contextStore == null || session.isBlank()) return;
+        String inputId = ToolUserContext.getExecution().get("userMessageId");
+        // Legacy records must precede the new input in archive sequence order.
+        contextStore.importSession(user, session, inputId, request + "-agent");
+        var execution = new LinkedHashMap<>(ToolUserContext.getExecution());
+        execution.put("contextImported", "true");
+        ToolUserContext.setExecution(execution);
+        // The raw user message must exist before model/tool execution, even when the UI save failed.
+        contextStore.append(user, session, inputId, "user", message);
+        if (body.get("images") instanceof List<?> images)
+            contextStore.images(user, session, inputId, images.stream().map(Object::toString).toList());
     }
 
     /**
@@ -296,10 +323,12 @@ public class DesktopController {
         @SuppressWarnings("unchecked")
         List<String> activeSkills = (List<String>) body.getOrDefault("activeSkills", List.of());
 
+        agentTasks.beginSessionRequest(userId, sessionId);
         ToolUserContext.set(userId, sessionId);
         ToolUserContext.setRequestId(requestId);
         try {
             ToolUserContext.setExecution(executionOptions(body, userId, sessionId, message));
+            archiveInput(body, userId, sessionId, requestId, message);
             if (message.isBlank()) {
                 return Map.of("reply", "", "status", "empty_message");
             }
@@ -322,6 +351,7 @@ public class DesktopController {
             logger.log("ERROR", "[Desktop] 聊天失败: " + e.getMessage());
             return Map.of("reply", "服务暂时不可用: " + e.getMessage(), "status", "error");
         } finally {
+            agentTasks.endSessionRequest(userId, sessionId);
             ToolUserContext.drainGeneratedFiles(requestId);
             ToolUserContext.clear();
         }
@@ -343,7 +373,7 @@ public class DesktopController {
         String baseUrl = body == null ? "" : str(body.get("baseUrl"));
         String model = body == null ? "" : str(body.get("model"));
 
-        boolean transientTest = !apiKey.isBlank() || !baseUrl.isBlank() || !model.isBlank();
+        boolean transientTest = body != null && !body.isEmpty();
         if (!transientTest) {
             // 未下发配置时才回退到当前生效配置
             apiKey = chatClientFactory.effectiveApiKeyForDisplay();
@@ -373,7 +403,8 @@ public class DesktopController {
                 .get(30, TimeUnit.SECONDS);
 
             String content = reply == null ? "" : reply.trim();
-            result.put("ok", true);
+            result.put("ok", !content.isEmpty());
+            if (content.isEmpty()) result.put("message", "服务返回空内容，请检查模型是否支持当前接口");
             result.put("content", content);
             result.put("empty", content.isEmpty());
             result.put("elapsedMs", System.currentTimeMillis() - startedAt);
@@ -383,8 +414,8 @@ public class DesktopController {
             Throwable cause = (e instanceof ExecutionException && e.getCause() != null) ? e.getCause() : e;
             boolean timeout = (e instanceof TimeoutException) || (cause instanceof TimeoutException);
             Integer status = extractHttpStatus(cause);
-            String rawMessage = cause.getMessage() == null ? "" : cause.getMessage();
-            String detail = extractErrorBody(cause);
+            String rawMessage = safeConfigError(cause.getMessage(), apiKey);
+            String detail = safeConfigError(extractErrorBody(cause), apiKey);
 
             // 有些实现（如 Spring AI 的 RestClient 包装）会把状态码并进 message，
             // 形如 "401 - {json...}"，此时也提取出来作为 httpStatus。
@@ -417,6 +448,13 @@ public class DesktopController {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    private static String safeConfigError(String value, String key) {
+        if (value == null) return "";
+        String safe = key == null || key.isBlank() ? value : value.replace(key, "[REDACTED]");
+        safe = service.v3.SecretSanitizer.sanitize(safe);
+        return safe.substring(0, Math.min(2000, safe.length()));
+    }
+
     /**
      * Embedding 连通性测试 — 部署校验用。
      *
@@ -429,43 +467,15 @@ public class DesktopController {
     @PostMapping("/embedding-test")
     public Map<String, Object> embeddingTest(@RequestBody(required = false) Map<String, Object> body) {
         long startedAt = System.currentTimeMillis();
-        String text = (body == null ? "" : str(body.get("text")));
-        if (text.isBlank()) text = "MindPet embedding connectivity check";
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("text", text);
+        Map<String,Object> status = embeddingService.refresh();
+        Map<String,Object> result = new LinkedHashMap<>(status);
+        boolean available = Boolean.TRUE.equals(status.get("available"));
+        result.put("ok", available);
+        result.put("dim", available ? 1024 : 0);
+        result.put("dimMatchesDbSchema", available);
         result.put("provider", embeddingService.activeProviderDescription());
-        result.put("activeProvider", embeddingService.getActiveProvider());
-        result.put("mode", embeddingConfig.getMode());
-        result.put("reason", embeddingService.getReason().name());
-
-        float[] vec = embeddingService.embed(text);
-        long elapsed = System.currentTimeMillis() - startedAt;
-        result.put("elapsedMs", elapsed);
-
-        if (vec == null) {
-            // embed() 已把真实原因写进日志，这里只能给出排查方向
-            result.put("ok", false);
-            result.put("message", "Embedding 返回空。常见原因："
-                + "Ollama 未启动 / 模型 bge-m3 未拉取 / endpoint 配错 / 云端 Key 无效或额度不足。"
-                + "请查看后端日志中 'Embedding failed' 一行获取真实异常。");
-            result.put("hint", "检查 app.embedding.use-ollama 与实际 provider 是否一致，"
-                + "以及 application.yml（或环境变量 APP_EMBEDDING_*）中的 endpoint 是否可达。");
-            logger.log("ERROR", "[Desktop] Embedding 测试失败（返回空向量）");
-            return result;
-        }
-
-        int dim = vec.length;
-        result.put("ok", true);
-        result.put("dim", dim);
-        // 维度必须与 SQLite 向量索引一致，否则写入会失败。
-        boolean dimMatchesDb = dim == 1024;
-        result.put("dimMatchesDbSchema", dimMatchesDb);
-        if (!dimMatchesDb) {
-            result.put("message", "当前 Embedding 向量维度为 " + dim
-                + "，请确认所选模型与本地 SQLite 向量索引配置一致。");
-        }
-        logger.log("INFO", "[Desktop] Embedding 测试成功 dim=" + dim + " 耗时=" + elapsed + "ms");
+        result.put("message", embeddingService.hint());
+        result.put("elapsedMs", System.currentTimeMillis() - startedAt);
         return result;
     }
 
@@ -552,7 +562,7 @@ public class DesktopController {
      * <p>请求体：{@code {"mode":"AUTO|OLLAMA|DOUBAO","apiKey":"...","endpoint":"...","model":"..."}}
      * <ul>
      *   <li>{@code mode} 为三态开关：AUTO 优先 Ollama 自动降级；OLLAMA / DOUBAO 强制指定</li>
-     *   <li>{@code apiKey} 由 Electron 主进程从加密存储解密后传入；留空表示不修改</li>
+     *   <li>{@code apiKey} 由 Electron 主进程从加密存储解密后传入；空字符串清除运行时密钥</li>
      *   <li>{@code clearApiKey=true} 显式清除</li>
      * </ul>
      * 保存后立刻 {@code refresh()}，前端无需重启即可看到新状态。
@@ -566,16 +576,14 @@ public class DesktopController {
                 return Map.of("status", "error",
                     "message", "mode 必须是 AUTO / OLLAMA / DOUBAO 之一，收到: " + mode);
             }
-            if (Boolean.parseBoolean(String.valueOf(body.getOrDefault("clearApiKey", "false")))) {
-                embeddingConfig.clearDoubaoApiKey();
-            }
-            embeddingConfig.update(
+            boolean clearKey = Boolean.parseBoolean(String.valueOf(body.getOrDefault("clearApiKey", "false")));
+            Map<String, Object> status = embeddingService.applyConfiguration(
                 mode,
-                str(body.get("apiKey")),
-                str(body.get("endpoint")),
-                str(body.get("model"))
+                clearKey ? "" : str(body.getOrDefault("apiKey", embeddingConfig.getDoubaoApiKey())),
+                str(body.getOrDefault("endpoint", embeddingConfig.getDoubaoEndpoint())),
+                str(body.getOrDefault("model", embeddingConfig.getDoubaoModel())),
+                Boolean.parseBoolean(String.valueOf(body.getOrDefault("verify", true)))
             );
-            Map<String, Object> status = embeddingService.refresh();
             logger.log("INFO", "[Desktop] Embedding 配置已更新 mode=" + embeddingConfig.getMode()
                 + " provider=" + embeddingService.activeProviderDescription());
             Map<String, Object> result = new LinkedHashMap<>(status);
@@ -619,7 +627,7 @@ public class DesktopController {
     @GetMapping("/llm-config")
     public Map<String, Object> getLlmConfig() {
         return Map.of(
-            "hasApiKey", dynamicLlmConfig.hasOverride(),
+            "hasApiKey", !dynamicLlmConfig.getApiKey().isBlank(),
             "model", dynamicLlmConfig.getModel() != null ? dynamicLlmConfig.getModel() : "",
             "baseUrl", dynamicLlmConfig.getBaseUrl() != null ? dynamicLlmConfig.getBaseUrl() : "",
             "hasSystemPrompt", dynamicLlmConfig.hasSystemPrompt()
@@ -642,7 +650,12 @@ public class DesktopController {
                 cfg.url = String.valueOf(s.getOrDefault("url", ""));
                 cfg.apiKey = String.valueOf(s.getOrDefault("apiKey", ""));
                 cfg.type = String.valueOf(s.getOrDefault("type", "stream"));
-                cfg.enabled = Boolean.parseBoolean(String.valueOf(s.getOrDefault("enabled", "true")));
+                cfg.enabled = true; // Legacy global switches are replaced by per-task / selection.
+                // The fixed internal bridge is an application-owned tool source, regardless of legacy switches.
+                if ("desktop-tools".equals(cfg.id) && "http://127.0.0.1:9339".equals(cfg.url.replaceAll("/$", ""))) {
+                    cfg.source = "DESKTOP_BUILTIN";
+                    cfg.enabled = true;
+                }
                 Object timeout = s.get("timeout");
                 if (timeout instanceof Number) cfg.timeout = ((Number) timeout).intValue();
                 if (!cfg.id.isBlank() && !cfg.url.isBlank()) configs.add(cfg);
@@ -676,12 +689,21 @@ public class DesktopController {
         return Map.of("status", "ok", "skills", skillStore.getAll());
     }
 
+    @GetMapping("/skills/catalog")
+    public Map<String, Object> skillCatalog() {
+        List<Map<String, Object>> catalog = new ArrayList<>();
+        for (int offset = 0; offset < skillStore.getNames().size(); offset += 50)
+            catalog.addAll(skillStore.catalog("", offset, 50));
+        return Map.of("status", "ok", "skills", catalog);
+    }
+
     /**
      * 返回所有可用工具清单（名称 + 描述 + 参数 + 分组），供前端 skill 生成 LLM 参考。
      */
     @GetMapping("/tools/catalog")
     public Map<String, Object> getToolCatalog() {
         try {
+            mcpManager.refreshToolCatalog();
             java.util.List<Map<String, Object>> catalog = aiService.getToolCatalog();
             logger.log("INFO", "[Desktop] 工具目录已返回: " + catalog.size() + " 个工具");
             return Map.of("status", "ok", "tools", catalog);
@@ -703,6 +725,7 @@ public class DesktopController {
             return Map.of("status", "error", "message", "描述不能为空");
         }
         try {
+            mcpManager.refreshToolCatalog();
             Map<String, Object> result = aiService.generateSkill(description, skillName);
             logger.log("INFO", "[Desktop] Skill 生成: " + result.getOrDefault("name", "?"));
             return result;
@@ -751,6 +774,7 @@ public class DesktopController {
         event.put("promptTokens", result.promptTokens());
         event.put("completionTokens", result.completionTokens());
         event.put("totalTokens", result.totalTokens());
+        event.put("estimated", result.estimated());
         String json = mapper.writeValueAsString(event) + "\n";
         out.write(json.getBytes(StandardCharsets.UTF_8));
     }

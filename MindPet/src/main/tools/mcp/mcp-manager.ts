@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import * as fs from 'fs'
 import { join } from 'path'
 import { getDefaultDataDir } from '../../storage-path'
+import type { ToolResult } from '../core/types'
 import { McpNameMapper } from './mcp-name-mapper.js'
 import {
   loadSecureSystemMcpConfig,
@@ -19,7 +20,8 @@ export interface McpServerConfig {
   apiKey: string
   hasApiKey?: boolean
   type?: 'sse' | 'stream' | 'auto'
-  enabled: boolean
+  enabled: boolean // legacy persistence field; task selection is controlled by /
+  source?: 'DESKTOP_BUILTIN' | 'USER_MCP'
   description?: string
   tools?: any[] // 工具定义缓存字段
   timeout?: number // 超时时间（秒），可选
@@ -38,6 +40,12 @@ export class McpManager {
   private pendingConfigs: McpServerConfig[] = []
   public systemMcpConfig: { servers: McpServerConfig[] } = { servers: [] }
   private toolsCache: Record<string, any[]> = {}
+  private connecting = new Map<string, Promise<boolean>>()
+  private failedConnections = new Map<string, { signature: string; until: number }>()
+  private catalogRevision = 0
+  private connectionSignature(config: McpServerConfig): string {
+    return JSON.stringify([config.url, config.type, config.apiKey])
+  }
 
 
   private constructor() {}
@@ -52,7 +60,8 @@ export class McpManager {
   }
 
   private displayEndpoint(config: McpServerConfig): string {
-    return config.url
+    try { const url = new URL(config.url); return url.origin + url.pathname }
+    catch { return '无效的服务地址' }
   }
 
   private createTransport(config: McpServerConfig): McpClientTransport {
@@ -77,8 +86,10 @@ export class McpManager {
 
   // 设置配置但不立即连接（懒加载模式）
   public setConfigs(configs: McpServerConfig[]) {
+    this.catalogRevision++
     // 1. 同步将缓存的 tools 还原到新配置的内存对象中，防 tools 缓存丢失
-    this.systemMcpConfig.servers = configs.map(s => {
+    this.systemMcpConfig.servers = configs.map(config => {
+      const s = { ...config, enabled: true, source: config.id === 'desktop-tools' ? 'DESKTOP_BUILTIN' as const : 'USER_MCP' as const }
       if (this.toolsCache[s.id]) {
         return { ...s, tools: this.toolsCache[s.id] }
       }
@@ -93,7 +104,8 @@ export class McpManager {
     // 同时断开已不再启用的旧连接
     const enabledIds = this.pendingConfigs.map(c => c.id)
     for (const [id, conn] of this.connections.entries()) {
-      if (!enabledIds.includes(id)) {
+      const current = this.pendingConfigs.find(config => config.id === id)
+      if (!enabledIds.includes(id) || !current || this.connectionSignature(current) !== this.connectionSignature(conn.config)) {
         console.log(`[MCP] 断开已禁用的服务: ${conn.config.name} (${id})`)
         conn.client.close().catch(() => {})
         this.connections.delete(id)
@@ -103,9 +115,11 @@ export class McpManager {
 
   // 仅在首次加载、且发现有启用服务未缓存工具 Schema 时，才进行后台连接以拉取定义
   public async ensureConnected(): Promise<void> {
-    const configsToConnect = this.systemMcpConfig.servers.filter(
-      s => s.enabled && this.isRunnable(s) && (!s.tools || s.tools.length === 0)
-    )
+    const configsToConnect = this.systemMcpConfig.servers.filter(s => {
+      const failed = this.failedConnections.get(s.id)
+      return s.enabled && this.isRunnable(s) && (!s.tools || s.tools.length === 0)
+        && !(failed?.signature === this.connectionSignature(s) && failed.until > Date.now())
+    })
     if (configsToConnect.length === 0) return
 
     const needingConnection = configsToConnect.filter(config => !this.connections.has(config.id))
@@ -116,102 +130,35 @@ export class McpManager {
   }
 
   public async connectAll(configs: McpServerConfig[]) {
-    const configsToConnect = configs.filter(c => c.enabled && this.isRunnable(c))
-    const activeIds = configsToConnect.map(c => c.id)
-
-    // 1. 关闭不再活动或被禁用的连接
-    for (const [id, conn] of this.connections.entries()) {
-      if (!activeIds.includes(id)) {
-        console.log(`[MCP] 断开并移除服务: ${conn.config.name} (${id})`)
-        try {
-          await conn.client.close()
-        } catch (e) {
-          console.error(`[MCP] 关闭客户端 ${id} 失败`, e)
-        }
-        this.connections.delete(id)
-      }
-    }
-
-    // 2. 并发连接所有需要启用的服务
-    await Promise.all(configsToConnect.map(async (config) => {
-      const existing = this.connections.get(config.id)
-      
-      // 如果已存在连接，且参数没有变化，则无需重连
-      if (
-        existing &&
-        existing.config.url === config.url &&
-        existing.config.apiKey === config.apiKey &&
-        existing.config.type === config.type
-      ) {
-        return
-      }
-
-      // 否则，先断开旧连接
-      if (existing) {
-        console.log(`[MCP] 配置变更，正在重新连接服务: ${config.name}`)
-        try {
-          await existing.client.close()
-        } catch {}
-        this.connections.delete(config.id)
-      }
-
-      console.log(`[MCP] 正在建立服务连接: ${config.name} -> ${this.displayEndpoint(config)}`)
-      try {
-        let transport: McpClientTransport
-        let client = new Client(
-          { name: 'MindPet-Client', version: '1.0.0' },
-          { capabilities: {} }
-        )
-
-        const connectTimeout = (ms: number) => new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`连接超时 (${ms}ms)`)), ms)
-        )
-
-        const mcpType = config.type || 'stream'
-
-        if (mcpType === 'stream') {
-          transport = this.createTransport(config)
-          await Promise.race([client.connect(transport), connectTimeout(5000)])
-          console.log(`[MCP] 服务 ${config.name} 使用 Streamable HTTP 协议连接成功`)
-        } else if (mcpType === 'sse') {
-          transport = this.createTransport(config)
-          await Promise.race([client.connect(transport), connectTimeout(5000)])
-          console.log(`[MCP] 服务 ${config.name} 使用 SSE 协议连接成功`)
-        } else {
-          // auto 模式
-          try {
-            transport = this.createTransport({ ...config, type: 'stream' })
-            await Promise.race([client.connect(transport), connectTimeout(5000)])
-            console.log(`[MCP] 服务 ${config.name} 使用 Streamable HTTP 协议连接成功`)
-          } catch (httpErr: any) {
-            console.warn(`[MCP] Streamable HTTP 连接失败 (${httpErr.message})，正在回退到 SSE 协议...`)
-            client = new Client(
-              { name: 'MindPet-Client', version: '1.0.0' },
-              { capabilities: {} }
-            )
-            transport = this.createTransport({ ...config, type: 'sse' })
-            await Promise.race([client.connect(transport), connectTimeout(5000)])
-            console.log(`[MCP] 服务 ${config.name} 使用 SSE 协议连接成功（降级）`)
-          }
-        }
-
-        const response = await client.listTools()
-        const tools = response.tools || []
-        
-        this.connections.set(config.id, { client, transport, tools, config })
-        this.updateServerToolsCache(config.id, tools)
-        console.log(`[MCP] 服务 ${config.name} 连接成功！加载了 ${tools.length} 个外部工具`)
-      } catch (err) {
-        console.error(`[MCP] 服务 ${config.name} 连接失败:`, err)
-      }
-    }))
+    // This may be a missing-schema subset; setConfigs owns removal of old connections.
+    await Promise.all(configs.filter(c => c.enabled && this.isRunnable(c)).map(config => this.connectSingleServer(config, false)))
   }
 
   // 针对单个服务进行单独连接（被呼叫时按需触发）
-  public async connectSingleServer(config: McpServerConfig): Promise<boolean> {
+  public async connectSingleServer(config: McpServerConfig, force = true): Promise<boolean> {
+    const signature = this.connectionSignature(config)
+    const key = config.id + ':' + signature
+    const pending = this.connecting.get(key)
+    if (pending) return pending
+    const existing = this.connections.get(config.id)
+    if (existing && this.connectionSignature(existing.config) === signature) return true
+    const failure = this.failedConnections.get(config.id)
+    if (!force && failure?.signature === signature && failure.until > Date.now()) return false
+    const operation = this.openSingleServer(config).then(ok => {
+      if (ok) this.failedConnections.delete(config.id)
+      else this.failedConnections.set(config.id, { signature, until: Date.now() + 60000 })
+      return ok
+    }).finally(() => this.connecting.delete(key))
+    this.connecting.set(key, operation)
+    return operation
+  }
+
+  private async openSingleServer(config: McpServerConfig): Promise<boolean> {
     console.log(
       `[MCP] 正在建立单体服务连接: ${config.name} -> ${this.displayEndpoint(config)}`
     )
+    let failedClient: Client | undefined
+    const timers: ReturnType<typeof setTimeout>[] = []
     try {
       let transport: McpClientTransport
       let client = new Client(
@@ -220,9 +167,10 @@ export class McpManager {
       )
 
       const connectTimeout = (ms: number) => new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`连接超时 (${ms}ms)`)), ms)
+        timers.push(setTimeout(() => reject(new Error(`连接超时 (${ms}ms)`)), ms))
       )
 
+      failedClient = client
       const mcpType = config.type || 'stream'
 
       if (mcpType === 'stream') {
@@ -235,27 +183,48 @@ export class McpManager {
         try {
           transport = this.createTransport({ ...config, type: 'stream' })
           await Promise.race([client.connect(transport), connectTimeout(5000)])
-        } catch {
+        } catch (error: any) {
+          if (error?.code === 401 || error?.code === 403) throw error
+          await client.close().catch(() => {})
           client = new Client(
             { name: 'MindPet-Client', version: '1.0.0' },
             { capabilities: {} }
           )
+          failedClient = client
           transport = this.createTransport({ ...config, type: 'sse' })
           await Promise.race([client.connect(transport), connectTimeout(5000)])
         }
       }
 
-      const response = await client.listTools()
-      const tools = response.tools || []
+      const tools = await this.listClientTools(client)
+      const current = this.systemMcpConfig.servers.find(server => server.id === config.id)
+      if (!current || this.connectionSignature(current) !== this.connectionSignature(config)) {
+        await client.close(); return false
+      }
 
       this.connections.set(config.id, { client, transport, tools, config })
       this.updateServerToolsCache(config.id, tools)
       console.log(`[MCP] 服务 ${config.name} 按需握手成功！更新了 ${tools.length} 个工具`)
       return true
-    } catch (err) {
-      console.error(`[MCP] 握手单体服务 ${config.name} 失败:`, err)
+    } catch (err: any) {
+      await failedClient?.close().catch(() => {})
+      if (err?.code === 401 || err?.code === 403) console.warn(`[MCP] ${config.name} 返回 HTTP ${err.code}：服务拒绝访问，请核对服务地址、API Token 和账号权限；后台暂停重试 60 秒。`)
+      console.error(`[MCP] 握手单体服务 ${config.name} 失败 (${err?.code || '连接或协议异常'})`)
       return false
-    }
+    } finally { timers.forEach(clearTimeout) }
+  }
+
+  private async listClientTools(client: Client): Promise<any[]> {
+    const tools: any[] = [], seen = new Set<string>()
+    let cursor: string | undefined
+    do {
+      const response = await client.listTools(cursor ? { cursor } : undefined, { timeout: 15000 })
+      tools.push(...(response.tools || []))
+      cursor = response.nextCursor
+      if (cursor && (seen.has(cursor) || seen.size >= 128)) throw new Error('MCP 工具目录分页异常')
+      if (cursor) seen.add(cursor)
+    } while (cursor)
+    return tools
   }
 
   // 更新工具缓存并持久化写入磁盘缓存文件
@@ -287,67 +256,6 @@ export class McpManager {
   }
 
 
-  private async reconnectServer(id: string): Promise<boolean> {
-    const conn = this.connections.get(id)
-    if (!conn) return false
-    const config = conn.config
-
-    console.log(`[MCP] 正在尝试重连服务: ${config.name} (${id})`)
-    try {
-      try {
-        await conn.client.close()
-      } catch {}
-      this.connections.delete(id)
-
-      let transport: McpClientTransport
-      let client = new Client(
-        { name: 'MindPet-Client', version: '1.0.0' },
-        { capabilities: {} }
-      )
-
-      const connectTimeout = (ms: number) => new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`连接超时 (${ms}ms)`)), ms)
-      )
-
-      const mcpType = config.type || 'stream'
-
-      if (mcpType === 'stream') {
-        transport = this.createTransport(config)
-        await Promise.race([client.connect(transport), connectTimeout(5000)])
-        console.log(`[MCP] 服务 ${config.name} 重连成功 (Streamable HTTP)`)
-      } else if (mcpType === 'sse') {
-        transport = this.createTransport(config)
-        await Promise.race([client.connect(transport), connectTimeout(5000)])
-        console.log(`[MCP] 服务 ${config.name} 重连成功 (SSE)`)
-      } else {
-        try {
-          transport = this.createTransport({ ...config, type: 'stream' })
-          await Promise.race([client.connect(transport), connectTimeout(5000)])
-          console.log(`[MCP] 服务 ${config.name} 重连成功 (Streamable HTTP)`)
-        } catch (httpErr: any) {
-          console.warn(`[MCP] 服务 ${config.name} 重连 Streamable HTTP 失败，回退到 SSE...`)
-          client = new Client(
-            { name: 'MindPet-Client', version: '1.0.0' },
-            { capabilities: {} }
-          )
-          transport = this.createTransport({ ...config, type: 'sse' })
-          await Promise.race([client.connect(transport), connectTimeout(5000)])
-          console.log(`[MCP] 服务 ${config.name} 重连成功 (SSE)`)
-        }
-      }
-
-      const response = await client.listTools()
-      const tools = response.tools || []
-
-      this.connections.set(config.id, { client, transport, tools, config })
-      this.updateServerToolsCache(config.id, tools)
-      return true
-    } catch (err) {
-      console.error(`[MCP] 服务 ${config.name} 重连失败:`, err)
-      return false
-    }
-  }
-
   public async disconnectAll() {
     for (const conn of this.connections.values()) {
       try {
@@ -374,7 +282,7 @@ export class McpManager {
       for (const t of serverTools) {
         allTools.push({
           ...t,
-          name: McpNameMapper.toSafeModelName(t.name)
+          name: McpNameMapper.forServer(server.id, t.name)
         })
       }
     }
@@ -410,140 +318,67 @@ export class McpManager {
     return list
   }
 
-  public hasTool(name: string): boolean {
-    const realName = McpNameMapper.toOriginalName(name)
-    for (const server of this.systemMcpConfig.servers) {
-      if (!server.enabled) continue
-      
-      const conn = this.connections.get(server.id)
-      if (conn && conn.tools.some((t: any) => t.name === realName)) {
-        return true
-      }
-      if (server.tools && Array.isArray(server.tools) && server.tools.some((t: any) => t.name === realName)) {
-        return true
-      }
-    }
-    return false
+  public resolveTool(name: string): { server: McpServerConfig; tool: any } | undefined {
+    const target = McpNameMapper.target(name)
+    const realName = target?.toolName || McpNameMapper.toOriginalName(name)
+    const matches = this.systemMcpConfig.servers.filter(server => server.enabled && (!target || server.id === target.serverId))
+      .flatMap(server => (this.connections.get(server.id)?.tools || server.tools || [])
+        .filter(tool => tool.name === realName).map(tool => ({ server, tool })))
+    return matches.length === 1 ? matches[0] : undefined
   }
+
+  public hasTool(name: string): boolean { return Boolean(this.resolveTool(name)) }
 
   public async getServerTools(serverId: string): Promise<any[]> {
     const server = this.systemMcpConfig.servers.find(item => item.id === serverId)
     if (!server || !server.enabled || !this.isRunnable(server)) return []
-    if (!this.connections.has(server.id)) {
-      const connected = await this.connectSingleServer(server)
-      if (!connected) return []
+    const existing = this.connections.has(server.id)
+    if (!await this.connectSingleServer(server, false)) throw new Error('MCP 服务连接失败或正在冷却，请稍后重试')
+    const connection = this.connections.get(server.id)!
+    if (existing) {
+      connection.tools = await this.listClientTools(connection.client)
+      this.updateServerToolsCache(server.id, connection.tools)
     }
-    return [...(this.connections.get(server.id)?.tools || [])]
+    return [...connection.tools]
   }
 
-  public async executeTool(name: string, args: any, abortSignal?: AbortSignal, isRetry = false): Promise<string> {
-    const realName = McpNameMapper.toOriginalName(name)
-    let targetServer: McpServerConfig | null = null
-    for (const server of this.systemMcpConfig.servers) {
-      if (!server.enabled) continue
-      
-      const conn = this.connections.get(server.id)
-      if (conn && conn.tools.some((t: any) => t.name === realName)) {
-        targetServer = server
-        break
-      }
-      if (server.tools && Array.isArray(server.tools) && server.tools.some((t: any) => t.name === realName)) {
-        targetServer = server
-        break
-      }
-    }
-
-    if (!targetServer) {
-      return `错误：未在任何已启用的 MCP 服务中找到工具: ${name}`
-    }
-
-    let targetConn = this.connections.get(targetServer.id)
-    if (!targetConn) {
-      console.log(`[MCP] 工具 ${realName} 被调用，触发对服务 ${targetServer.name} 的按需握手连接...`)
-      const success = await this.connectSingleServer(targetServer)
-      if (!success) {
-        return `错误：工具 ${realName} 被调用，但建立服务连接 ${targetServer.name} 失败`
-      }
-      targetConn = this.connections.get(targetServer.id)
-    }
-
-    if (!targetConn) {
-      return `错误：未在任何已连接的 MCP 服务中找到工具: ${realName}`
-    }
-
-    const targetConnId = targetServer.id
-
-    let timeoutMs = 60000 // 默认放宽到 60 秒
-    if (args && typeof args.timeout_seconds === 'number') {
-      timeoutMs = args.timeout_seconds * 1000
-    } else if (targetServer.timeout && typeof targetServer.timeout === 'number') {
-      timeoutMs = targetServer.timeout * 1000
-    }
-
-    let timer: NodeJS.Timeout | null = null
-    let onAbort: (() => void) | null = null
-
+  public async executeTool(name: string, args: any, abortSignal?: AbortSignal): Promise<ToolResult> {
+    const target = this.resolveTool(name)
+    const fail = (message: string, outcome: 'unknown' | 'not_executed'): ToolResult => ({
+      content: message, success: false, outcome, error: { message }
+    })
+    if (!target) return fail(`工具不存在或名称有歧义: ${name}`, 'not_executed')
+    if (abortSignal?.aborted) throw new Error('UserAborted')
+    if (!this.connections.has(target.server.id) && !await this.connectSingleServer(target.server))
+      return fail(`无法连接 MCP 服务 ${target.server.name}`, 'not_executed')
+    if (abortSignal?.aborted) throw new Error('UserAborted')
+    const conn = this.connections.get(target.server.id)
+    if (!conn) return fail('MCP 连接不可用', 'not_executed')
+    const seconds = Number(target.server.timeout || 60)
+    const timeout = Math.min(600, Math.max(1, Number.isFinite(seconds) ? seconds : 60)) * 1000
+    const controller = new AbortController()
+    const onAbort = (): void => controller.abort()
+    abortSignal?.addEventListener('abort', onAbort, { once: true })
+    if (abortSignal?.aborted) controller.abort()
+    const timer = setTimeout(() => controller.abort(), timeout)
     try {
-      const promises: Promise<any>[] = []
-
-      // 1. 启动工具调用
-      const callPromise = targetConn.client.callTool({ name: realName, arguments: args })
-      promises.push(callPromise)
-
-      // 2. 注入超时限制
-      if (timeoutMs > 0) {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`MCP 工具调用超时（限制 ${timeoutMs / 1000} 秒）`)), timeoutMs)
-        })
-        promises.push(timeoutPromise)
+      const response = await conn.client.callTool({ name: target.tool.name, arguments: args }, undefined,
+        { signal: controller.signal, timeout }) as any
+      const blocks = Array.isArray(response.content) ? response.content : []
+      const text = blocks.filter(c => c.type === 'text').map(c => c.text).join('\n')
+      return {
+        content: text || 'MCP 已返回结果，详见结构化内容。',
+        success: response.isError !== true, outcome: 'confirmed',
+        state: { contentBlocks: blocks, structuredContent: response.structuredContent },
+        ...(response.isError ? { error: { message: text || 'MCP 工具返回失败' } } : {})
       }
-
-      // 3. 注入中止信号
-      if (abortSignal) {
-        if (abortSignal.aborted) {
-          throw new Error('UserAborted')
-        }
-        const abortPromise = new Promise<never>((_, reject) => {
-          onAbort = () => reject(new Error('UserAborted'))
-          abortSignal.addEventListener('abort', onAbort)
-        })
-        promises.push(abortPromise)
-      }
-
-      const response = await Promise.race(promises)
-
-      if (response && response.content) {
-        return (response.content as any[])
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.text)
-          .join('\n')
-      }
-      return 'MCP 工具执行完毕，但未返回可读文本。'
-    } catch (err: any) {
-      console.error(`[MCP] 调用外部工具 ${realName} 失败`, err)
-
-      if (err.message === 'UserAborted') {
-        throw err
-      }
-
-      if (!isRetry) {
-        console.log(`[MCP] 检测到服务 ${targetConn.config.name} 的连接可能已失效/报错，正在尝试自动重连...`)
-        const success = await this.reconnectServer(targetConnId)
-        if (success) {
-          console.log(`[MCP] 服务 ${targetConn.config.name} 重连成功，正在重新执行工具 ${name}...`)
-          return this.executeTool(name, args, abortSignal, true)
-        }
-      }
-
-      return `错误：调用外部 MCP 工具失败: ${err.message || err}`
+    } catch {
+      return fail('MCP 调用中断或超时，操作结果未知。请先检查实际状态，禁止直接重复提交。', 'unknown')
     } finally {
-      if (timer) clearTimeout(timer)
-      if (abortSignal && onAbort) {
-        abortSignal.removeEventListener('abort', onAbort)
-      }
+      clearTimeout(timer)
+      abortSignal?.removeEventListener('abort', onAbort)
     }
   }
-
 
   public loadSystemMcpConfig(): { servers: McpServerConfig[] } {
     try {
@@ -589,21 +424,30 @@ export class McpManager {
     const rawServers = Array.isArray(config.servers) ? config.servers as McpServerConfig[] : []
     // 保护 Desktop MCP Server：前端同步时不会携带，始终从内存保留
     const desktopEntry = this.systemMcpConfig.servers.find(s => s.id === 'desktop-tools')
-    let merged = rawServers.filter(server => !this.isLegacyPaddleMcpConfig(server))
-    if (desktopEntry && !merged.find(s => s.id === 'desktop-tools')) {
-      merged.push(desktopEntry)
-    }
+    const external = rawServers.filter(server => server.id !== 'desktop-tools' && !this.isLegacyPaddleMcpConfig(server))
+      .map(server => ({ ...server, enabled: true, source: 'USER_MCP' as const }))
+    // The bridge capability is process-local. Persist only user-configured external services.
     const saved = saveSecureSystemMcpConfig({
       ...config,
-      servers: merged
+      servers: external
     })
-    this.systemMcpConfig = { servers: saved.servers as McpServerConfig[] }
-    this.setConfigs(this.systemMcpConfig.servers)
+    this.setConfigs([...(saved.servers as McpServerConfig[]), ...(desktopEntry ? [desktopEntry] : [])])
     return this.systemMcpConfig
   }
 
   public getSanitizedSystemMcpConfig(): RuntimeMcpConfig {
     return sanitizeSystemMcpConfig(this.systemMcpConfig as RuntimeMcpConfig)
+  }
+
+  public getBackendConfig(): { servers: McpServerConfig[] } {
+    return { servers: this.systemMcpConfig.servers.map(server => server.source === 'DESKTOP_BUILTIN'
+      ? { ...server }
+      : { ...server, url: `mindpet-mcp:${encodeURIComponent(server.id)}?revision=${this.catalogRevision}`, apiKey: '', hasApiKey: false }) }
+  }
+
+  public registerDesktopBridge(config: McpServerConfig): void {
+    this.setConfigs([...this.systemMcpConfig.servers.filter(server => server.id !== 'desktop-tools'),
+      { ...config, id: 'desktop-tools', source: 'DESKTOP_BUILTIN', enabled: true }])
   }
 
 }

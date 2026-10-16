@@ -4,7 +4,10 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.FileAlreadyExistsException;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.HexFormat;
 
 public final class SqliteNative {
     private SqliteNative() {}
@@ -25,10 +28,25 @@ public final class SqliteNative {
         else return null;
         ClassPathResource resource = new ClassPathResource("native/sqlite-vec/" + platform + "/" + file);
         if (!resource.exists()) return null;
-        Path target = Path.of(System.getProperty("java.io.tmpdir"), "mindpet", "sqlite-vec-0.1.9", platform, file);
+        byte[] binary;
+        try (var input = resource.getInputStream()) { binary = input.readAllBytes(); }
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(binary));
+        // A loaded DLL cannot be replaced on Windows. Content-addressed files are
+        // immutable and can be shared safely by different running app versions.
+        Path target = Path.of(System.getProperty("java.io.tmpdir"), "mindpet", "sqlite-vec-0.1.9", platform, hash, file);
         Files.createDirectories(target.getParent());
-        try (var input = resource.getInputStream()) {
-            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+        if (Files.isRegularFile(target) && Arrays.equals(binary, Files.readAllBytes(target))) return target;
+        Path staging = Files.createTempFile(target.getParent(), "vec-", ".tmp");
+        try {
+            Files.write(staging, binary);
+            try { Files.move(staging, target); }
+            catch (FileAlreadyExistsException concurrentExtraction) {
+                if (!Arrays.equals(binary, Files.readAllBytes(target))) {
+                    throw new java.io.IOException("Cached SQLite extension does not match its content hash", concurrentExtraction);
+                }
+            }
+        } finally {
+            Files.deleteIfExists(staging);
         }
         return target;
     }

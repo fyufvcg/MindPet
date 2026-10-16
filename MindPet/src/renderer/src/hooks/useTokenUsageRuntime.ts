@@ -3,7 +3,6 @@ import { useEffect, useRef } from 'react'
 
 const MAX_TOKEN_LOGS = 1000
 const EVENT_BATCH_DELAY_MS = 200
-const PERSIST_DELAY_MS = 1000
 
 export interface RuntimeTokenLog {
   id: string
@@ -12,6 +11,7 @@ export interface RuntimeTokenLog {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  estimated?: boolean
   timestamp: number
   sessionId?: string
   messageId?: number
@@ -25,22 +25,10 @@ interface TokenUsageRuntimeOptions {
 /** Batches high-frequency token events and persists a bounded log at most once per second. */
 export function useTokenUsageRuntime({ setTokenLogs }: TokenUsageRuntimeOptions): void {
   const pendingRef = useRef<RuntimeTokenLog[]>([])
-  const latestLogsRef = useRef<RuntimeTokenLog[]>([])
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!window.api.onTokenUsage) return undefined
-
-    const persistLatest = () => {
-      persistTimerRef.current = null
-      localStorage.setItem('mindpet_token_logs', JSON.stringify(latestLogsRef.current))
-    }
-
-    const schedulePersist = () => {
-      if (persistTimerRef.current) return
-      persistTimerRef.current = setTimeout(persistLatest, PERSIST_DELAY_MS)
-    }
 
     const flushPending = () => {
       flushTimerRef.current = null
@@ -48,10 +36,8 @@ export function useTokenUsageRuntime({ setTokenLogs }: TokenUsageRuntimeOptions)
       const batch = pendingRef.current
       pendingRef.current = []
       setTokenLogs(previous => {
-        const next = [...previous, ...batch].slice(-MAX_TOKEN_LOGS)
-        latestLogsRef.current = next
-        schedulePersist()
-        return next
+        const clearedAt = Number(localStorage.getItem('mindpet_token_logs_cleared_at')) || 0
+        return [...previous, ...batch.filter(item => item.timestamp > clearedAt)].slice(-MAX_TOKEN_LOGS)
       })
     }
 
@@ -59,6 +45,7 @@ export function useTokenUsageRuntime({ setTokenLogs }: TokenUsageRuntimeOptions)
       pendingRef.current.push({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         model: data.model || 'unknown',
+        estimated: Boolean(data.estimated),
         provider: data.provider || 'unknown',
         promptTokens: data.promptTokens || 0,
         completionTokens: data.completionTokens || 0,
@@ -77,8 +64,6 @@ export function useTokenUsageRuntime({ setTokenLogs }: TokenUsageRuntimeOptions)
       unsubscribe()
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current)
       flushPending()
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
-      if (latestLogsRef.current.length > 0) persistLatest()
     }
   }, [setTokenLogs])
 }

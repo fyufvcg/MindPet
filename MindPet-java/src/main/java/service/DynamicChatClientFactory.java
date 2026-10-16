@@ -34,7 +34,8 @@ public class DynamicChatClientFactory {
     }
 
     public boolean isConfigured() {
-        return !isBlank(effectiveApiKey()) && !isBlank(effectiveBaseUrl()) && !isBlank(effectiveModel());
+        var settings = effectiveSettings();
+        return !isBlank(settings.apiKey()) && !isBlank(settings.baseUrl()) && !isBlank(settings.model());
     }
 
     /** 当前生效的 API Key（已解析静态/动态回退） */
@@ -60,8 +61,13 @@ public class DynamicChatClientFactory {
             .baseUrl(url)
             .apiKey(apiKey == null ? "" : apiKey.trim())
             .completionsPath(completionsPath)
+            .restClientBuilder(org.springframework.web.client.RestClient.builder()
+                .requestFactory(new org.springframework.http.client.OkHttp3ClientHttpRequestFactory(
+                    new okhttp3.OkHttpClient.Builder().connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .callTimeout(25, java.util.concurrent.TimeUnit.SECONDS).build())))
             .build();
-        OpenAiChatModel chatModel = OpenAiChatModel.builder().openAiApi(api).build();
+        OpenAiChatModel chatModel = OpenAiChatModel.builder().openAiApi(api)
+            .retryTemplate(org.springframework.retry.support.RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build();
         ChatClient.Builder builder = ChatClient.builder(chatModel);
         if (model != null && !model.isBlank()) {
             builder = builder.defaultOptions(OpenAiChatOptions.builder().model(model.trim()).build());
@@ -76,6 +82,7 @@ public class DynamicChatClientFactory {
 
     /** Builds a background client whose total HTTP call timeout fits the caller's remaining budget. */
     public ChatClient buildBackground(long timeoutMillis) {
+        var settings = effectiveSettings();
         long boundedTimeoutMs = Math.max(1, Math.min(60_000, timeoutMillis));
         okhttp3.OkHttpClient http = new okhttp3.OkHttpClient.Builder()
             .connectTimeout(Math.min(10_000, boundedTimeoutMs), java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -84,21 +91,22 @@ public class DynamicChatClientFactory {
             .callTimeout(boundedTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS).build();
         var rest = org.springframework.web.client.RestClient.builder()
             .requestFactory(new org.springframework.http.client.OkHttp3ClientHttpRequestFactory(http));
-        OpenAiApi api = OpenAiApi.builder().baseUrl(effectiveBaseUrl()).apiKey(effectiveApiKey())
+        OpenAiApi api = OpenAiApi.builder().baseUrl(normalizeUrl(settings.baseUrl())).apiKey(settings.apiKey())
             .completionsPath(completionsPath).restClientBuilder(rest).build();
-        var options = OpenAiChatOptions.builder().model(effectiveModel());
-        if (effectiveModel().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) options.temperature(null);
+        var options = OpenAiChatOptions.builder().model(settings.model());
+        if (settings.model().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) options.temperature(null);
         var model = OpenAiChatModel.builder().openAiApi(api).defaultOptions(options.build())
             .retryTemplate(org.springframework.retry.support.RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build();
         return ChatClient.builder(model).build();
     }
 
     public ChatClient build() {
-        if (!dynamicConfig.hasOverride()) return staticBuilder.build();
+        var settings = dynamicConfig.snapshot();
+        if (settings == null) return staticBuilder.build();
 
-        String key = dynamicConfig.getApiKey();
-        String url = effectiveBaseUrl();
-        String fingerprint = url + "|" + key + "|" + effectiveModel();
+        String key = settings.apiKey();
+        String url = normalizeUrl(settings.baseUrl());
+        String fingerprint = url + "|" + key + "|" + settings.model();
         ChatClient current = cachedDynamicClient;
         if (current != null && fingerprint.equals(cachedFingerprint)) return current;
 
@@ -109,8 +117,8 @@ public class DynamicChatClientFactory {
                     .apiKey(key)
                     .completionsPath(completionsPath)
                     .build();
-                var options = OpenAiChatOptions.builder().model(effectiveModel());
-                if (effectiveModel().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) {
+                var options = OpenAiChatOptions.builder().model(settings.model());
+                if (settings.model().toLowerCase(java.util.Locale.ROOT).startsWith("gpt-6")) {
                     options.temperature(null);
                 }
                 OpenAiChatModel model = OpenAiChatModel.builder().openAiApi(api)
@@ -148,6 +156,17 @@ public class DynamicChatClientFactory {
 
     private String effectiveApiKey() {
         return dynamicConfig.effectiveApiKey(config.getApi().getKey());
+    }
+
+    private DynamicLlmConfig.Snapshot effectiveSettings() {
+        var settings = dynamicConfig.snapshot();
+        return settings != null ? settings : new DynamicLlmConfig.Snapshot(
+            config.getApi().getKey(), config.getApi().getUrl(), config.getModel(), "");
+    }
+
+    private String normalizeUrl(String url) {
+        return url != null && url.endsWith("/chat/completions")
+            ? url.substring(0, url.length() - "/chat/completions".length()) : url;
     }
 
     private String effectiveBaseUrl() {

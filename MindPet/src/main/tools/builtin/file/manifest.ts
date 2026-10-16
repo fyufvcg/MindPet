@@ -11,7 +11,7 @@ export const fileManifest: ToolManifest = {
   api: [
     {
       name: 'read_file',
-      description: '读取任意文件内容。支持 PDF、Word、Excel、CSV 及文本文件。支持使用 start_line 和 end_line 进行精确分页按行读取（对于文本和长网页 markdown 非常有用）。默认对大文件只读取前 30000 字符。',
+      description: '读取任意文件内容。支持 PDF、Word、Excel、CSV 及文本文件。支持使用 start_line 和 end_line 进行精确分页按行读取（对于文本和长网页 markdown 非常有用）。默认最多读取 300 行、12000 字符（Markdown 同样适用）。长单行或精确续读可用 offset/length 按字符分页。',
       parameters: {
         type: 'object',
         properties: {
@@ -27,6 +27,8 @@ export const fileManifest: ToolManifest = {
             type: 'number',
             description: '结束行号 (1-indexed)，可选'
           },
+          offset: { type: 'number', minimum: 0, description: '可选。原始提取正文的字符偏移量，从 0 开始；指定后优先于行范围。' },
+          length: { type: 'number', minimum: 1, maximum: 12000, description: '字符分页长度，默认 8000，最多 12000；配合 offset 使用。' },
           sheet_name: {
             type: 'string',
             description: 'Excel 工作表名称（可选；未填时读取全部工作表）'

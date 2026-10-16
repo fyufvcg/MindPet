@@ -1,12 +1,11 @@
+import { scheduleClient } from '../../../agent/schedule-client'
+import { randomUUID } from 'crypto'
 import { ipcMain } from 'electron'
 
 import * as os from 'os'
-import * as fs from 'fs'
-import { join } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { IToolExecutor, ToolContext, ToolResult } from '../../core/types'
-import { getActiveStorageDir } from '../../utils/paths'
 import { permissionManager } from '../../security/permission-manager'
 import { clarificationManager } from '../../interaction/clarification-manager'
 
@@ -199,56 +198,22 @@ if (-not $task.Wait(15000)) {
         }
       }
 
-      // 3. manage_cron_task
       if (api === 'manage_cron_task') {
-        const { action_type, name: taskName, interval, action, taskId } = args
-        const cronPath = join(getActiveStorageDir(), 'cron_tasks.json')
-        let tasks: any[] = []
-        if (fs.existsSync(cronPath)) {
-          const data = await fs.promises.readFile(cronPath, 'utf-8')
-          tasks = JSON.parse(data)
-        }
-
+        const { action_type, name, interval, action, taskId } = args
         if (action_type === 'create') {
-          if (!taskName || !interval || !action) {
-            return { content: '创建失败：缺少必要参数（name, interval, action）', success: false }
-          }
-          const newTask = {
-            id: Date.now().toString(),
-            name: taskName,
-            interval: Math.max(2, interval),
-            action: action,
-            isActive: true,
-            triggerCount: 0,
-            lastTriggered: '未触发',
-            logs: []
-          }
-          tasks.push(newTask)
-          await fs.promises.writeFile(cronPath, JSON.stringify(tasks, null, 2), 'utf-8')
-
+          if (!name || !interval || !action) return { content: '创建失败：需要 name、interval、action。', success: false }
+          const id = randomUUID()
+          await scheduleClient.upsert(id, { name, interval: Number(interval), action, isActive: true,
+            workspacePath: context.workspacePath, selectedMcpServerIds: context.selectedMcpServerIds || [] }, context.abortSignal)
           context.event?.sender?.send('api:cron-updated')
-          return {
-            content: JSON.stringify({
-              status: 'success',
-              message: `成功创建定时任务："${taskName}"`,
-              details: `执行周期为每 ${interval} 秒一次，操作指令: "${action}"`
-            }),
-            success: true
-          }
-        } else if (action_type === 'delete') {
-          if (!taskId) {
-            return { content: '删除失败：缺少 taskId 参数', success: false }
-          }
-          const filtered = tasks.filter((t: any) => t.id !== taskId)
-          if (filtered.length === tasks.length) {
-            return { content: `未找到 ID 为 ${taskId} 的定时任务`, success: false }
-          }
-          await fs.promises.writeFile(cronPath, JSON.stringify(filtered, null, 2), 'utf-8')
-
-          context.event?.sender?.send('api:cron-updated')
-          return { content: `已成功删除 ID 为 ${taskId} 的定时任务`, success: true }
+          return { content: JSON.stringify({ success: true, taskId: id, message: '定时任务已保存到后台调度器。' }), success: true }
         }
-        return { content: `未知的操作类型: ${action_type}`, success: false }
+        if (action_type === 'delete' && taskId) {
+          await scheduleClient.delete(String(taskId), context.abortSignal)
+          context.event?.sender?.send('api:cron-updated')
+          return { content: '定时任务已删除。', success: true }
+        }
+        return { content: '参数错误：需要有效的 action_type 和任务参数。', success: false }
       }
 
       return { content: `未知的操作类型: ${api}`, success: false }
@@ -256,7 +221,8 @@ if (-not $task.Wait(15000)) {
       return {
         content: `系统操作异常: ${err.message || err}`,
         success: false,
-        error: { message: err.message || String(err) }
+        error: { message: err.message || String(err) },
+        ...(err.outcome === 'unknown' ? { outcome: 'unknown' as const } : {})
       }
     }
   }

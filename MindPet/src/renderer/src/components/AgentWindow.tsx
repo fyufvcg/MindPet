@@ -173,7 +173,6 @@ export function AgentWindow(): React.JSX.Element {
   const activeSessionId = useAppStoreRaw(state => state.activeSessionId)
   const customModelFile = useAppStoreRaw(state => state.customModelFile)
   const skillsList = useAppStoreRaw(state => state.skillsList)
-  const contextRounds = useAppStoreRaw(state => state.contextRounds)
   const toast = useAppStoreRaw(state => state.toast)
   const activePermissionRequest = useAppStoreRaw(state => state.activePermissionRequest)
   const showFilePanel = useAppStoreRaw(state => state.showFilePanel)
@@ -251,7 +250,6 @@ export function AgentWindow(): React.JSX.Element {
     handleDisconnectSsh: store.handleDisconnectSsh,
     showToast: store.showToast,
     handleRespondPermission: store.handleRespondPermission,
-    toggleSkillEnable: store.toggleSkillEnable,
     setActiveTab: store.setActiveTab,
     setAgentSubTab: store.setAgentSubTab,
     refreshSkillsAndStorage: store.refreshSkillsAndStorage,
@@ -273,7 +271,6 @@ export function AgentWindow(): React.JSX.Element {
     store.handleDisconnectSsh,
     store.showToast,
     store.handleRespondPermission,
-    store.toggleSkillEnable,
     store.setActiveTab,
     store.setAgentSubTab,
     store.refreshSkillsAndStorage,
@@ -775,6 +772,7 @@ export function AgentWindow(): React.JSX.Element {
 
       {/* ── 2. Right Content Area ── */}
       <div className="agent-content-area">
+        {store.sessionLoadError && <div className="agent-load-error" role="alert">会话加载失败，已有记录已保留。<button type="button" onClick={() => { void store.refreshSessions() }}>重新加载</button></div>}
         {/* ── 自定义标题栏 (Custom Titlebar) ── */}
         <div className="window-titlebar">
           <div className="titlebar-tabs-shell">
@@ -886,7 +884,7 @@ export function AgentWindow(): React.JSX.Element {
             {activeTab !== 'chat' && (
               <div className="content-subtitle">
                 {activeTab === 'control' && '管理外部连接、订阅与可用服务'}
-                {activeTab === 'agent' && `管理技能、记忆与 MCP 能力 · ${skillsList.length} 项扩展 · ${contextRounds} 轮上下文`}
+                {activeTab === 'agent' && `管理技能、记忆与 MCP 能力 · ${skillsList.length} 项扩展 · 上下文自动管理`}
                 {activeTab === 'archive' && '查看陪伴分数、数据库记忆与对话历史'}
                 {activeTab === 'knowledge' && '探索实体、关系与可追溯证据'}
                 {activeTab === 'logs' && '实时监测大语言模型调用频率及 Token 开销走势'}
@@ -1051,7 +1049,7 @@ export function AgentWindow(): React.JSX.Element {
                   </div>
                 ) : <div className="companion-preview-empty">还没有可预览的关系</div>}
                 <div className="companion-dock-preview-meta">
-                  <span>{companionPanel === 'memory' ? `${contextRounds} 轮上下文` : `${companionKnowledge?.nodes?.length || 0} 个节点`}</span>
+                  <span>{companionPanel === 'memory' ? `上下文自动管理` : `${companionKnowledge?.nodes?.length || 0} 个节点`}</span>
                   <span>本地存储</span>
                 </div>
               </div>
@@ -1062,7 +1060,7 @@ export function AgentWindow(): React.JSX.Element {
 
             {!companionPanel && <div className="companion-dock-section companion-dock-stats">
               <span className="companion-dock-label">这个工作区</span>
-              <div className="companion-dock-stat"><b>{contextRounds}</b><span>轮上下文</span></div>
+              <div className="companion-dock-stat"><b>自动</b><span>上下文管理</span></div>
               <div className="companion-dock-stat"><b>{activeSessMessages.length}</b><span>条当前消息</span></div>
             </div>}
 

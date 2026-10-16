@@ -29,8 +29,18 @@ export class UnifiedToolExecutor {
     if (!manifest || !executor) {
       if (mcpManager.hasTool(name)) {
         try {
-          const content = await mcpManager.executeTool(name, args, context.abortSignal)
-          return { content, success: true }
+          const target = mcpManager.resolveTool(name)!
+          if (target.tool.annotations?.readOnlyHint !== true) {
+            const approved = await permissionManager.requestCommandPermission({
+              command: `${target.server.name} / ${target.tool.name} ${JSON.stringify(args)}`,
+              execCwd: context.workspacePath || getSessionFilesDir(context.sessionId),
+              sessionId: context.sessionId, sender: context.event?.sender,
+              forcePrompt: true, allowTurnScope: false, abortSignal: context.abortSignal,
+              warning: '外部 MCP 操作未声明只读，请核对操作及参数。只读声明由服务提供，请仅连接可信服务。'
+            })
+            if (!approved) return { content: '用户未授权执行外部 MCP 操作。', success: false, outcome: 'not_executed' }
+          }
+          return await mcpManager.executeTool(name, args, context.abortSignal)
         } catch (err: any) {
           if (err.message === 'UserAborted') {
             throw err

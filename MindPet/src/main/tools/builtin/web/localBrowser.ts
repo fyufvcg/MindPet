@@ -288,11 +288,14 @@ export class LocalBrowser {
 
     return new Promise<string>((resolve, reject) => {
       let settled = false
+      let extracting = false
+      let pollTimer: ReturnType<typeof setInterval> | undefined
 
       const cleanup = (): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        if (pollTimer) clearInterval(pollTimer)
         options.abortSignal?.removeEventListener('abort', onAbort)
         if (!win.isDestroyed()) win.destroy()
       }
@@ -313,8 +316,9 @@ export class LocalBrowser {
       if (options.abortSignal?.aborted) return onAbort()
       options.abortSignal?.addEventListener('abort', onAbort, { once: true })
 
-      win.webContents.on('did-finish-load', async () => {
-        if (settled) return
+      const extract = async (): Promise<void> => {
+        if (settled || extracting) return
+        extracting = true
         try {
           const markdownContent = (await win.webContents.executeJavaScript(`
             (async () => {
@@ -327,6 +331,9 @@ export class LocalBrowser {
                 await sleep(350);
               }
 
+              const visibleText = (document.body?.innerText || '').trim();
+              if (visibleText.length < 80 && document.readyState !== 'complete') return '';
+              if (!visibleText) return '';
               const root = document.querySelector('article') || document.querySelector('main') || document.body;
               if (!root) return '';
               const clonedRoot = root.cloneNode(true);
@@ -391,11 +398,14 @@ export class LocalBrowser {
               return markdown.slice(0, 1000000);
             })()
           `)) as string
-          succeed(markdownContent)
+          if (markdownContent.trim()) succeed(markdownContent)
         } catch (error) {
-          fail(error)
-        }
-      })
+          if (!win.isDestroyed() && !win.webContents.isLoading()) fail(error)
+        } finally { extracting = false }
+      }
+      win.webContents.on('dom-ready', () => { void extract() })
+      win.webContents.on('did-finish-load', () => { void extract() })
+      pollTimer = setInterval(() => { void extract() }, 1500)
 
       win.webContents.on(
         'did-fail-load',
@@ -405,7 +415,7 @@ export class LocalBrowser {
         }
       )
 
-      win.loadURL(initialUrl.toString()).catch(fail)
+      win.loadURL(initialUrl.toString()).catch(error => { if (!settled) fail(error) })
     })
   }
 

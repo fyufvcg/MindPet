@@ -15,7 +15,7 @@ Use this skill whenever the request requires opening, searching, inspecting, or 
 
 ## Observe, act, refresh
 
-- For an ordinary search with no named engine, call `browser_search(query)` directly. Searching does not imply opening a result.
+- Ordinary information queries use `web_search`; no browser connection is required. Use `browser_search(query)` only for a requested visible browser search or interactive task. Searching does not imply opening a result.
 - Before arbitrary page interaction, call `browser_snapshot` and inspect the current URL and DOM.
 - Perform exactly one browser action at a time.
 - `browser_click` and `browser_click_ref` return a fresh post-action snapshot. Inspect it before the next action.

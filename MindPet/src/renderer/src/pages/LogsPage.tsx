@@ -587,7 +587,7 @@ export function LogsPage({ store }: LogsPageProps): React.JSX.Element {
                     <td className="model-td" title={log.model}>{log.model}</td>
                     <td className="num-td">{log.promptTokens.toLocaleString()}</td>
                     <td className="num-td">{log.completionTokens.toLocaleString()}</td>
-                    <td className="num-td total-td">{log.totalTokens.toLocaleString()}</td>
+                    <td className="num-td total-td" title={log.estimated ? '包含估算用量，以模型服务商账单为准' : '模型服务返回的用量'}>{log.estimated ? '≈ ' : ''}{log.totalTokens.toLocaleString()}</td>
                     <td>
                       {log.sessionId && log.messageId ? (
                         <button

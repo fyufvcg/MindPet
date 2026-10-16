@@ -348,7 +348,7 @@ export class QQBotManager {
 
     const generatedFiles: GeneratedFile[] = []
     const reply = await this.options.callLlm(
-      { messageId: Date.now(), contextRounds: 6 },
+      { messageId: Date.now() },
       [{ role: 'user', content: userContent }],
       sessionId,
       (event) => {

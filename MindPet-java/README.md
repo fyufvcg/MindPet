@@ -20,3 +20,9 @@ mvn -DskipTests clean package
 - 独立运行后端且未设置数据路径时，默认数据库位置为 `~/.mindpet/mindpet.db`。
 
 Java 依赖、版本和构建配置以 [pom.xml](pom.xml) 为准；桌面端实现位于 [MindPet](../MindPet/)。
+
+能力框架：Desktop 与 Java 基础工具常驻，Skill 按需加载，外部 MCP 通过 `/` 加入任务。详见 [能力加载与任务框架](docs/capability-framework.md)。
+
+会话历史与任务上下文采用独立 Token 预算和检查点，不改变长期记忆算法。配置和数据边界见 [会话上下文管理](docs/context-management.md)。
+
+后台计划由独立 Store、Scheduler 和 Runner 管理，执行复用 Spring AI；外部 MCP 协议统一由 Electron 官方 SDK 处理。任务恢复、搜索服务和记录保留配置见 [Agent 执行说明](docs/agent-execution.md)，最新检查结果见 [验证记录](docs/agent-validation.md)。

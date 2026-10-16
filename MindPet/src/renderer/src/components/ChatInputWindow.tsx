@@ -533,16 +533,8 @@ export function ChatInputWindow(): React.JSX.Element {
           // 构建消息上下文（基于快捷聊天的独立会话）
           const allSessions: QuickSession[] = JSON.parse(localStorage.getItem('mindpet_sessions') || '[]')
           const activeSession = allSessions.find(s => s.id === sessionId) || { id: sessionId, name: userText.slice(0, 15) || '(快捷聊天)', messages: [] }
-          const contextRounds = Number(localStorage.getItem('agentself_context_rounds') || localStorage.getItem('mindpet_context_rounds') || '10')
-          const currentMessages = (activeSession.messages || []).filter((m: any) =>
-            (m.sender === 'user' || m.sender === 'agent') && !m.isThinking && !m.isError
-          )
-
-          const chatMessages = currentMessages.slice(-contextRounds * 2).map((m: any) => ({
-            role: m.sender === 'user' ? 'user' : 'assistant',
-            content: m.text || ''
-          }))
-          chatMessages.push({ role: 'user', content: userText })
+          const userMessageId = `${replyId}-user`
+          const chatMessages = [{ role: 'user', content: userText }]
 
           // 保存会话到 localStorage
           const timeStr = new Date().toISOString().replace('T', ' ').substring(0, 19)
@@ -561,7 +553,7 @@ export function ChatInputWindow(): React.JSX.Element {
                 name: sessionName,
                 messages: [
                   ...(s.messages || []).map((m: any) => m.isThinking ? { ...m, isThinking: false, text: m.text || '对话被中断。' } : m),
-                  { sender: 'user', text: userText, time: timeStr },
+                  { id: userMessageId, sender: 'user', text: userText, time: timeStr },
                   { sender: 'agent', text: '', isThinking: true, time: timeStr }
                 ]
               }
@@ -569,14 +561,14 @@ export function ChatInputWindow(): React.JSX.Element {
             return s
           })
           localStorage.setItem('mindpet_sessions', JSON.stringify(cleanedSessions))
-          window.api.saveMessage({ sessionId, sender: 'user', text: userText, time: timeStr }).catch(() => {})
+          window.api.saveMessage({ sessionId, id: userMessageId, sender: 'user', text: userText, time: timeStr }).catch(() => {})
           window.api.saveMessage({ sessionId, sender: 'agent', text: '', isThinking: true, time: timeStr, id: replyId }).catch(() => {})
 
           const workspacePath = localStorage.getItem('mindpet_workspace_path') || ''
 
           // 直接调用 LLM
           const response = await window.api.callLLM(
-            { ...llmConfig, sessionId, messageId: replyId },
+            { ...llmConfig, sessionId, messageId: replyId, userMessageId },
             chatMessages,
             workspacePath
           )

@@ -1,80 +1,62 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useRef } from 'react'
-import type { MutableRefObject } from 'react'
-import { formatDateTime } from '../utils/helpers'
-import type { CronLog, CronTask } from './useAppStore'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import type { CronTask } from './useAppStore'
+import type { RuntimeTokenLog } from './useTokenUsageRuntime'
 
-interface CronSchedulerOptions {
+/** Observe persisted scheduling state; execution and notifications belong to the backend. */
+export function useCronScheduler({ setCronTasks, setTokenLogs }: {
   setCronTasks: (updater: (tasks: CronTask[]) => CronTask[]) => void
-  cronRunningLogsRef: MutableRefObject<Record<string, CronLog>>
-  runTaskBackend: (task: CronTask, tempSessionId: string, logId: string) => void | Promise<void>
-}
-
-/** Stable one-second scheduler that updates Zustand only when a task actually fires. */
-export function useCronScheduler({
-  setCronTasks,
-  cronRunningLogsRef,
-  runTaskBackend
-}: CronSchedulerOptions): void {
-  const elapsedTimesRef = useRef<Record<string, number>>({})
-  const runTaskBackendRef = useRef(runTaskBackend)
-
+  setTokenLogs: (updater: (logs: RuntimeTokenLog[]) => RuntimeTokenLog[]) => void
+}): { error: string; refresh: () => Promise<void> } {
+  const [error, setError] = useState('')
+  const alive = useRef(false)
+  const pending = useRef<Promise<void> | null>(null)
+  const migrated = useRef(false)
+  const refresh = useCallback((): Promise<void> => {
+    if (pending.current) return pending.current
+    pending.current = (async () => {
+      try {
+        if (!migrated.current) {
+          const saved = localStorage.getItem('mindpet_cron_tasks') || localStorage.getItem('agentself_cron_tasks')
+          if (saved) await window.api.migrateCronTasks(JSON.parse(saved))
+          migrated.current = true
+        }
+        const tasks = await window.api.getCronTasks()
+        if (alive.current && tasks) {
+          setError('')
+          setCronTasks(() => tasks)
+          const clearedAt = Number(localStorage.getItem('mindpet_token_logs_cleared_at')) || 0
+          const usage: RuntimeTokenLog[] = tasks.flatMap(task => (task.logs || []).flatMap(log => {
+            const input = Number(log.usage?.promptTokens) || 0, output = Number(log.usage?.completionTokens) || 0
+            const timestamp = Date.parse(log.time)
+            if (input + output <= 0 || !Number.isFinite(timestamp) || timestamp <= clearedAt) return []
+            return [{ id: `schedule:${task.id}:${log.id}`, model: log.usage.model || 'scheduled-task', provider: 'backend',
+              promptTokens: input, completionTokens: output, totalTokens: input + output,
+              estimated: Boolean(log.usage.estimated), timestamp, sessionId: log.sessionId, source: 'desktop' as const }]
+          }))
+          if (usage.length) setTokenLogs(previous => {
+            const ids = new Set(previous.map(item => item.id))
+            const oldest = previous.length >= 1000 ? Math.min(...previous.map(item => item.timestamp)) : 0
+            const additions = usage.filter(item => !ids.has(item.id) && item.timestamp >= oldest)
+            if (!additions.length) return previous
+            const next = [...previous, ...additions].sort((a,b) => a.timestamp-b.timestamp).slice(-1000)
+            return next
+          })
+        }
+      } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : String(e)) }
+      finally { pending.current = null }
+    })()
+    return pending.current
+  }, [setCronTasks, setTokenLogs])
   useEffect(() => {
-    runTaskBackendRef.current = runTaskBackend
-  }, [runTaskBackend])
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const triggered: Array<{ task: CronTask; tempSessionId: string; logId: string }> = []
-      let tasksToPersist: CronTask[] | null = null
-
-      setCronTasks(previous => {
-        let changed = false
-        const next = previous.map(task => {
-          if (!task.isActive) return task
-          const currentElapsed = (elapsedTimesRef.current[task.id] || 0) + 1
-          if (currentElapsed < task.interval) {
-            elapsedTimesRef.current[task.id] = currentElapsed
-            return task
-          }
-
-          changed = true
-          elapsedTimesRef.current[task.id] = 0
-          const timeStr = formatDateTime()
-          const timestamp = Date.now()
-          const tempSessionId = `cron:${task.id}:${timestamp}`
-          const newLog: CronLog = {
-            id: `${timestamp}-${Math.random().toString(36).slice(2, 7)}`,
-            time: timeStr,
-            status: 'running',
-            message: `定时任务 [${task.name}] 触发。正在后台执行...`,
-            messages: [
-              { id: `user-${timestamp}`, sender: 'user', text: `执行定时任务指令: ${task.action || '无'}`, time: timeStr },
-              { id: `agent-${timestamp}`, sender: 'agent', text: '', isThinking: true, toolSteps: [], time: timeStr }
-            ]
-          }
-          cronRunningLogsRef.current[tempSessionId] = newLog
-          triggered.push({ task, tempSessionId, logId: newLog.id })
-          return {
-            ...task,
-            triggerCount: task.triggerCount + 1,
-            lastTriggered: timeStr,
-            logs: [newLog, ...(task.logs || [])].slice(0, 100)
-          }
-        })
-        if (!changed) return previous
-        tasksToPersist = next
-        return next
-      })
-
-      if (tasksToPersist) {
-        localStorage.setItem('mindpet_cron_tasks', JSON.stringify(tasksToPersist))
-        window.api.saveCronTasks(tasksToPersist).catch(console.error)
-      }
-      for (const item of triggered) {
-        void runTaskBackendRef.current(item.task, item.tempSessionId, item.logId)
-      }
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [cronRunningLogsRef, setCronTasks])
+    alive.current = true
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async (): Promise<void> => {
+      await refresh()
+      if (alive.current) timer = setTimeout(() => { void poll() }, 5000)
+    }
+    const unsubscribe = window.api.onCronUpdated(() => { void refresh() })
+    void poll()
+    return () => { alive.current = false; clearTimeout(timer); unsubscribe() }
+  }, [refresh])
+  return { error, refresh }
 }

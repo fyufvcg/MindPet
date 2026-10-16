@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import config.DynamicLlmConfig;
 import service.agent.AgentTaskService;
 import service.agent.AgentPolicy;
+import service.agent.ToolExposurePolicy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -34,15 +35,6 @@ public class AiService {
     @Value("${memory.curator.default-timezone:Asia/Shanghai}")
     private String curatorDefaultTimezone;
 
-    // Temporary latency experiment: set true to restore emotion analysis in the routing preCall.
-    private static final boolean ROUTING_EMOTION_ANALYSIS_ENABLED = true;
-
-    private static String routingStageDescription() {
-        return ROUTING_EMOTION_ANALYSIS_ENABLED
-            ? "意图路由 + 情感分析"
-            : "意图路由（情感分析已暂停）";
-    }
-
     private static final String SYSTEM_PROMPT =
            "你是 MindPet，一个有情感、可靠并且会主动采取行动的 AI 助手。请和善、自然地帮助用户。";
     private static final String IDENTITY_PROMPT =
@@ -56,85 +48,32 @@ public class AiService {
 
     /** Tool groups mapped to Spring AI @Tool method names (camelCase). */
     private static final Map<String, List<String>> TOOL_GROUPS = new LinkedHashMap<>();
-    /** Human-readable descriptions for each group — used in preCall prompt for intent routing. */
-    private static final Map<String, String> GROUP_DESCRIPTIONS = new LinkedHashMap<>();
-    private static final String GROUPS_SUMMARY;
     static {
-        TOOL_GROUPS.put("weather", List.of("getWeather", "subscribeWeather", "unsubscribeWeather",
-            "showSubscription", "sunSkySpots"));
-        GROUP_DESCRIPTIONS.put("weather", "天气查询、订阅/取消、朝霞晚霞观赏推荐");
-
-        TOOL_GROUPS.put("voice", List.of("changeVoice", "speakText"));
-        GROUP_DESCRIPTIONS.put("voice", "切换TTS语音音色、文字转语音播报");
-
-        TOOL_GROUPS.put("translate", List.of("translateText"));
-        GROUP_DESCRIPTIONS.put("translate", "文本翻译（中英日韩等互译）");
-
-        TOOL_GROUPS.put("calc", List.of("numericCalculate", "dateCalculate", "convertTimezone", "convertCurrency"));
-        GROUP_DESCRIPTIONS.put("calc", "数学计算、日期计算、时区转换、汇率换算");
-
-        TOOL_GROUPS.put("出行", List.of("ipGeolocation", "routePlanning",
-            "didi_searchPlace", "didi_estimateRide", "didi_createOrder", "didi_queryOrder", "didi_cancelOrder"));
-        GROUP_DESCRIPTIONS.put("出行", "IP定位、路线规划、滴滴打车(搜索地点/估价/下单/查询/取消)");
+        TOOL_GROUPS.put("calc", List.of("numericCalculate", "dateCalculate", "convertTimezone"));
 
         TOOL_GROUPS.put("search", List.of("search"));
-        GROUP_DESCRIPTIONS.put("search", "文件内容搜索、静默联网搜索和网页全文抓取；不会操控当前浏览器");
-
-        // 麦当劳：纯前端配置的 MCP 原子工具由 getToolCallbacks 无条件透传；
-        // 这 4 个是 Java 侧的复合包装（把官方多步编码链路收敛成一句话）
-        TOOL_GROUPS.put("delivery", List.of(
-            "mcdonaldOrder", "mcdonaldCampaigns", "mcdonaldCoupons", "mcdonaldOrderStatus"));
-        GROUP_DESCRIPTIONS.put("delivery", "麦当劳点餐（下单、活动、优惠券、订单状态）");
 
         TOOL_GROUPS.put("本地", List.of("file"));
-        GROUP_DESCRIPTIONS.put("本地", "本地文件操作（创建/读取/写入/修改/删除/移动/重命名/搜索），支持 PDF/Word/Excel/CSV/图片多格式");
-
-        TOOL_GROUPS.put("data", List.of("chart_bar", "chart_line", "chart_pie", "chart_scatter"));
-        GROUP_DESCRIPTIONS.put("data", "数据分析与远程图表生成（柱状图、折线图、饼图、散点图），以及展示、发送或导出图表图片");
-
-        TOOL_GROUPS.put("anime", List.of("anime_search_media", "anime_get_media", "anime_get_schedule", "anime_get_relations", "anime_find_characters", "anime_get_recommendations", "anime_get_rankings", "anime_get_studio"));
-        GROUP_DESCRIPTIONS.put("anime", "动漫番剧查询（搜索、详情、排期、角色、推荐、排行）");
-
-        TOOL_GROUPS.put("mijia", List.of("list_homes", "list_devices", "list_scenes", "list_consumables", "get_device_spec", "get_device_properties", "set_device_property", "run_device_action", "run_scene", "get_statistics", "run_speaker_command", "login", "login_status"));
-        GROUP_DESCRIPTIONS.put("mijia", "米家智能家居控制（设备列表/属性/操作、场景执行、小爱音箱）");
-
-        TOOL_GROUPS.put("invoice", List.of("reimburseInvoice", "reverifyInvoice", "queryReimbursements"));
-        GROUP_DESCRIPTIONS.put("invoice", "发票核验报销（OCR识别→真伪核验→写入报销Excel）、报销记录查询。用户说「核销」「报销」「发票报销」时路由到此组");
 
         TOOL_GROUPS.put("email", List.of("listRecentMails", "searchMails", "getMailDetail", "sendMail", "replyMail", "deleteMail"));
-        GROUP_DESCRIPTIONS.put("email", "邮件操作（收件箱列表、搜索、详情、发送、回复、删除）");
 
         TOOL_GROUPS.put("browser", List.of("browser"));
-        GROUP_DESCRIPTIONS.put("browser", "仅在用户明确要求操作浏览器时使用：连接用户浏览器、打开网页、点击、输入、截图快照、管理标签页");
 
         // ── Desktop 工具分组 — 对应前端 tools/builtin 分类 ──────────
         // 工具名格式: desktop_tools__desktop__{category}__{toolName}
-        // 路由时按 category 段匹配；每个组的值是 category 名
+        // 仅用于工具目录的类别标记；不参与任务工具选择
         TOOL_GROUPS.put("终端", List.of("terminal"));
-        GROUP_DESCRIPTIONS.put("终端", "执行终端命令、管理进程、获取命令输出");
 
         TOOL_GROUPS.put("电脑操控", List.of("computer"));
-        GROUP_DESCRIPTIONS.put("电脑操控", "截图感知屏幕内容、控制鼠标键盘、切换窗口、操作桌面应用");
 
         TOOL_GROUPS.put("文档处理", List.of("office"));
-        GROUP_DESCRIPTIONS.put("文档处理", "生成与修改 Excel 表格、Word 文档、PDF 文档、PPTX 演示文稿");
 
         TOOL_GROUPS.put("系统", List.of("system"));
-        GROUP_DESCRIPTIONS.put("系统", "获取系统硬件信息、物理定位、管理后台定时任务");
 
         TOOL_GROUPS.put("自动化", List.of("rpa"));
-        GROUP_DESCRIPTIONS.put("自动化", "搜索、查看、运行和管理 RPA 自动化工作流");
 
         // profile 组不在此列 — 由 MemoryCuratorService 独立管理
 
-        StringBuilder sb = new StringBuilder();
-        for (var entry : TOOL_GROUPS.entrySet()) {
-            String desc = GROUP_DESCRIPTIONS.getOrDefault(entry.getKey(), "");
-            sb.append("- ").append(entry.getKey());
-            if (!desc.isBlank()) sb.append("（").append(desc).append("）");
-            sb.append("：").append(String.join("、", entry.getValue())).append("\n");
-        }
-        GROUPS_SUMMARY = sb.toString();
     }
 
     private final Logger logger;
@@ -204,166 +143,6 @@ public class AiService {
         return chatClientFactory.build();
     }
 
-    /** Combined result of intent classification + emotion analysis + skill routing. */
-    private record PreCallResult(Set<String> groups, Set<String> skills, EmotionService.EmotionResult emotion, int promptTokens, int completionTokens) {
-        static final PreCallResult EMPTY = new PreCallResult(Set.of(), Set.of(), EmotionService.EmotionResult.NEUTRAL, 0, 0);
-    }
-
-    // ==================== Intent + Emotion (merged into one LLM call) ====================
-
-    /**
-     * Single lightweight LLM call: intent routing + emotion analysis.
-     */
-    private PreCallResult preCall(String userId, String userMessage) {
-        try {
-            StringBuilder ctx = new StringBuilder();
-            List<Map<String, Object>> history = convMemory.loadRecent(userId, 5);
-            if (!history.isEmpty()) {
-                ctx.append("对话历史：\n");
-                for (Map<String, Object> msg : history) {
-                    String role = String.valueOf(msg.getOrDefault("role", ""));
-                    Object content = msg.get("content");
-                    if ("user".equals(role) && content != null) {
-                        ctx.append("- ").append(content).append("\n");
-                    }
-                }
-                ctx.append("\n");
-            }
-
-            String emotionHint = ROUTING_EMOTION_ANALYSIS_ENABLED
-                ? "\"emotion\":\"happy|sad|anxious|angry|neutral|excited|stressed|relieved|grateful|lonely\",\"intensity\":0.0-1.0}\n\n"
-                : "}\n\n";
-            String routingOnlyInstruction = ROUTING_EMOTION_ANALYSIS_ENABLED ? ""
-                : "Only identify tool groups. Do not analyze or return emotion.\n";
-            String prompt = ctx.toString()
-                + "你是一个意图路由器。根据用户消息判断，要求快速输出，返回 JSON：\n"
-                + "{\"groups\":\"分组名逗号分隔或NONE\",\n"
-                + emotionHint
-                + routingOnlyInstruction
-                + "可用分组：\n" + GROUPS_SUMMARY + "\n"
-                + "只返回 JSON，不要加任何解释。\n" + AgentPolicy.SEARCH;
-
-            var chatSpec = buildChatClient()
-                .prompt()
-                .system(prompt)
-                .user(userMessage);
-            // preCall 也跟随动态 model 切换，确保意图路由使用用户指定的模型
-            if (dynamicConfig.hasOverride() && !dynamicConfig.getModel().isBlank()) {
-                chatSpec = chatSpec.options(
-                    OpenAiChatOptions.builder().model(dynamicConfig.getModel()).build());
-            }
-            var chatResponse = chatSpec.call().chatResponse();
-
-            String result = chatResponse.getResult().getOutput().getText();
-
-            // 提取 preCall 的 token 用量
-            int prePrompt = 0, preCompletion = 0;
-            if (chatResponse.getMetadata() != null && chatResponse.getMetadata().getUsage() != null) {
-                var usage = chatResponse.getMetadata().getUsage();
-                prePrompt = (int) usage.getPromptTokens();
-                preCompletion = (int) usage.getCompletionTokens();
-            }
-
-            if (result == null || result.isBlank()) {
-                return new PreCallResult(routingFallbackGroups(Set.of(), userMessage), Set.of(),
-                    EmotionService.EmotionResult.NEUTRAL, prePrompt, preCompletion);
-            }
-
-            String json = result.trim();
-            logger.log("DEBUG", "preCall 原始响应: " + json);
-            if (json.startsWith("```")) json = json.replaceAll("```\\w*\\n?", "").replace("```", "").trim();
-
-            var map = new ObjectMapper().readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-
-            // Parse groups
-            String groupStr = String.valueOf(map.getOrDefault("groups", "NONE")).trim().toLowerCase();
-            Set<String> groups = new LinkedHashSet<>();
-            if (!"none".equals(groupStr)) {
-                for (String g : groupStr.split(",")) {
-                    String t = g.trim();
-                    if (!t.isEmpty() && TOOL_GROUPS.containsKey(t)) groups.add(t);
-                }
-            }
-
-            // Parse emotion
-            EmotionService.EmotionResult emotion = EmotionService.EmotionResult.NEUTRAL;
-            if (ROUTING_EMOTION_ANALYSIS_ENABLED) {
-                String em = String.valueOf(map.getOrDefault("emotion", "neutral"));
-                double intensity = parseDouble(map.getOrDefault("intensity", "0.3"));
-                emotion = new EmotionService.EmotionResult(em, intensity, "", null);
-            }
-
-            return new PreCallResult(routingFallbackGroups(groups, userMessage), Set.of(), emotion,
-                prePrompt, preCompletion);
-        } catch (Exception e) {
-            logger.log("ERROR", "前置分析失败: " + e.getMessage());
-            return new PreCallResult(routingFallbackGroups(Set.of(), userMessage), Set.of(),
-                EmotionService.EmotionResult.NEUTRAL, 0, 0);
-        }
-    }
-
-    private Set<String> routingFallbackGroups(Set<String> routedGroups, String userMessage) {
-        Set<String> groups = new LinkedHashSet<>(routedGroups);
-        String text = userMessage == null ? "" : userMessage.toLowerCase(Locale.ROOT);
-        if (groups.contains("browser") && !isExplicitBrowserControlRequest(text)) {
-            groups.remove("browser");
-            logger.log("WARN", "意图路由尝试启用浏览器工具，但用户未明确要求浏览器操作；已移除 browser 分组");
-        }
-        if (List.of("图表", "绘图", "可视化", "柱状图", "条形图", "折线图", "趋势图", "饼图", "散点图",
-                "chart", "graph", "plot")
-            .stream().anyMatch(text::contains)) {
-            groups.add("data");
-        }
-        return groups;
-    }
-
-    /** Browser control is available only for an explicit user request, never just because routing guessed it. */
-    private boolean isExplicitBrowserControlRequest(String text) {
-        boolean mentionsBrowser = List.of("浏览器", "browser", "标签页", "tab")
-            .stream().anyMatch(text::contains);
-        boolean mentionsAction = List.of("打开", "访问", "前往", "跳转", "导航", "点击", "输入", "刷新",
-                "关闭", "切换", "新建", "连接", "控制", "操作", "截图", "搜索", "查找",
-                "open", "navigate", "click", "type", "refresh", "close", "switch", "connect",
-                "control", "screenshot", "search")
-            .stream().anyMatch(text::contains);
-        if (!mentionsBrowser || !mentionsAction) return false;
-
-        boolean questionAboutBrowser = List.of("为什么", "怎么", "如何", "是什么", "是否", "能不能", "可以吗",
-                "why", "how", "what is", "whether")
-            .stream().anyMatch(text::contains);
-        boolean explicitRequest = List.of("帮我", "请帮", "麻烦", "替我", "为我", "我想在", "我要在",
-                "请在", "请用", "用浏览器", "使用浏览器", "在浏览器", "在我的浏览器",
-                "please", "can you", "could you", "use my browser", "in my browser")
-            .stream().anyMatch(text::contains);
-        boolean directCommand = List.of("打开浏览器", "连接浏览器", "控制浏览器", "操作浏览器",
-                "点击浏览器", "刷新浏览器", "关闭浏览器", "打开标签页", "切换标签页",
-                "open browser", "connect browser", "control browser", "open tab", "switch tab")
-            .stream().anyMatch(text::startsWith);
-        return explicitRequest || (directCommand && !questionAboutBrowser);
-    }
-
-    private String buildToolRoutingInstruction(Set<String> groups, ToolCallback[] callbacks) {
-        String toolNames = Arrays.stream(callbacks)
-            .map(tc -> tc.getToolDefinition().name())
-            .collect(java.util.stream.Collectors.joining("、"));
-        return "可用工具组：" + String.join("、", groups)
-            + "。根据任务需要选择工具，不因路由命中就强制调用。可用工具：" + toolNames
-            + "\n" + AgentPolicy.SEARCH;
-    }
-
-    /** Initial routing is a hint; discovery can add tools during execution. */
-    private ToolCallback[] discoverableCallbacks(String userMessage) {
-        Set<String> groups = new LinkedHashSet<>(TOOL_GROUPS.keySet());
-        if (!isExplicitBrowserControlRequest(agentTasks.taskGoal(userMessage).toLowerCase(Locale.ROOT))) groups.remove("browser");
-        groups.add("search");
-        return collectToolCallbacks(groups, true);
-    }
-
-    private double parseDouble(Object obj) {
-        try { return Double.parseDouble(String.valueOf(obj)); }
-        catch (Exception e) { return 0.3; }
-    }
-
     private ChatClient.ChatClientRequestSpec applyChatOptions(ChatClient.ChatClientRequestSpec chatSpec) {
         return applyChatOptions(chatSpec, null);
     }
@@ -384,86 +163,33 @@ public class AiService {
         return chatSpec.options(options.build());
     }
 
-    /** Route the initial tools; other MCP capabilities remain discoverable on demand. */
-    private ToolCallback[] getToolCallbacks(Set<String> groups) {
-        return collectToolCallbacks(groups, false);
-    }
-
-    private ToolCallback[] collectToolCallbacks(Set<String> groups, boolean discovery) {
-        List<ToolCallback> allCallbacks = new ArrayList<>();
-        Map<String, ToolCallbackProvider> providers = appCtx.getBeansOfType(ToolCallbackProvider.class);
-        logger.log("INFO", "ToolCallbackProvider beans: " + providers.keySet());
-        for (var entry : providers.entrySet()) {
-            try {
-                ToolCallback[] callbacks = entry.getValue().getToolCallbacks();
-                logger.log("INFO", "  provider[" + entry.getKey() + "] -> " + callbacks.length + " tools: "
-                    + Arrays.stream(callbacks)
-                        .map(tc -> tc.getToolDefinition().name())
-                        .collect(java.util.stream.Collectors.joining(", ")));
-                allCallbacks.addAll(Arrays.asList(callbacks));
-            } catch (Exception e) {
-                logger.log("WARN", "  provider[" + entry.getKey() + "] init failed: " + e.getMessage());
+    /** Built-in tools are always present; external MCP tools are scoped to the current task. */
+    private ToolCallback[] availableCallbacks() {
+        Set<String> selected = agentTasks.selectedMcpServers();
+        Map<String, ToolCallback> callbacks = new LinkedHashMap<>();
+        for (ToolCallbackProvider provider : appCtx.getBeansOfType(ToolCallbackProvider.class).values()) {
+            ToolCallback[] tools = provider instanceof McpManager mcp
+                ? mcp.callbacksFor(selected) : provider.getToolCallbacks();
+            for (ToolCallback callback : tools) {
+                if (ToolExposurePolicy.allows(callback.getToolDefinition().name())
+                    || (provider instanceof McpManager mcp && mcp.isManaged(callback) && !mcp.isBuiltin(callback)))
+                    callbacks.put(callback.getToolDefinition().name(), callback);
             }
         }
-        var neededNames = groups.stream()
-            .flatMap(g -> TOOL_GROUPS.getOrDefault(g, List.of()).stream())
-            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        // MCP 工具路由：Desktop 工具按 category 分组过滤，其他 MCP 工具全量透传
-        java.util.concurrent.atomic.AtomicInteger dtMatched = new java.util.concurrent.atomic.AtomicInteger(0);
-        java.util.concurrent.atomic.AtomicInteger dtTotal = new java.util.concurrent.atomic.AtomicInteger(0);
-        ToolCallback[] filtered = allCallbacks.stream()
-            .filter(tc -> {
-                String name = tc.getToolDefinition().name();
-                if (name.contains("__")) {
-                    if (name.contains("desktop__") || name.contains("desktop_tools__")) {
-                        dtTotal.incrementAndGet();
-                        String[] parts = name.split("__");
-                        for (int i = 0; i < parts.length - 1; i++) {
-                            if ("desktop".equals(parts[i])) {
-                                String category = parts[i + 1];
-                                // The web manifest shares the "browser" category with controls for
-                                // the user's visible browser. A search request gets only passive web
-                                // search/fetch tools; browser control requires the explicit browser group.
-                                if ("browser".equals(category)) {
-                                    if (groups.contains("browser")
-                                        || (groups.contains("search") && isPassiveWebTool(name))) {
-                                        dtMatched.incrementAndGet();
-                                        return true;
-                                    }
-                                    return false;
-                                }
-                                if (neededNames.contains(category)) {
-                                    dtMatched.incrementAndGet();
-                                    return true;
-                                }
-                                return false;
-                            }
-                        }
-                        dtMatched.incrementAndGet();
-                        return true;
-                    }
-                    return discovery || neededNames.stream().anyMatch(expected -> matchesToolName(name, expected));
-                }
-                return neededNames.stream().anyMatch(expected -> matchesToolName(name, expected));
-            })
-            .toArray(org.springframework.ai.tool.ToolCallback[]::new);
-        if (dtTotal.get() > 0) {
-            logger.log("INFO", "  [路由] Desktop工具: " + dtMatched.get() + "/" + dtTotal.get()
-                + " 命中分组 " + groups);
-        }
-        logger.log("INFO", "  可用工具: " + Arrays.stream(filtered)
-            .map(tc -> tc.getToolDefinition().name())
-            .collect(java.util.stream.Collectors.joining(", ")));
-        return filtered;
+        return callbacks.values().toArray(ToolCallback[]::new);
+    }
+
+    private ToolCallback[] initialCallbacks() {
+        McpManager mcp = appCtx.getBean(McpManager.class);
+        return Arrays.stream(availableCallbacks())
+            .filter(callback -> mcp.isBuiltin(callback) || !mcp.isManaged(callback)
+                || mcp.serverToolCount(callback) <= 20)
+            .toArray(ToolCallback[]::new);
     }
 
     private boolean matchesToolName(String actual, String expected) {
         return actual != null && expected != null
             && (actual.equals(expected) || actual.endsWith("_" + expected));
-    }
-
-    private boolean isPassiveWebTool(String name) {
-        return name.endsWith("__web_search") || name.endsWith("__web_fetch");
     }
 
     /** Load recent conversation history from local storage as Spring AI Message list. */
@@ -537,7 +263,7 @@ public class AiService {
         }
     }
 
-    private record StreamedResponse(String text, int promptTokens, int completionTokens) {}
+    private record StreamedResponse(String text, int promptTokens, int completionTokens, boolean estimated) {}
 
     private StreamedResponse streamResponse(ChatClient.ChatClientRequestSpec chatSpec,
                                             Consumer<String> onDelta) {
@@ -550,11 +276,13 @@ public class AiService {
         StringBuilder reply = new StringBuilder();
         AtomicInteger promptTokens = new AtomicInteger();
         AtomicInteger completionTokens = new AtomicInteger();
+        AtomicBoolean estimated = new AtomicBoolean();
 
         try {
             agentTasks.stream(chatSpec)
                 .doOnNext(response -> {
                     updateStreamUsage(response, promptTokens, completionTokens);
+                    estimated.set(Boolean.TRUE.equals(response.getMetadata().get("mindpet.usageEstimated")));
                     if (response.getResult() == null || response.getResult().getOutput() == null) return;
                     AssistantMessage output = response.getResult().getOutput();
                     Object reasoningValue = output.getMetadata().get("reasoningContent");
@@ -576,13 +304,19 @@ public class AiService {
             agentTasks.releaseStreamContext();
         }
 
-        return new StreamedResponse(reply.toString(), promptTokens.get(), completionTokens.get());
+        return new StreamedResponse(reply.toString(), promptTokens.get(), completionTokens.get(), estimated.get());
     }
 
     private void updateStreamUsage(ChatResponse response, AtomicInteger promptTokens,
                                    AtomicInteger completionTokens) {
         if (response.getMetadata() == null || response.getMetadata().getUsage() == null) return;
         var usage = response.getMetadata().getUsage();
+        if (Boolean.TRUE.equals(response.getMetadata().get("mindpet.usageAggregated"))) {
+            // Final provider counts may replace a larger provisional runtime estimate.
+            promptTokens.set(usage.getPromptTokens());
+            completionTokens.set(usage.getCompletionTokens());
+            return;
+        }
         promptTokens.set(Math.max(promptTokens.get(), (int) usage.getPromptTokens()));
         completionTokens.set(Math.max(completionTokens.get(), (int) usage.getCompletionTokens()));
     }
@@ -635,7 +369,7 @@ public class AiService {
         return chat(userId, userMessage, 6, Set.of());
     }
 
-    /** 桌面端可传入 contextRounds 控制加载的对话轮数 */
+    /** contextRounds is retained for legacy WeChat callers; Desktop uses token-budget context. */
     public model.ChatResult chat(String userId, String userMessage, int contextRounds) {
         return chat(userId, userMessage, contextRounds, Set.of());
     }
@@ -649,39 +383,27 @@ public class AiService {
         String agentMessageId = messageIdBase + "-agent";
         tool.ToolUserContext.set(userId);
         try {
-            // Step 1: 意图路由（技能由前端选择，不再经过 LLM 路由）
-            logger.log("INFO", "[1/2] " + routingStageDescription() + "...");
-            PreCallResult pre = preCall(userId, userMessage);
-            EmotionService.EmotionResult emotion = emotionService.enrich(userMessage, pre.emotion());
-            emotionService.saveToHistory(userId, emotion);
+            // Local emotion safeguards do not make a separate model call.
+            EmotionService.EmotionResult emotion = emotionService.observe(userId, userMessage);
             String trend = emotionService.getEmotionTrend(userId, emotion);
 
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
-            logger.log("INFO", "[1/2] 路由 → " + (pre.groups().isEmpty() ? "NONE" : pre.groups())
-                + (callbacks.length > 0 ? " (" + callbacks.length + "工具)" : "")
-                + " | 情感 → " + emotion.emotion() + "(" + String.format("%.1f", emotion.intensity()) + ")"
-                + (trend.isBlank() ? "" : " | " + trend)
-                + (activeSkills.isEmpty() ? "" : " | 技能 → " + String.join(", ", activeSkills)));
+            ToolCallback[] callbacks = initialCallbacks();
+            logger.log("INFO", "常驻工具已加载: " + callbacks.length);
 
             // Step 2: LLM call
             logger.log("INFO", "[2/2] 调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills);
 
-            // 有工具可用且意图路由命中时，注入工具使用与失败回退指令
-            if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
-                    + "\n\n" + systemPrompt;
-            }
 
             // 桌面端读全部历史，微信端保持固定轮数
-            int historyLimit = isWechatSession() ? contextRounds : 200;
+            int historyLimit = contextRounds;
             var chatSpec = buildChatClient()
                 .prompt()
                 .system(systemPrompt)
-                .messages(loadHistory(userId, historyLimit))
+                .messages(isWechatSession() ? loadHistory(userId, historyLimit) : agentTasks.history(userId))
                 .user(userMessage);
             chatSpec = applyChatOptions(chatSpec);
-            chatSpec = agentTasks.attach(chatSpec, userMessage, callbacks, discoverableCallbacks(userMessage));
+            chatSpec = agentTasks.attach(chatSpec, userMessage, callbacks, availableCallbacks());
             // 提取主 LLM 调用的 token 用量
             int mainPrompt = 0, mainCompletion = 0;
             String reply;
@@ -730,10 +452,10 @@ public class AiService {
             onCompletedTurn(userId, turnId, sid, userMessage, reply, emotion, occurredAt);
 
             boolean toolsUsed = tool.ToolUserContext.isToolsUsed();
-            // 合并 preCall + 主调用的 token 数量
-            int totalPrompt = pre.promptTokens() + mainPrompt;
-            int totalCompletion = pre.completionTokens() + mainCompletion;
-            return model.ChatResult.of(reply, toolsUsed, totalPrompt, totalCompletion);
+            // Spring AI task loop aggregates model usage.
+            int totalPrompt = mainPrompt;
+            int totalCompletion = mainCompletion;
+            return model.ChatResult.of(reply, toolsUsed, totalPrompt, totalCompletion, Boolean.TRUE.equals(mainResp.getMetadata().get("mindpet.usageEstimated")));
         } catch (Exception e) {
             logger.log("ERROR", "AI 调用失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             return model.ChatResult.of("任务未完成：" + service.v3.SecretSanitizer.sanitize(e.getMessage()) + " 已执行的操作请以实际结果为准，可继续任务。", false);
@@ -755,7 +477,7 @@ public class AiService {
     }
 
     /**
-     * @param extraSystemPrompt 前端注入的额外 system prompt（如已启用技能的 SKILL.md 全文）。
+     * @param extraSystemPrompt 用户配置的额外提示；已安装 Skill 通过后端按需加载。
      *                          仅作用于本次请求，不写入 DynamicLlmConfig。
      */
     public model.ChatResult chatStream(String userId, String userMessage, int contextRounds,
@@ -791,35 +513,24 @@ public class AiService {
             onDelta.accept(delta);
         };
         try {
-            logger.log("INFO", "[1/2] " + routingStageDescription() + "...");
-            PreCallResult pre = preCall(userId, userMessage);
-            EmotionService.EmotionResult emotion = emotionService.enrich(userMessage, pre.emotion());
-            emotionService.saveToHistory(userId, emotion);
+            EmotionService.EmotionResult emotion = emotionService.observe(userId, userMessage);
             String trend = emotionService.getEmotionTrend(userId, emotion);
 
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
-            logger.log("INFO", "[1/2] 路由 → " + (pre.groups().isEmpty() ? "NONE" : pre.groups())
-                + (callbacks.length > 0 ? " (" + callbacks.length + "工具)" : "")
-                + " | 情感 → " + emotion.emotion() + "(" + String.format("%.1f", emotion.intensity()) + ")"
-                + (trend.isBlank() ? "" : " | " + trend)
-                + (activeSkills.isEmpty() ? "" : " | 技能 → " + String.join(", ", activeSkills)));
+            ToolCallback[] callbacks = initialCallbacks();
+            logger.log("INFO", "常驻工具已加载: " + callbacks.length);
 
             logger.log("INFO", "[2/2] 流式调用 LLM...");
             String systemPrompt = buildSystemPrompt(userId, userMessage, emotion, trend, activeSkills, extraSystemPrompt);
-            if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
-                    + "\n\n" + systemPrompt;
-            }
 
-            int historyLimit = isWechatSession() ? contextRounds : 200;
+            int historyLimit = contextRounds;
             ChatClient.ChatClientRequestSpec chatSpec = buildChatClient()
                 .prompt()
                 .system(systemPrompt)
-                .messages(loadHistory(userId, historyLimit))
+                .messages(isWechatSession() ? loadHistory(userId, historyLimit) : agentTasks.history(userId))
                 .user(userMessage);
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
             chatSpec = agentTasks.attach(chatSpec, userMessage == null ? "分析图片" : userMessage, callbacks,
-                discoverableCallbacks(userMessage == null ? "分析图片" : userMessage));
+                availableCallbacks());
 
             StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
                 userId, userMessage, emotion.toTag(), turnId, agentMessageId);
@@ -843,11 +554,11 @@ public class AiService {
             persistStreamedConversation(userId, userMessage, reply, emotion, false,
                 occurredAt, turnId, agentMessageId);
             boolean hasMainUsage = streamed.promptTokens() > 0 || streamed.completionTokens() > 0;
-            int totalPrompt = hasMainUsage ? pre.promptTokens() + streamed.promptTokens() : 0;
-            int totalCompletion = hasMainUsage ? pre.completionTokens() + streamed.completionTokens() : 0;
+            int totalPrompt = hasMainUsage ? streamed.promptTokens() : 0;
+            int totalCompletion = hasMainUsage ? streamed.completionTokens() : 0;
             return model.ChatResult.of(reply,
                 streamedToolsUsed.get() || tool.ToolUserContext.isToolsUsed(),
-                totalPrompt, totalCompletion);
+                totalPrompt, totalCompletion, streamed.estimated());
         } catch (Exception e) {
             logger.log("ERROR", "AI 流式调用失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
@@ -888,24 +599,17 @@ public class AiService {
             String textPrompt = (userMessage == null || userMessage.isBlank())
                 ? "你看到了什么？像朋友一样聊聊~"
                 : userMessage;
-            PreCallResult pre = preCall(userId, textPrompt);
-            EmotionService.EmotionResult emotion = emotionService.enrich(textPrompt, pre.emotion());
-            emotionService.saveToHistory(userId, emotion);
+            EmotionService.EmotionResult emotion = emotionService.observe(userId, textPrompt);
             String trend = emotionService.getEmotionTrend(userId, emotion);
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
+            ToolCallback[] callbacks = initialCallbacks();
 
             String systemPrompt = buildSystemPrompt(userId, textPrompt, emotion, trend, activeSkills);
 
-            // 有工具可用且意图路由命中时，注入工具使用与失败回退指令
-            if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
-                    + "\n\n" + systemPrompt;
-            }
 
             var imgChatSpec = buildChatClient()
                 .prompt()
                 .system(systemPrompt)
-                .messages(loadHistory(userId, isWechatSession() ? contextRounds : 200))
+                .messages(isWechatSession() ? loadHistory(userId, contextRounds) : agentTasks.history(userId))
                 .user(u -> u.text(textPrompt).media(
                     mimeType,
                     new ByteArrayResource(imageBytes) {
@@ -914,7 +618,7 @@ public class AiService {
                     }
                 ));
             imgChatSpec = applyChatOptions(imgChatSpec);
-            imgChatSpec = agentTasks.attach(imgChatSpec, textPrompt, callbacks, discoverableCallbacks(textPrompt));
+            imgChatSpec = agentTasks.attach(imgChatSpec, textPrompt, callbacks, availableCallbacks());
             // 提取图片对话的 token 用量
             int imgPrompt = 0, imgCompletion = 0;
             String reply;
@@ -955,9 +659,9 @@ public class AiService {
             onCompletedTurn(userId, turnId, sid2, textPrompt, reply, emotion, occurredAt);
 
             boolean toolsUsed = tool.ToolUserContext.isToolsUsed();
-            int totalPrompt = pre.promptTokens() + imgPrompt;
-            int totalCompletion = pre.completionTokens() + imgCompletion;
-            return model.ChatResult.of(reply, toolsUsed, totalPrompt, totalCompletion);
+            int totalPrompt = imgPrompt;
+            int totalCompletion = imgCompletion;
+            return model.ChatResult.of(reply, toolsUsed, totalPrompt, totalCompletion, Boolean.TRUE.equals(imgResp.getMetadata().get("mindpet.usageEstimated")));
         } catch (Exception e) {
             logger.log("ERROR", "图片识别失败: " + e.getMessage());
             return model.ChatResult.of("图片识别失败，请稍后再试试吧~", false);
@@ -1010,22 +714,16 @@ public class AiService {
             String textPrompt = (userMessage == null || userMessage.isBlank())
                 ? "你看到了什么？像朋友一样聊聊~"
                 : userMessage;
-            PreCallResult pre = preCall(userId, textPrompt);
-            EmotionService.EmotionResult emotion = emotionService.enrich(textPrompt, pre.emotion());
-            emotionService.saveToHistory(userId, emotion);
+            EmotionService.EmotionResult emotion = emotionService.observe(userId, textPrompt);
             String trend = emotionService.getEmotionTrend(userId, emotion);
-            ToolCallback[] callbacks = getToolCallbacks(pre.groups());
+            ToolCallback[] callbacks = initialCallbacks();
 
             String systemPrompt = buildSystemPrompt(userId, textPrompt, emotion, trend, activeSkills);
-            if (callbacks.length > 0 && !pre.groups().isEmpty()) {
-                systemPrompt = buildToolRoutingInstruction(pre.groups(), callbacks)
-                    + "\n\n" + systemPrompt;
-            }
 
             ChatClient.ChatClientRequestSpec chatSpec = buildChatClient()
                 .prompt()
                 .system(systemPrompt)
-                .messages(loadHistory(userId, isWechatSession() ? contextRounds : 200))
+                .messages(isWechatSession() ? loadHistory(userId, contextRounds) : agentTasks.history(userId))
                 .user(u -> u.text(textPrompt).media(
                     mimeType,
                     new ByteArrayResource(imageBytes) {
@@ -1034,8 +732,8 @@ public class AiService {
                     }
                 ));
             chatSpec = applyChatOptions(chatSpec, thinkingEnabled);
-            chatSpec = agentTasks.attach(chatSpec, userMessage == null ? "分析图片" : userMessage, callbacks,
-                discoverableCallbacks(userMessage == null ? "分析图片" : userMessage));
+            chatSpec = agentTasks.attach(chatSpec, textPrompt, callbacks,
+                availableCallbacks());
 
             StreamMemoryCheckpoint checkpoint = new StreamMemoryCheckpoint(
                 userId, textPrompt, emotion.toTag(), turnId, agentMessageId);
@@ -1057,11 +755,11 @@ public class AiService {
             persistStreamedConversation(userId, textPrompt, reply, emotion, true,
                 occurredAt, turnId, agentMessageId);
             boolean hasMainUsage = streamed.promptTokens() > 0 || streamed.completionTokens() > 0;
-            int totalPrompt = hasMainUsage ? pre.promptTokens() + streamed.promptTokens() : 0;
-            int totalCompletion = hasMainUsage ? pre.completionTokens() + streamed.completionTokens() : 0;
+            int totalPrompt = hasMainUsage ? streamed.promptTokens() : 0;
+            int totalCompletion = hasMainUsage ? streamed.completionTokens() : 0;
             return model.ChatResult.of(reply,
                 streamedToolsUsed.get() || tool.ToolUserContext.isToolsUsed(),
-                totalPrompt, totalCompletion);
+                totalPrompt, totalCompletion, streamed.estimated());
         } catch (Exception e) {
             logger.log("ERROR", "图片流式识别失败: " + e.getMessage());
             StreamMemoryCheckpoint checkpoint = memoryCheckpoint.get();
@@ -1150,6 +848,7 @@ public class AiService {
             try {
                 for (ToolCallback tc : entry.getValue().getToolCallbacks()) {
                     var def = tc.getToolDefinition();
+                    if (!ToolExposurePolicy.allows(def.name()) && !appCtx.getBean(McpManager.class).isManaged(tc)) continue;
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("name", def.name());
                     item.put("description", def.description() != null ? def.description() : "");
@@ -1174,12 +873,9 @@ public class AiService {
                     String group = findGroupForTool(toolName);
                     item.put("group", group != null ? group : "其他");
 
-                    // source 标记
-                    if (toolName.contains("__")) {
-                        item.put("source", toolName.contains("desktop") ? "desktop" : "mcp");
-                    } else {
-                        item.put("source", "java");
-                    }
+                    McpManager mcp = appCtx.getBean(McpManager.class);
+                    item.put("source", mcp.sourceOf(tc));
+                    item.put("serverId", mcp.serverIdOf(tc));
 
                     catalog.add(item);
                 }
@@ -1332,7 +1028,7 @@ public class AiService {
     }
 
     /**
-     * @param extraPrompt 前端注入的额外 system prompt（如已启用技能的 SKILL.md 全文），
+     * @param extraPrompt 用户配置的额外提示；Skill 正文由任务加载器独立管理。
      *                    仅作用于本次请求。空则行为与旧版完全一致。
      */
     private String buildSystemPrompt(String userId, String query, EmotionService.EmotionResult emotion,
@@ -1376,19 +1072,14 @@ public class AiService {
                 logger.log("WARN", "读取相关记忆失败: " + e.getMessage());
             }
         }
-        // 前端选择的活跃技能 — 只注入名称列表，不注入 full content（前端已选定，无需 LLM 路由）
-        if (skills != null && !skills.isEmpty()) {
-            prompt += "\n\n## 用户启用的技能\n";
-            for (String name : skills) {
-                prompt += "- " + name + "\n";
-            }
-            logger.log("INFO", "[Skill] 已注入 " + skills.size() + " 个技能: " + String.join(", ", skills));
-        }
-
-        // 前端注入的技能规约全文（SKILL.md）。由前端在会话开始时取一次并缓存复用。
+        prompt += "\n\n" + skillStore.getRoutingPrompt();
+        prompt += "\nDesktop 与 Java 基础工具已常驻，可以直接调用；Skill 正文需使用 agent_load_skill 按需加载。"
+            + "外部 MCP 仅限用户通过 / 为当前任务选择的服务。";
+        prompt += "\n" + appCtx.getBean(McpManager.class).scopeSummary(agentTasks.selectedMcpServers());
+        // Optional user customization, not the installed-skill transport.
         if (extraPrompt != null && !extraPrompt.isBlank()) {
             prompt += "\n\n" + extraPrompt;
-            logger.log("INFO", "[Skill] 已注入技能规约全文 " + extraPrompt.length() + " 字符");
+            logger.log("INFO", "已注入用户额外提示 " + extraPrompt.length() + " 字符");
         }
 
         return prompt + "\n\n" + AgentPolicy.SEARCH + "\n" + AgentPolicy.EXECUTION + "\n\n" + """

@@ -196,40 +196,49 @@ export class SshManager {
   public async executeCommand(
     sessionId: string,
     command: string,
-    cwd?: string
-  ): Promise<{ stdout: string; stderr: string }> {
+    cwd?: string,
+    options: { timeout?: number; signal?: AbortSignal } = {}
+  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     const conn = this.clients.get(sessionId)
     if (!conn) {
       throw new Error('未连接远程 SSH 服务器，请先进行 SSH 连接。')
     }
 
     return new Promise((resolve, reject) => {
-      // 在远程服务器上，利用 cd 命令来实现 cwd 的效果
-      let finalCommand = command
-      if (cwd) {
-        // 使用 Linux 常见的 cd 指令包装
-        finalCommand = `cd "${cwd.replace(/"/g, '\\"')}" && ${command}`
+      let finished = false
+      let channel: import('ssh2').ClientChannel | undefined
+      let timer: NodeJS.Timeout | undefined
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer)
+        options.signal?.removeEventListener('abort', abort)
       }
-
+      const fail = (error: Error): void => {
+        if (finished) return
+        finished = true
+        cleanup()
+        try { channel?.close() } catch { /* Closed channel; still reject the operation. */ }
+        reject(error)
+      }
+      const abort = (): void => fail(new Error('SSH 命令已取消；远程操作结果可能未知，写操作请先检查实际状态。'))
+      if (options.signal?.aborted) { abort(); return }
+      options.signal?.addEventListener('abort', abort, { once: true })
+      timer = setTimeout(() => fail(new Error('SSH 命令超时；远程操作结果可能未知，写操作请先检查实际状态。')), options.timeout || 120000)
+      // Quote a remote POSIX directory without evaluating shell substitutions.
+      const finalCommand = cwd ? `cd '${cwd.replace(/'/g, "'\\''")}' && ${command}` : command
       conn.exec(finalCommand, (err, stream) => {
-        if (err) {
-          return reject(err)
-        }
-
+        if (err) { fail(err); return }
+        channel = stream
+        if (finished) { stream.close(); return }
         let stdout = ''
         let stderr = ''
-
-        stream.on('data', (data: Buffer) => {
-          stdout += data.toString()
-        })
-
-        stream.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString()
-        })
-
-        stream.on('close', () => {
-          // 可以在这里根据 exit code 处理异常，但为了工具返回，通常返回 stdout 和 stderr
-          resolve({ stdout, stderr })
+        stream.on('data', (data: Buffer) => { stdout += data.toString() })
+        stream.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
+        stream.on('error', fail)
+        stream.on('close', (code?: number) => {
+          if (finished) return
+          finished = true
+          cleanup()
+          resolve({ stdout, stderr, exitCode: typeof code === 'number' ? code : null })
         })
       })
     })
@@ -249,10 +258,7 @@ export class SshManager {
     }
 
     const shellId = `ssh_shell_${this.nextShellId++}`
-    let finalCommand = command
-    if (cwd) {
-      finalCommand = `cd "${cwd.replace(/"/g, '\\"')}" && ${command}`
-    }
+    const finalCommand = cwd ? `cd '${cwd.replace(/'/g, "'\\''")}' && ${command}` : command
 
     // 预定义空 session
     const session: ShellSession = {
@@ -266,6 +272,7 @@ export class SshManager {
 
     conn.exec(finalCommand, (err, stream) => {
       if (err) {
+        session.error = err.message
         session.isRunning = false
         session.output += `\n[连接通道启动失败: ${err.message || String(err)}]`
         return
@@ -282,11 +289,13 @@ export class SshManager {
       })
 
       stream.on('close', (code: number) => {
+        session.exitCode = code
         session.isRunning = false
         session.output += `\n[远程进程退出，退出码: ${code}]`
       })
 
       stream.on('error', (streamErr: Error) => {
+        session.error = streamErr.message
         session.isRunning = false
         session.output += `\n[远程流异常: ${streamErr.message}]`
       })

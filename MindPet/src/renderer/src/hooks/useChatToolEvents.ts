@@ -4,9 +4,7 @@ import type { MutableRefObject } from 'react'
 
 interface UseChatToolEventsOptions {
   updateSessionMessages: (sessionId: string, updater: (messages: any[]) => any[]) => void
-  setCronTasks: (updater: (tasks: any[]) => any[]) => void
   activeSessionIdRef: MutableRefObject<string>
-  cronRunningLogsRef: MutableRefObject<Record<string, any>>
   showToast?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
@@ -148,9 +146,7 @@ function toolNoticeForEvent(event: any): { message: string; type: 'success' | 'e
 /** Batches tool IPC updates and persists only the latest affected chat message. */
 export function useChatToolEvents({
   updateSessionMessages,
-  setCronTasks,
   activeSessionIdRef,
-  cronRunningLogsRef,
   showToast
 }: UseChatToolEventsOptions): { discardPendingMessageSave: () => void } {
   const latestMessageRef = useRef<any>(null)
@@ -188,15 +184,10 @@ export function useChatToolEvents({
       pendingEvents = []
 
       const normalByMessage = new Map<string, { sessionId: string; messageId: any; events: any[] }>()
-      const cronBySession = new Map<string, any[]>()
       for (const event of events) {
         const sessionId = event.sessionId || activeSessionIdRef.current
-        if (sessionId.startsWith('cron:')) {
-          const group = cronBySession.get(sessionId)
-          if (group) group.push(event)
-          else cronBySession.set(sessionId, [event])
-          continue
-        }
+        if (sessionId.startsWith('cron:')) continue
+
 
         const messageId = event.messageId ?? null
         const groupKey = JSON.stringify([sessionId, messageId == null ? null : String(messageId)])
@@ -216,6 +207,8 @@ export function useChatToolEvents({
             if (index < 0) return previous
             const messages = [...previous]
             const message = { ...messages[index] }
+            const usage = sessionEvents.findLast((event: any) => event.type === 'context_usage')?.contextUsage
+            if (usage) message.contextUsage = usage
             message.toolSteps = appendToolSteps(message.toolSteps, sessionEvents)
             messages[index] = message
             savedMessage = { ...message, sessionId }
@@ -225,29 +218,7 @@ export function useChatToolEvents({
         }
       }
 
-      if (cronBySession.size > 0) {
-        const taskIds = new Set<string>()
-        for (const [sessionId, sessionEvents] of cronBySession) {
-          const log = cronRunningLogsRef.current[sessionId]
-          if (!log?.messages) continue
-          const index = log.messages.findIndex((message: any) => message.sender === 'agent')
-          if (index < 0) continue
-          const messages = [...log.messages]
-          messages[index] = { ...messages[index], toolSteps: appendToolSteps(messages[index].toolSteps, sessionEvents) }
-          log.messages = messages
-          taskIds.add(sessionId.split(':')[1])
-        }
-        if (taskIds.size > 0) {
-          setCronTasks(previous => previous.map(task => {
-            if (!taskIds.has(task.id)) return task
-            const logs = (task.logs || []).map((log: any) => {
-              const running = Object.values(cronRunningLogsRef.current).find((item: any) => item.id === log.id)
-              return running ? { ...running } : log
-            })
-            return { ...task, logs }
-          }))
-        }
-      }
+
     }
 
     const unsubscribe = window.api.onToolEvent((event: any) => {
@@ -267,7 +238,7 @@ export function useChatToolEvents({
       if (latestMessageRef.current) window.api.saveMessage(withoutEphemeralToolSteps(latestMessageRef.current)).catch(console.error)
       latestMessageRef.current = null
     }
-  }, [activeSessionIdRef, cronRunningLogsRef, setCronTasks, showToast, updateSessionMessages])
+  }, [activeSessionIdRef, showToast, updateSessionMessages])
 
   return { discardPendingMessageSave }
 }

@@ -47,7 +47,7 @@ export const webManifest: ToolManifest = {
     {
       name: 'browser_search',
       description:
-        '在已连接的真实 Edge/Chrome 页面中使用必应进行 DOM 搜索，并返回按 DOM 顺序排列的搜索结果。此工具只搜索，绝不会点击任何结果；要打开第一条必须再调用 browser_click(target="search_result", index=1)。除非用户明确指定其他搜索引擎，搜索任务必须使用此工具。',
+        '在已连接的真实 Edge/Chrome 页面中使用必应进行 DOM 搜索，并返回按 DOM 顺序排列的搜索结果。此工具只搜索，绝不会点击任何结果；要打开第一条必须再调用 browser_click(target="search_result", index=1)。仅在用户要求在真实浏览器中搜索或需要交互式页面时使用；普通联网信息查询优先使用 web_search，无需连接浏览器。',
       parameters: {
         type: 'object',
         properties: { query: { type: 'string', description: '搜索关键词' } },
@@ -92,7 +92,7 @@ export const webManifest: ToolManifest = {
     },
     {
       name: 'web_search',
-      description: '在互联网上搜索，返回网页标题、链接及片段。仅用于明确涉及最新、易变信息，或用户要求联网核实、查找来源的问题；常识、概念解释、推理和一般建议优先用已有知识回答。空结果不代表工具不可用。',
+      description: '在互联网上搜索，返回网页标题、链接及片段；片段已覆盖所需事实、日期和来源时直接回答，不必逐个 web_fetch。仅用于明确涉及最新、易变信息，或用户要求联网核实、查找来源的问题；常识、概念解释、推理和一般建议优先用已有知识回答。空结果不代表工具不可用。',
       parameters: {
         type: 'object',
         properties: {
@@ -118,13 +118,17 @@ export const webManifest: ToolManifest = {
     },
     {
       name: 'web_fetch',
-      description: '使用 Electron 本地隐藏浏览器抓取网页正文，清理后提取为 Markdown 文本。',
+      description: '仅当搜索摘要不足以回答、需要核对关键细节或用户要求阅读原文时，抓取指定网页。搜索结果足够时直接回答，无需逐个抓取。返回有限正文片段和完整缓存路径。',
       parameters: {
         type: 'object',
         properties: {
           url: {
             type: 'string',
             description: '要抓取的网页 URL'
+          },
+          query: {
+            type: 'string',
+            description: '可选。用空格分隔要核对的具体关键词，优先返回命中处及附近正文；例如城市名、日期、字段名。'
           },
           timeout_seconds: {
             type: 'number',

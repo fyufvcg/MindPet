@@ -5,21 +5,13 @@ export const systemManifest: ToolManifest = {
   category: 'system',
   meta: {
     title: '系统工具',
-    description: '获取系统硬件及物理定位状态，管理后台定时任务',
+    description: '获取系统硬件状态、补充任务信息、管理定时任务与记忆摘要',
     avatar: '⚙️'
   },
   api: [
     {
       name: 'get_system_status',
       description: '获取系统状态信息（包括CPU型号、核心数、可用与总内存、操作系统平台与运行时间等）',
-      parameters: {
-        type: 'object',
-        properties: {}
-      }
-    },
-    {
-      name: 'get_location',
-      description: '使用 Windows WinRT Geolocator 现代接口获取物理定位。',
       parameters: {
         type: 'object',
         properties: {}
@@ -69,8 +61,10 @@ export const systemManifest: ToolManifest = {
             description: '定时任务名称（创建时必填）'
           },
           interval: {
-            type: 'number',
-            description: '执行时间周期（秒，最少2秒）'
+            type: 'integer',
+            minimum: 5,
+            maximum: 31536000,
+            description: '执行时间周期（秒，最少5秒）。每次任务结束后开始计时；应用退出后不执行。'
           },
           action: {
             type: 'string',

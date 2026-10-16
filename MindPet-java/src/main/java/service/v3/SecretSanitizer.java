@@ -18,10 +18,13 @@ public final class SecretSanitizer {
         + "(?:\\s*(?:是|为|叫|等于))?\\s*[：:=]?\\s*[\"'“‘]?([^\\s\"'”’，。；;！？!?{}\\[\\],:：=]{2,})");
     private static final Pattern TOKEN = Pattern.compile("(?iu)(?:\\bsk-[a-z0-9_-]{12,}|\\bbearer\\s+[a-z0-9._-]{12,}|(?<!\\d)\\d{17}[0-9X](?!\\d)|(?<!\\d)(?:\\d[ -]?){15,18}\\d(?!\\d))");
     private static final Pattern KEY = Pattern.compile("(?iu)^" + LABEL + "$");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\[REDACTED_(?:SECRET|ACCOUNT)]");
     private SecretSanitizer() {}
 
     public static List<String> values(String text) {
         if (text == null || text.isBlank()) return List.of();
+        // Existing redaction markers are metadata, never fresh account identifiers.
+        text = PLACEHOLDER.matcher(text).replaceAll(" ");
         var values = new LinkedHashSet<String>();
         for (var span : V3SensitiveAccount.identifiers(text)) values.add(span.value());
         var named = NAMED.matcher(text);
@@ -54,6 +57,13 @@ public final class SecretSanitizer {
     public static String sanitize(String text, List<String> knownValues) {
         if (text == null) return null;
         List<String> values = new ArrayList<>(knownValues); values.addAll(values(text));
+        var accounts = V3SensitiveAccount.identifiers(PLACEHOLDER.matcher(text).replaceAll(" "));
+        // Preserve the established account marker at both the pre-embedding and JDBC boundaries.
+        for (String account : accounts.stream().map(V3SensitiveAccount.SensitiveSpan::value).distinct()
+                .sorted(java.util.Comparator.comparingInt(String::length).reversed()).toList()) {
+            text = replaceWith(text, List.of(account), SensitivePersistenceGuard.REDACTED);
+            values.removeIf(value -> value.equalsIgnoreCase(account));
+        }
         if (text.stripLeading().startsWith("{") || text.stripLeading().startsWith("[")) {
             try {
                 JsonNode node = JSON.readTree(text);
@@ -83,12 +93,20 @@ public final class SecretSanitizer {
     }
 
     private static String replace(String text, List<String> values) {
-        String clean = text;
-        for (String value : values.stream().filter(v -> v != null && !v.isBlank()).distinct()
-                .sorted(java.util.Comparator.comparingInt(String::length).reversed()).toList()) {
-            clean = Pattern.compile(Pattern.quote(value), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
-                .matcher(clean).replaceAll(REDACTED);
-        }
-        return clean;
+        return replaceWith(text, values, REDACTED);
+    }
+    static String redactAccounts(String text, List<String> accounts) {
+        return replaceWith(text, accounts, SensitivePersistenceGuard.REDACTED);
+    }
+    private static String replaceWith(String text, List<String> values, String replacement) {
+        String alternatives = values.stream().filter(v -> v != null && !v.isBlank()
+                && !PLACEHOLDER.matcher(v).matches()).distinct()
+            .sorted(java.util.Comparator.comparingInt(String::length).reversed())
+            .map(Pattern::quote).collect(java.util.stream.Collectors.joining("|"));
+        if (alternatives.isEmpty()) return text;
+        // One pass avoids reprocessing inserted markers; the first branch protects existing ones.
+        return Pattern.compile("(" + PLACEHOLDER.pattern() + ")|(?:" + alternatives + ")",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(text)
+            .replaceAll(match -> java.util.regex.Matcher.quoteReplacement(match.group(1) != null ? match.group() : replacement));
     }
 }

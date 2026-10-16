@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 import { formatDateTime } from '../utils/helpers'
 
 interface ChatSummaryState {
-  contextRounds: number
+  memorySummaryBatchRounds: number
   llmConfig: any
 }
 
@@ -20,8 +20,8 @@ export function useChatSessionSummary({ getState, setSessions }: ChatSessionSumm
     const session = latestSessions.find(item => item.id === sessionId)
     if (!session) return
 
-    const { contextRounds, llmConfig } = getState()
-    const triggerCount = contextRounds * 2
+    const { memorySummaryBatchRounds, llmConfig } = getState()
+    const triggerCount = memorySummaryBatchRounds * 2
     const completed = (session.messages || []).filter((message: any) =>
       (message.sender === 'user' || message.sender === 'agent') && !message.isThinking && !message.isError
     )

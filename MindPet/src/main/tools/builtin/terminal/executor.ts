@@ -69,15 +69,16 @@ export class TerminalExecutor implements IToolExecutor {
         // 动态覆盖超时时间，若模型传入了 timeout_seconds 则换算为毫秒，否则默认 120 秒
         let cmdTimeout = 120000
         if (typeof args.timeout_seconds === 'number') {
-          cmdTimeout = args.timeout_seconds * 1000
+          cmdTimeout = Math.min(1800, Math.max(1, args.timeout_seconds)) * 1000
         }
 
         if (isSsh) {
           // SSH 模式下不传递本地物理盘符的路径作为 cwd
-          const { stdout, stderr } = await sshManager.executeCommand(context.sessionId!, command, undefined)
+          const { stdout, stderr, exitCode } = await sshManager.executeCommand(context.sessionId!, command, undefined, { timeout: cmdTimeout, signal: context.abortSignal })
           return {
-            content: `[远程 SSH 命令执行输出 | shell: ${shell}]\n${stdout || ''}\n${stderr ? '[错误输出]\n' + stderr : ''}`,
-            success: true
+            content: `[远程 SSH 命令执行输出 | shell: ${shell} | exit_code: ${exitCode ?? 'unknown'}]\n${stdout || ''}\n${stderr ? '[错误输出]\n' + stderr : ''}`,
+            state: { exitCode, stdout, stderr },
+            success: exitCode === 0
           }
         }
 
@@ -110,7 +111,7 @@ export class TerminalExecutor implements IToolExecutor {
         return {
           content: output,
           state: { exitCode, stdout: renderedStdout, stderr: renderedStderr },
-          success: true
+          success: exitCode === 0
         }
       }
 
@@ -150,11 +151,12 @@ export class TerminalExecutor implements IToolExecutor {
           return { content: '错误：缺少必要参数 shell_id', success: false }
         }
 
-        const { output, isRunning } = shellManager.getOutput(shell_id, filter)
+        const { output, isRunning, exitCode, error } = shellManager.getOutput(shell_id, filter)
         const status = isRunning ? '运行中' : '已结束'
         return {
-          content: `[命令状态: ${status}]\n${output || '(无输出)'}`,
-          success: true
+          content: `[命令状态: ${status} | exit_code: ${exitCode ?? 'unknown'}]\n${output || '(无输出)'}`,
+          state: { isRunning, exitCode, error },
+          success: !error && (isRunning || exitCode === 0)
         }
       }
 

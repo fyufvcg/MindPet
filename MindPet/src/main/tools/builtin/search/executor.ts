@@ -45,7 +45,7 @@ export class SearchExecutor implements IToolExecutor {
         return new Promise<ToolResult>((resolve) => {
           execFile(rgPath, execArgs, { maxBuffer: 10 * 1024 * 1024, timeout, signal: context.abortSignal }, (error, stdout, stderr) => {
             // ripgrep exits with 1 if no matches found, 2 if error
-            if (error && error.code === 2) {
+            if (error && error.code !== 1) {
               resolve({
                 content: `搜索出错: ${stderr || error.message}`,
                 success: false

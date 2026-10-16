@@ -3,10 +3,7 @@ package service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
-import org.sqlite.SQLiteDataSource;
 import service.v3.SensitivePersistenceGuard;
 import service.v3.V3ReferenceResolution;
 import util.Logger;
@@ -24,11 +21,18 @@ import static org.mockito.Mockito.*;
 class V34ProductionSafetyRegressionTest {
     @TempDir Path temp;
     private static final Instant NOW = Instant.parse("2026-10-07T10:00:00Z");
+    private final java.util.List<AutoCloseable> sources = new java.util.ArrayList<>();
+    @org.junit.jupiter.api.AfterEach void closeSources() throws Exception {
+        for (var source : sources) source.close();
+    }
     private JdbcTemplate database(String name) {
-        SQLiteDataSource source = new SQLiteDataSource();
-        source.setUrl("jdbc:sqlite:" + temp.resolve(name + ".db"));
-        new ResourceDatabasePopulator(new ClassPathResource("db/sqlite-schema.sql")).execute(source);
-        return new JdbcTemplate(source);
+        // Exercise the production schema plus migrations, including source_turn_hash.
+        try {
+            var source = new config.SqliteStorageConfig().sqliteDataSource(
+                temp.resolve(name + ".db").toString(), temp.resolve("no-vector-extension").toString());
+            sources.add((AutoCloseable) source);
+            return new JdbcTemplate(source);
+        } catch (Exception e) { throw new IllegalStateException(e); }
     }
     private SqliteMemoryService memory(JdbcTemplate jdbc) {
         EmbeddingService embedding = mock(EmbeddingService.class);

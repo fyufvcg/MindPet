@@ -9,7 +9,13 @@ package model;
  * @param promptTokens     prompt (input) tokens consumed
  * @param completionTokens completion (output) tokens generated
  */
-public record ChatResult(String reply, boolean toolsUsed, int promptTokens, int completionTokens) {
+public record ChatResult(String reply, boolean toolsUsed, int promptTokens, int completionTokens, boolean estimated) {
+    public ChatResult(String reply, boolean toolsUsed, int promptTokens, int completionTokens) {
+        this(reply, toolsUsed, promptTokens, completionTokens, false);
+    }
+    public static ChatResult of(String reply, boolean toolsUsed, int promptTokens, int completionTokens, boolean estimated) {
+        return new ChatResult(reply, toolsUsed, promptTokens, completionTokens, estimated);
+    }
     public static ChatResult of(String reply, boolean toolsUsed) {
         return new ChatResult(reply, toolsUsed, 0, 0);
     }

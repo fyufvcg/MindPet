@@ -4,7 +4,14 @@ directories:
   buildResources: build
   output: release
 files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - resources/**
+  - package.json
   - '!**/*.map'
+  - '!**/*.log'
+  - '!**/*.log.*'
   - '!dist*/**'
   - '!release*/**'
   - '!**/.vscode/*'

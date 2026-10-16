@@ -35,7 +35,9 @@ class AgentTaskServiceTest {
         SQLiteDataSource database = new SQLiteDataSource();
         database.setUrl("jdbc:sqlite:" + temp.resolve("agent.db"));
         store = new AgentTaskStore(new JdbcTemplate(database));
-        tasks = new AgentTaskService(store, mock(McpManager.class));
+        McpManager manager = mock(McpManager.class);
+        org.mockito.Mockito.when(manager.serverIdOf(org.mockito.ArgumentMatchers.any())).thenReturn("");
+        tasks = new AgentTaskService(store, manager);
         ToolUserContext.set("user", "session");
         ToolUserContext.setRequestId("request");
         ToolUserContext.setExecution(Map.of("workspacePath", temp.toString()));
@@ -71,13 +73,19 @@ class AgentTaskServiceTest {
         ToolCallback hidden = tool("desktop_tools__desktop__file__read_file", args -> {
             executed.incrementAndGet(); return "文件内容";
         });
+        tasks.close();
+        McpManager manager = mock(McpManager.class);
+        org.mockito.Mockito.when(manager.serverIdOf(org.mockito.ArgumentMatchers.any())).thenReturn("external-files");
+        org.mockito.Mockito.when(manager.isManaged(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        tasks = new AgentTaskService(store, manager);
+        ToolUserContext.setExecution(Map.of("selectedMcpServerIds", "[\"external-files\"]"));
         ChatModel model = scripted(prompt -> {
             int turn = turns.incrementAndGet();
             var names = ((ToolCallingChatOptions)prompt.getOptions()).getToolCallbacks().stream()
                 .map(c -> c.getToolDefinition().name()).toList();
             if (turn == 1) {
                 assertThat(names).doesNotContain(hidden.getToolDefinition().name());
-                return call("agent_discover_tools", "{\"group\":\"file\"}", "discover");
+                return call("agent_discover_tools", "{\"group\":\"external-files\"}", "discover");
             }
             assertThat(names).contains(hidden.getToolDefinition().name());
             assertPaired(prompt.getInstructions());
@@ -85,12 +93,46 @@ class AgentTaskServiceTest {
         });
         StringBuilder text = new StringBuilder();
         ChatResponse finalResponse = tasks.stream(attach(model, new ToolCallback[0], new ToolCallback[]{hidden}))
-            .doOnNext(r -> text.append(r.getResult().getOutput().getText())).blockLast();
+            .doOnNext(r -> { if (r.getResult() != null) text.append(r.getResult().getOutput().getText()); }).blockLast();
         tasks.releaseStreamContext();
         assertThat(text.toString()).contains("完成");
         assertThat(executed).hasValue(1);
         assertThat(finalResponse.getMetadata().getUsage().getPromptTokens()).isEqualTo(30);
         assertThat(ToolUserContext.isToolsUsed()).isTrue();
+    }
+
+    @Test void streamingUsageDoesNotCountAggregatedResponsesTwice() {
+        AtomicInteger turns = new AtomicInteger();
+        ToolCallback read = tool("read", args -> "ok");
+        ChatModel model = scripted(prompt -> turns.incrementAndGet() <= 5
+            ? call("read", "{}", "c" + turns.get()) : answer("done"));
+        ChatResponse response = tasks.stream(attach(model, new ToolCallback[]{read}, new ToolCallback[]{read})).blockLast();
+        tasks.releaseStreamContext();
+        assertThat(turns).hasValue(6);
+        assertThat(response.getMetadata().getUsage().getPromptTokens()).isEqualTo(60);
+        assertThat(response.getMetadata().getUsage().getCompletionTokens()).isEqualTo(12);
+        var snapshot = store.snapshot(store.get("user", store.list("user", "session").get(0).get("id").toString()));
+        assertThat((List<?>)snapshot.get("usageRounds")).hasSize(5);
+        assertThat(snapshot).containsEntry("promptTokens", 60);
+    }
+
+    @Test void toolOutputsRemainIntactWithoutBudgetPressure() {
+        AtomicInteger turns = new AtomicInteger();
+        String body = "very-long-content ".repeat(700);
+        ToolCallback read = tool("read", args -> body);
+        ChatModel model = scripted(prompt -> {
+            int turn = turns.incrementAndGet();
+            assertPaired(prompt.getInstructions());
+            if (turn == 5) {
+                var results = prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast).toList();
+                assertThat(results.get(0).getResponses().get(0).responseData()).isEqualTo(body);
+                assertThat(results.get(results.size() - 1).getResponses().get(0).responseData()).isEqualTo(body);
+            }
+            return turn <= 4 ? call("read", "{}", "c" + turn) : answer("done");
+        });
+        tasks.call(attach(model, new ToolCallback[]{read}, new ToolCallback[]{read}));
+        assertThat(turns).hasValue(5);
     }
 
     @Test void onlyIdenticalFailedArgumentsAreLimited() {
@@ -139,7 +181,7 @@ class AgentTaskServiceTest {
             int turn = turns.incrementAndGet();
             if (turn == 2) {
                 var response = ((ToolResponseMessage)prompt.getInstructions().get(prompt.getInstructions().size()-1)).getResponses().get(0);
-                assertThat(response.responseData()).hasSizeLessThan(17000).contains("call_id=read-call");
+                assertThat(response.responseData()).hasSizeLessThan(25000).contains("\"call_id\":\"read-call\"");
                 return call("agent_read_output", "{\"call_id\":\"read-call\",\"offset\":39990,\"length\":100}", "page");
             }
             if (turn == 3) {
@@ -219,14 +261,24 @@ class AgentTaskServiceTest {
     }
 
     @Test void compactionRetainsCompleteToolCyclesAndOutputReferences() {
-        org.springframework.test.util.ReflectionTestUtils.setField(tasks, "contextMaxChars", 24000);
+        var clients = mock(service.DynamicChatClientFactory.class);
+        org.mockito.Mockito.when(clients.effectiveModel()).thenReturn("fixture");
+        org.mockito.Mockito.when(clients.buildBackground(org.mockito.ArgumentMatchers.anyLong())).thenReturn(
+            ChatClient.builder(scripted(prompt -> answer("{\"goal\":\"处理文件\",\"constraints\":[],\"decisions\":[],\"completed\":[],\"evidence\":[\"call_id=c1\"],\"pending\":[],\"failures\":[],\"artifacts\":[]}"))).build());
+        SQLiteDataSource database = new SQLiteDataSource();
+        database.setUrl("jdbc:sqlite:" + temp.resolve("agent.db"));
+        var archive = new AgentContextStore(new JdbcTemplate(database));
+        var contexts = new AgentContextManager(archive, clients);
+        org.springframework.test.util.ReflectionTestUtils.setField(contexts, "maxInput", 8000);
+        tasks.setContextServices(contexts, archive);
         AtomicInteger turns = new AtomicInteger();
         ToolCallback read = tool("read", args -> "data ".repeat(2000));
         ChatModel model = scripted(prompt -> {
             assertPaired(prompt.getInstructions());
             int turn = turns.incrementAndGet();
             if (turn >= 5) {
-                assertThat(prompt.getInstructions().stream().map(m -> Objects.toString(m.getText(), "")).toList())
+                assertThat(prompt.getInstructions().stream().map(m -> Objects.toString(m.getText(), "")
+                        + (m instanceof ToolResponseMessage toolResult ? toolResult.getResponses().toString() : "")).toList())
                     .anyMatch(s -> s.contains("call_id=c1"));
             }
             return turn <= 8 ? call("read", "{\"file\":"+turn+"}", "c"+turn) : answer("已处理八个文件");
@@ -273,6 +325,181 @@ class AgentTaskServiceTest {
             .user("完成测试任务").options(OpenAiChatOptions.builder().model("scripted").build());
         return tasks.attach(spec, "完成测试任务", initial, all);
     }
+
+    @Test void taskBudgetReservesTheNextOutputBeforeCallingTheProvider() {
+        org.springframework.test.util.ReflectionTestUtils.setField(tasks, "taskMaxTokens", 4000);
+        AtomicInteger calls = new AtomicInteger();
+        assertThatThrownBy(() -> tasks.call(attach(scripted(p -> { calls.incrementAndGet(); return answer("done"); }), new ToolCallback[0], new ToolCallback[0])))
+            .isInstanceOf(IllegalStateException.class);
+        assertThat(calls).hasValue(0);
+        assertThat(store.list("user", "session").get(0)).containsEntry("status", "budget_exhausted");
+    }
+
+    @Test void clearingIsBlockedDuringPreparationAndExecutionButAllowedAfterExit() {
+        AtomicInteger changes = new AtomicInteger();
+        tasks.beginSessionRequest("user", "session");
+        assertThatThrownBy(() -> tasks.changeSession("user", "session", changes::incrementAndGet))
+            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> tasks.beginSessionRequest("user", "session"))
+            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        tasks.endSessionRequest("user", "session");
+        var spec = attach(scripted(p -> answer("done")), new ToolCallback[0], new ToolCallback[0]);
+        assertThatThrownBy(() -> tasks.changeAllSessions("user", changes::incrementAndGet))
+            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        tasks.call(spec);
+        tasks.changeSession("user", "session", changes::incrementAndGet);
+        assertThat(changes).hasValue(1);
+    }
+
+    @Test void recoveryFillsEveryInterruptedExchangeBeforeTheFollowingUserMessage() {
+        List<Message> history = new ArrayList<>(List.of(new UserMessage("处理文件"), call("write", "{}", "one"),
+            new UserMessage("继续"), call("read", "{}", "two")));
+        AgentMessages.closePendingCalls(history, Map.of("one", "已写入"));
+        assertPaired(history);
+        assertThat(history.get(2)).isInstanceOf(ToolResponseMessage.class);
+        assertThat(history.get(3)).isInstanceOf(UserMessage.class);
+        assertThat(((ToolResponseMessage)history.get(2)).getResponses().get(0).responseData()).isEqualTo("已写入");
+    }
+
+    @Test void repeatedSearchReusesTaskEvidenceWithoutCallingTheNetworkAgain() {
+        AtomicInteger turns = new AtomicInteger(), searches = new AtomicInteger();
+        ToolCallback search = tool("web_search", args -> { searches.incrementAndGet(); return "来源 URL: https://example.org 日期: today 结果: enough"; });
+        ChatModel model = scripted(prompt -> {
+            int turn = turns.incrementAndGet();
+            if (turn == 3) {
+                var result = (ToolResponseMessage)prompt.getInstructions().get(prompt.getInstructions().size()-1);
+                assertThat(result.getResponses().get(0).responseData()).contains("\"reused\":true", "https://example.org");
+                return answer("已找到结果");
+            }
+            return call("web_search", turn == 1 ? "{\"query\":\"Weather   Today\"}" : "{\"query\":\"weather today\"}", "s" + turn);
+        });
+        tasks.call(attach(model, new ToolCallback[]{search}, new ToolCallback[]{search}));
+        assertThat(searches).hasValue(1);
+    }
+
+    @Test void partialProviderUsageKeepsTheProvidedSideAndLabelsTheMissingSideEstimated() {
+        ChatModel model = new ChatModel() {
+            public ChatResponse call(Prompt prompt) {
+                return new ChatResponse(List.of(new Generation(answer("已完成"))), org.springframework.ai.chat.metadata.ChatResponseMetadata.builder()
+                    .usage(new org.springframework.ai.chat.metadata.DefaultUsage(0, 99)).build());
+            }
+        };
+        var result = tasks.call(attach(model, new ToolCallback[0], new ToolCallback[0]));
+        assertThat(result.getMetadata().getUsage().getPromptTokens()).isPositive();
+        assertThat(result.getMetadata().getUsage().getCompletionTokens()).isEqualTo(99);
+        assertThat((Boolean)result.getMetadata().get("mindpet.usageEstimated")).isTrue();
+    }
+
+    @Test void oversizedExternalSchemasCannotDisplaceResidentDesktopTools() {
+        tasks.close();
+        var manager = mock(McpManager.class);
+        org.mockito.Mockito.when(manager.serverIdOf(org.mockito.ArgumentMatchers.any())).thenReturn("server");
+        org.mockito.Mockito.when(manager.isManaged(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
+            ((ToolCallback)invocation.getArgument(0)).getToolDefinition().name().startsWith("external"));
+        tasks = new AgentTaskService(store, manager);
+        var database = new SQLiteDataSource(); database.setUrl("jdbc:sqlite:" + temp.resolve("agent.db"));
+        var archive = new AgentContextStore(new JdbcTemplate(database));
+        var clients = mock(service.DynamicChatClientFactory.class);
+        org.mockito.Mockito.when(clients.effectiveModel()).thenReturn("fixture");
+        var contexts = new AgentContextManager(archive, clients);
+        org.springframework.test.util.ReflectionTestUtils.setField(contexts, "maxInput", 8000);
+        tasks.setContextServices(contexts, archive);
+        ToolUserContext.setExecution(Map.of("selectedMcpServerIds", "[\"server\"]"));
+        ToolCallback desktop = tool("desktop__file__read_file", args -> "ok");
+        ToolCallback external = new ToolCallback() {
+            public ToolDefinition getToolDefinition() { return ToolDefinition.builder().name("external__read")
+                .description("巨大定义 ".repeat(6000)).inputSchema("{\"type\":\"object\"}").build(); }
+            public String call(String input) { throw new AssertionError("oversized tool should not execute"); }
+        };
+        ChatModel model = scripted(prompt -> {
+            var callbacks = ((ToolCallingChatOptions)prompt.getOptions()).getToolCallbacks();
+            assertThat(callbacks.stream().map(t -> t.getToolDefinition().name())).contains("desktop__file__read_file").doesNotContain("external__read");
+            assertThat(ContextTokens.messages(prompt.getInstructions()) + ContextTokens.tools(callbacks)).isLessThanOrEqualTo(8000);
+            return answer("可继续使用基础工具");
+        });
+        tasks.call(attach(model, new ToolCallback[]{desktop, external}, new ToolCallback[]{desktop, external}));
+    }
+
+    @Test void phaseDependenciesReleaseSkillBodiesWhileDesktopToolsStayResident() {
+        tasks.close();
+        var skillStore = mock(config.SkillStore.class);
+        org.mockito.Mockito.when(skillStore.get("user/a")).thenReturn(new config.SkillStore.SkillDef("规则 A ".repeat(3000), "a", "user", "", Map.of(), "a1"));
+        org.mockito.Mockito.when(skillStore.get("user/b")).thenReturn(new config.SkillStore.SkillDef("规则 B ".repeat(3000), "b", "user", "", Map.of(), "b1"));
+        var manager = mock(McpManager.class);
+        org.mockito.Mockito.when(manager.serverIdOf(org.mockito.ArgumentMatchers.any())).thenReturn("");
+        tasks = new AgentTaskService(store, manager, skillStore);
+        ToolCallback desktop = tool("desktop__file__read_file", args -> "ok");
+        AtomicInteger turns = new AtomicInteger();
+        ChatModel model = scripted(prompt -> {
+            int turn = turns.incrementAndGet();
+            if (turn == 1) return call("agent_load_skill", "{\"id\":\"user/a\",\"pin\":true}", "a");
+            if (turn == 2) return call("agent_load_skill", "{\"id\":\"user/b\"}", "b");
+            String body = prompt.getInstructions().stream().filter(m -> m instanceof SystemMessage && m.getText().startsWith("[MindPet Skill references]"))
+                .map(Message::getText).findFirst().orElse("");
+            assertThat(ContextTokens.count(body)).isLessThanOrEqualTo(6000);
+            if (turn == 3) {
+                assertThat(body).contains("user/a", "user/b", "规则 A", "规则 B");
+                return call("agent_update_plan", "{\"plan\":\"下一阶段只需要 A\",\"active_skill_ids\":[\"user/a\"],\"active_tool_names\":[]}", "phase");
+            }
+            assertThat(body).contains("user/a", "规则 A").doesNotContain("user/b", "规则 B");
+            assertThat(((ToolCallingChatOptions)prompt.getOptions()).getToolCallbacks().stream().map(t -> t.getToolDefinition().name()))
+                .contains("desktop__file__read_file");
+            return answer("阶段已切换");
+        });
+        tasks.call(attach(model, new ToolCallback[]{desktop}, new ToolCallback[]{desktop}));
+    }
+    @Test void unknownWriteCannotBeReplayedOrReportedComplete() {
+        AtomicInteger turns = new AtomicInteger(), executions = new AtomicInteger();
+        ToolCallback write = tool("submit", args -> { executions.incrementAndGet(); return "{\"success\":false,\"outcome\":\"unknown\"}"; });
+        ChatModel model = scripted(prompt -> switch (turns.incrementAndGet()) {
+            case 1 -> call("submit", "{\"a\":1,\"b\":2}", "first");
+            case 2 -> call("submit", "{\"b\":2,\"a\":1}", "replay");
+            case 3 -> call("agent_report_completion", "{\"status\":\"completed\",\"evidence\":\"assumed success\"}", "report");
+            default -> answer("需要核实外部状态");
+        });
+        tasks.call(attach(model, new ToolCallback[]{write}, new ToolCallback[]{write}));
+        assertThat(executions).hasValue(1);
+        var row = store.list("user", "session").get(0);
+        assertThat(row).containsEntry("status", "needs_input");
+        assertThat(store.snapshot(store.get("user", row.get("id").toString())).get("outcomes").toString())
+            .contains("OUTCOME_UNKNOWN", "UNVERIFIED_OUTCOME");
+    }
+
+    @Test void resumeCarriesNewInstructionIntoWorkerAndDoesNotRestoreRevokedMcp() {
+        store.save("old", "user", "session", "old-request", "interrupted", "原始任务", Map.of(
+            "messages", AgentMessages.encode(List.of(new UserMessage("原始任务"))),
+            "selectedMcpServerIds", List.of("revoked")));
+        ToolUserContext.setExecution(Map.of("resumeTaskId", "old", "resumeInstruction", "输出改为 Excel", "selectedMcpServerIds", "[]"));
+        assertThat(tasks.selectedMcpServers()).isEmpty();
+        ChatModel model = scripted(prompt -> {
+            assertThat(prompt.getInstructions().stream().map(Message::getText).toList())
+                .anyMatch(text -> text.contains("输出改为 Excel"));
+            return answer("按补充要求继续");
+        });
+        tasks.call(attach(model, new ToolCallback[0], new ToolCallback[0]));
+    }
+
+    @Test void onlyAFreshExternalObservationCanResolveAnUnknownAction() {
+        AtomicInteger turns = new AtomicInteger();
+        ToolCallback write = tool("submit", args -> "{\"success\":false,\"outcome\":\"unknown\"}");
+        ToolCallback read = tool("inspect", args -> "actual state checked");
+        ChatModel model = scripted(prompt -> switch (turns.incrementAndGet()) {
+            case 1 -> call("inspect", "{}", "old-read");
+            case 2 -> call("submit", "{}", "write");
+            case 3 -> call("agent_confirm_outcome", "{\"call_id\":\"write\",\"verification_call_id\":\"old-read\",\"evidence\":\"stale\"}", "bad-check");
+            case 4 -> call("inspect", "{}", "fresh-read");
+            case 5 -> call("agent_confirm_outcome", "{\"call_id\":\"write\",\"verification_call_id\":\"fresh-read\",\"evidence\":\"actual state checked\"}", "good-check");
+            case 6 -> call("agent_report_completion", "{\"status\":\"completed\",\"evidence\":\"verified\"}", "report");
+            default -> answer("已核验");
+        });
+        tasks.call(attach(model, new ToolCallback[]{read, write}, new ToolCallback[]{read, write}));
+        var row = store.list("user", "session").get(0);
+        assertThat(row).containsEntry("status", "completed");
+        var saved = store.snapshot(store.get("user", row.get("id").toString()));
+        assertThat(saved.get("outcomes").toString()).contains("INVALID_VERIFICATION");
+        assertThat((Map<?,?>) saved.get("unknownActions")).isEmpty();
+    }
+
     private static ToolCallback tool(String name, Function<String, String> action) {
         return new ToolCallback() {
             @Override public ToolDefinition getToolDefinition() {
